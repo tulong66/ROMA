@@ -47,7 +47,7 @@ Respond ONLY with the JSON structure defined by the 'PlanOutput' and 'SubTask' s
 
 # Define the AgnoAgent instance for our simple planner
 simple_test_planner_agno_agent = AgnoAgent(
-    model=LiteLLM(model="gpt-3.5-turbo"), # Or any other model string LiteLLM supports
+    model=LiteLLM(id="openrouter/anthropic/claude-3-7-sonnet"), # Or any other model string LiteLLM supports
     system_message=PLANNER_SYSTEM_MESSAGE,
     response_model=PlanOutput,  # CRUCIAL: This tells Agno to structure the output
     name="SimpleTestPlannerAgent_Agno" # Descriptive name for the Agno agent

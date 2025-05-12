@@ -1,7 +1,7 @@
 from sentientresearchagent.hierarchical_agent_framework.agents.base_adapter import LlmApiAdapter, colored # Import base adapter
 from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode # Type hinting
 from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models import PlanOutput, AtomizerOutput, AgentTaskInput # For type hinting
-
+from typing import Any
 # Assuming the AgnoAgent instances passed to these adapters during initialization
 # are configured with the correct 'response_model' in their definitions.
 

@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Union, List
 from agno.agent import Agent as AgnoAgent # Renaming to avoid conflict if we define our own Agent interface
-from agno.client import RunResponse # To type hint the response from agno_agent.run()
 
 from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode # For type hinting
 from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models import ContextItem, PlanOutput, AtomizerOutput # For type hinting results
@@ -138,7 +137,7 @@ class LlmApiAdapter(BaseAdapter):
         try:
             # AgnoAgent.run() handles structured output if 'response_model' was set on the agent.
             # It also handles the tool execution loop internally if tools were provided to the agent.
-            response: RunResponse = self.agno_agent.run(**run_arguments)
+            response = self.agno_agent.run(**run_arguments)
             
             # print(colored(f"    Adapter '{self.agent_name}': Received RunResponse. Content type: {response.content_type}", "cyan"))
             # pprint.pprint(response) # For deep debugging of the full RunResponse
