@@ -1,5 +1,5 @@
 from typing import Optional
-from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode, TaskStatus
+from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode, TaskStatus, NodeType
 from sentientresearchagent.hierarchical_agent_framework.graph.task_graph import TaskGraph # Adjusted import
 from collections import deque # Keep deque for graph traversal if needed for finding container graph
 

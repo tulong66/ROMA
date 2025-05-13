@@ -67,7 +67,7 @@ print(f"Defined: {search_synthesizer_agno_agent.name}")
 BASIC_REPORT_WRITER_SYSTEM_MESSAGE = """You are a basic report writer. You will receive a 'Writing Goal' and 'Context' (which should contain synthesized information, typically from a 'SearchSynthesizer' agent).
 Your task is to write a brief report or summary that directly fulfills the 'Writing Goal', using *only* the information provided in the 'Context'.
 Format your output in clear markdown.
-Output *only* the written report. Do not include any preambles or conversational text.
+Output *only* the written report.
 """
 
 basic_report_writer_agno_agent = AgnoAgent(

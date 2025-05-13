@@ -14,7 +14,7 @@ from .definitions.executor_agents import (
     # openai_custom_search_agno_agent # This will be replaced
 )
 # from .definitions.atomizer_agents import simple_atomizer_agno_agent
-# from .definitions.aggregator_agents import simple_aggregator_agno_agent
+from .definitions.aggregator_agents import default_aggregator_agno_agent # Import the new aggregator
 
 # Removed import from .definitions.research_agents as its contents are moved
 
@@ -140,15 +140,27 @@ if basic_report_writer_agno_agent:
 #     register_agent_adapter(adapter=simple_atomizer_adapter_instance, action_verb="atomize", task_type=TaskType.WRITE)
 #     register_agent_adapter(adapter=simple_atomizer_adapter_instance, name="default_atomizer")
 
-# --- Placeholder for Aggregator Agent Registration (Example) ---
-# if simple_aggregator_agno_agent: # (Assuming this Agno agent returns a string)
-#     simple_aggregator_adapter_instance = AggregatorAdapter(
-#         agno_agent_instance=simple_aggregator_agno_agent,
-#         agent_name="SimpleAggregator"
-#     )
-#     # Aggregators are usually generic for the "aggregate" action
-#     register_agent_adapter(adapter=simple_aggregator_adapter_instance, action_verb="aggregate", task_type=None) # TaskType is None
-#     register_agent_adapter(adapter=simple_aggregator_adapter_instance, name="default_aggregator")
+# --- Register the Default Aggregator Agent ---
+if default_aggregator_agno_agent:
+    default_aggregator_adapter_instance = AggregatorAdapter( # Use AggregatorAdapter
+        agno_agent_instance=default_aggregator_agno_agent,
+        agent_name="DefaultAggregator" # For adapter logging
+    )
+    # Register for the generic "aggregate" action, typically TaskType is None or not specified
+    # as aggregation is a phase rather than a specific task type from planning.
+    # The get_agent_adapter logic might need to handle finding an aggregator
+    # when a node is in AGGREGATING status.
+    # For now, let's register it by name and for a general aggregate action.
+    register_agent_adapter(
+        adapter=default_aggregator_adapter_instance,
+        action_verb="aggregate", 
+        task_type=None # Indicates it's a general aggregator for any task type parent
+    )
+    register_agent_adapter(
+        adapter=default_aggregator_adapter_instance,
+        name="default_aggregator" # Allow calling by name
+    )
+    print(f"Registered adapter: {default_aggregator_adapter_instance.agent_name} for aggregation")
 
 
 # Register OpenAICustomSearchAdapter directly

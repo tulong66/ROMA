@@ -79,3 +79,7 @@ class CustomSearcherOutput(BaseModel):
     output_text_with_citations: str = Field(..., description="The main textual answer from the OpenAI model, including any inline citations.")
     text_content: Optional[str] = Field(None, description="The textual answer parsed from the nested structure (e.g., response.output[1].content[0].text), if available.")
     annotations: List[AnnotationURLCitationModel] = Field(default_factory=list, description="A list of URL annotations, if available from the nested structure.")
+
+    def __str__(self) -> str:
+        # Prioritize the main output text for string conversion
+        return self.output_text_with_citations
