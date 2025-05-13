@@ -59,3 +59,25 @@ simple_test_planner_agno_agent = AgnoAgent(
 # research_planner_agno_agent = AgnoAgent(...)
 
 print("Defined: simple_test_planner_agno_agent")
+
+# --- Core Research Planner Agent ---
+# LLM_MODEL_ID should be defined, assuming "gpt-4o" as discussed
+LLM_MODEL_ID_RESEARCH = "openrouter/anthropic/claude-3-7-sonnet" # Specific for these new agents, or use a globally defined one
+
+CORE_RESEARCH_PLANNER_SYSTEM_MESSAGE = """You are a foundational research planner. Given a 'Research Topic', your objective is to create a 3-step execution plan:
+1.  A 'SEARCH' task to find initial information. The goal for this task should be the original 'Research Topic' rephrased as a search query. Assign the agent named 'SearchExecutor'.
+2.  A 'THINK' task to synthesize the results from the search. The goal should be 'Synthesize search results for the research topic: [Research Topic]'. Assign the agent named 'SearchSynthesizer'.
+3.  A 'WRITE' task to draft a brief summary based on the synthesized information. The goal should be 'Write a brief summary about the research topic: [Research Topic] using the synthesized findings'. Assign the agent named 'BasicReportWriter'.
+
+All sub-tasks must be of 'EXECUTE' node_type.
+The 'task_type' for step 1 is 'SEARCH'. For step 2, it's 'THINK'. For step 3, it's 'WRITE'.
+Respond ONLY with the JSON structure defined by 'PlanOutput' and 'SubTask'. Ensure the 'agent_name' field is correctly populated for each sub-task.
+"""
+
+core_research_planner_agno_agent = AgnoAgent(
+    model=LiteLLM(id=LLM_MODEL_ID_RESEARCH),
+    system_message=CORE_RESEARCH_PLANNER_SYSTEM_MESSAGE,
+    response_model=PlanOutput, # PlanOutput is already imported in this file
+    name="CoreResearchPlanner_Agno"
+)
+print("Defined: core_research_planner_agno_agent")

@@ -3,11 +3,18 @@ from .registry import register_agent_adapter, AGENT_REGISTRY, NAMED_AGENTS # Imp
 from .adapters import PlannerAdapter, ExecutorAdapter, AtomizerAdapter, AggregatorAdapter # Import adapter classes
 
 # Import AgnoAgent definitions
-from .definitions.planner_agents import simple_test_planner_agno_agent
-# Import other Agno agent definitions here as you create them
-# from .definitions.executor_agents import simple_writer_agno_agent, simple_search_agno_agent
+from .definitions.planner_agents import simple_test_planner_agno_agent, core_research_planner_agno_agent
+from .definitions.executor_agents import (
+    simple_writer_agno_agent, # Assuming this might still be used or defined
+    simple_search_agno_agent, # Assuming this might still be used or defined
+    search_executor_agno_agent,
+    search_synthesizer_agno_agent,
+    basic_report_writer_agno_agent
+)
 # from .definitions.atomizer_agents import simple_atomizer_agno_agent
 # from .definitions.aggregator_agents import simple_aggregator_agno_agent
+
+# Removed import from .definitions.research_agents as its contents are moved
 
 
 print("Executing agents/__init__.py: Setting up and registering agents...")
@@ -44,14 +51,78 @@ if simple_test_planner_agno_agent:
         name="SimpleTestPlanner"
     )
 
-# --- Placeholder for Executor Agent Registration (Example) ---
-# if simple_writer_agno_agent:
-#     simple_writer_adapter_instance = ExecutorAdapter(
-#         agno_agent_instance=simple_writer_agno_agent,
-#         agent_name="SimpleWriter"
-#     )
-#     register_agent_adapter(adapter=simple_writer_adapter_instance, action_verb="execute", task_type=TaskType.WRITE)
-#     register_agent_adapter(adapter=simple_writer_adapter_instance, name="default_writer")
+# --- Instantiate and Register Core Research Planner ---
+if core_research_planner_agno_agent:
+    core_research_planner_adapter_instance = PlannerAdapter(
+        agno_agent_instance=core_research_planner_agno_agent,
+        agent_name="CoreResearchPlanner" # Used for adapter logging
+    )
+    # Register by name, so TaskNode can specify agent_name="CoreResearchPlanner"
+    register_agent_adapter(
+        adapter=core_research_planner_adapter_instance,
+        name="CoreResearchPlanner"
+    )
+    # Optionally, register for a specific action/task_type if it's a default for that
+    # For example, if research planning is typically triggered by a THINK task:
+    # register_agent_adapter(
+    #     adapter=core_research_planner_adapter_instance,
+    #     action_verb="plan",
+    #     task_type=TaskType.THINK 
+    # )
+
+
+# --- Instantiate and Register Research Executor Agents ---
+
+# SearchExecutor
+if search_executor_agno_agent:
+    search_executor_adapter_instance = ExecutorAdapter(
+        agno_agent_instance=search_executor_agno_agent,
+        agent_name="SearchExecutor"
+    )
+    register_agent_adapter(
+        adapter=search_executor_adapter_instance,
+        name="SearchExecutor" # For TaskNode.agent_name
+    )
+    # Also could be registered for (action="execute", task_type=TaskType.SEARCH) if it's a default searcher
+    # register_agent_adapter(
+    #     adapter=search_executor_adapter_instance,
+    #     action_verb="execute",
+    #     task_type=TaskType.SEARCH
+    # )
+
+# SearchSynthesizer
+if search_synthesizer_agno_agent:
+    search_synthesizer_adapter_instance = ExecutorAdapter(
+        agno_agent_instance=search_synthesizer_agno_agent,
+        agent_name="SearchSynthesizer"
+    )
+    register_agent_adapter(
+        adapter=search_synthesizer_adapter_instance,
+        name="SearchSynthesizer"
+    )
+    # Typically for (action="execute", task_type=TaskType.THINK)
+    # register_agent_adapter(
+    #     adapter=search_synthesizer_adapter_instance,
+    #     action_verb="execute",
+    #     task_type=TaskType.THINK
+    # )
+
+# BasicReportWriter
+if basic_report_writer_agno_agent:
+    basic_report_writer_adapter_instance = ExecutorAdapter(
+        agno_agent_instance=basic_report_writer_agno_agent,
+        agent_name="BasicReportWriter"
+    )
+    register_agent_adapter(
+        adapter=basic_report_writer_adapter_instance,
+        name="BasicReportWriter"
+    )
+    # Typically for (action="execute", task_type=TaskType.WRITE)
+    # register_agent_adapter(
+    #     adapter=basic_report_writer_adapter_instance,
+    #     action_verb="execute",
+    #     task_type=TaskType.WRITE
+    # )
 
 
 # --- Placeholder for Atomizer Agent Registration (Example) ---

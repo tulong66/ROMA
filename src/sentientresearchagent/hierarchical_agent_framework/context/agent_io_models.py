@@ -50,3 +50,14 @@ class AgentTaskInput(BaseModel):
     
     # Configuration or agent-specific parameters can also be passed here
     # agent_config: Optional[Dict[str, Any]] = None
+
+# --- Research Agent I/O Schemas ---
+class WebSearchResultsOutput(BaseModel):
+    """Output schema for a SearchExecutor agent, detailing the search results."""
+    query_used: str = Field(..., description="The exact search query that was executed.")
+    # DuckDuckGoTools search_ddg method returns a list of dictionaries like:
+    # [{'title': '...', 'href': '...', 'body': '...'}]
+    # We'll map 'href' to 'link' and 'body' to 'snippet' for consistency if needed,
+    # or adjust this model to expect 'href' and 'body'.
+    # For now, let's assume the agent can format it to 'title', 'link', 'snippet'.
+    results: List[Dict[str, str]] = Field(..., description="A list of search results, each ideally with 'title', 'link', and 'snippet'.")
