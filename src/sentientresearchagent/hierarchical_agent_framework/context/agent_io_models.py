@@ -61,3 +61,21 @@ class WebSearchResultsOutput(BaseModel):
     # or adjust this model to expect 'href' and 'body'.
     # For now, let's assume the agent can format it to 'title', 'link', 'snippet'.
     results: List[Dict[str, str]] = Field(..., description="A list of search results, each ideally with 'title', 'link', and 'snippet'.")
+
+class AnnotationURLCitationModel(BaseModel):
+    """Represents a URL citation annotation from the OpenAI web_search_preview tool."""
+    title: Optional[str] = Field(None, description="The title of the cited page.")
+    url: str = Field(..., description="The URL of the citation.")
+    start_index: int = Field(..., description="The start index of the citation in the text.")
+    end_index: int = Field(..., description="The end index of the citation in the text.")
+    type: str = Field("url_citation", description="The type of annotation, typically 'url_citation'.")
+    # text_snippet: Optional[str] = Field(None, description="The text snippet this citation refers to.") # Added for clarity from example
+    # The above line might not be needed if start/end_index are sufficient.
+    # Your example data did not explicitly have `text_snippet` inside the annotation object itself.
+
+class CustomSearcherOutput(BaseModel):
+    """Structured output for the OpenAICustomSearchAdapter."""
+    query_used: str = Field(..., description="The original query used for the search.")
+    output_text_with_citations: str = Field(..., description="The main textual answer from the OpenAI model, including any inline citations.")
+    text_content: Optional[str] = Field(None, description="The textual answer parsed from the nested structure (e.g., response.output[1].content[0].text), if available.")
+    annotations: List[AnnotationURLCitationModel] = Field(default_factory=list, description="A list of URL annotations, if available from the nested structure.")

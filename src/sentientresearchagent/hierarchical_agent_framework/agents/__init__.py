@@ -1,3 +1,4 @@
+from litellm import OpenAI
 from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskType # For TaskType enum
 from .registry import register_agent_adapter, AGENT_REGISTRY, NAMED_AGENTS # Import registration function and registries
 from .adapters import PlannerAdapter, ExecutorAdapter, AtomizerAdapter, AggregatorAdapter # Import adapter classes
@@ -9,12 +10,16 @@ from .definitions.executor_agents import (
     simple_search_agno_agent, # Assuming this might still be used or defined
     search_executor_agno_agent,
     search_synthesizer_agno_agent,
-    basic_report_writer_agno_agent
+    basic_report_writer_agno_agent,
+    # openai_custom_search_agno_agent # This will be replaced
 )
 # from .definitions.atomizer_agents import simple_atomizer_agno_agent
 # from .definitions.aggregator_agents import simple_aggregator_agno_agent
 
 # Removed import from .definitions.research_agents as its contents are moved
+
+# Import the new adapter
+from .definitions.custom_searchers import OpenAICustomSearchAdapter
 
 
 print("Executing agents/__init__.py: Setting up and registering agents...")
@@ -144,6 +149,22 @@ if basic_report_writer_agno_agent:
 #     # Aggregators are usually generic for the "aggregate" action
 #     register_agent_adapter(adapter=simple_aggregator_adapter_instance, action_verb="aggregate", task_type=None) # TaskType is None
 #     register_agent_adapter(adapter=simple_aggregator_adapter_instance, name="default_aggregator")
+
+
+# Register OpenAICustomSearchAdapter directly
+# Ensure OpenAI is available and client can be initialized
+try:
+    if OpenAI: # Check if OpenAI was successfully imported in custom_searchers
+        openai_direct_search_adapter_instance = OpenAICustomSearchAdapter() # Uses default "gpt-4.1"
+        register_agent_adapter(
+            adapter=openai_direct_search_adapter_instance,
+            name="OpenAICustomSearcher" # The name to use when assigning tasks
+        )
+        print(f"Registered direct adapter: {openai_direct_search_adapter_instance.adapter_name} as 'OpenAICustomSearcher'")
+    else:
+        print("Warning: OpenAI library not available, OpenAICustomSearchAdapter not registered.")
+except Exception as e:
+    print(f"Warning: Could not initialize and register OpenAICustomSearchAdapter: {e}")
 
 
 print(f"AGENT_REGISTRY populated: {len(AGENT_REGISTRY)} entries.")
