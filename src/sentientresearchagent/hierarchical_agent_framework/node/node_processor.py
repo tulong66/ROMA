@@ -1,3 +1,4 @@
+from typing import List
 from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode, TaskStatus, NodeType, TaskType
 from sentientresearchagent.hierarchical_agent_framework.graph.task_graph import TaskGraph
 from sentientresearchagent.hierarchical_agent_framework.context.knowledge_store import KnowledgeStore
@@ -80,7 +81,7 @@ class NodeProcessor:
 
 
     def _handle_ready_node(self, node: TaskNode, task_graph: TaskGraph, knowledge_store: KnowledgeStore):
-        print(colored(f"  NodeProcessor: Handling READY node {node.task_id} (Type: {node.node_type.name}, Goal: '{node.goal[:30]}...')", "yellow"))
+        print(colored(f"  NodeProcessor: Handling READY node {node.task_id} (Type: {node.node_type}, Goal: '{node.goal[:30]}...')", "yellow"))
         node.update_status(TaskStatus.RUNNING) # Mark as RUNNING before agent call
         knowledge_store.add_or_update_record_from_node(node)
 
@@ -100,78 +101,87 @@ class NodeProcessor:
         # If it was planned as EXECUTE, assume it's atomic for now.
         # If it was PLAN, it needs planning unless max depth is reached.
 
-        if original_node_type == NodeType.PLAN and node.layer >= MAX_PLANNING_LAYER:
+        # --- Ensure comparisons use Enum members or string values consistently ---
+        # Determine if the original type corresponds to PLAN
+        is_plan_type = original_node_type == NodeType.PLAN if isinstance(original_node_type, NodeType) else original_node_type == NodeType.PLAN.value
+        
+        if is_plan_type and node.layer >= MAX_PLANNING_LAYER:
             print(colored(f"    NodeProcessor: Max planning depth ({MAX_PLANNING_LAYER}) reached for {node.task_id}. Forcing EXECUTE.", "yellow"))
-            node.node_type = NodeType.EXECUTE # Change type
+            node.node_type = NodeType.EXECUTE # Assign Enum member here
             is_atomic_determined = True
+        
+        # Ensure action_to_take holds the Enum member for later logic
+        # If node.node_type might still be string after potential modification:
+        action_to_take = node.node_type if isinstance(node.node_type, NodeType) else NodeType(node.node_type)
 
-
-        action_to_take = node.node_type # Based on current (possibly atomizer-modified) node_type
-
-        # 2. Prepare AgentTaskInput for the main action (PLAN or EXECUTE)
-        # This uses the (potentially updated) node.goal
+        # 2. Prepare AgentTaskInput
+        # Use .value to pass the string representation to the input model if needed
+        current_task_type_value = node.task_type.value if isinstance(node.task_type, TaskType) else node.task_type
         agent_task_input = resolve_context_for_agent(
             current_task_id=node.task_id,
             current_goal=node.goal,
-            current_task_type=node.task_type.value,
-            agent_name=node.agent_name or f"agent_for_{node.task_type.value}", # Placeholder if not set
-            knowledge_store=knowledge_store, # Pass the live KnowledgeStore
+            current_task_type=current_task_type_value, # Pass string value
+            agent_name=node.agent_name or f"agent_for_{current_task_type_value}", # Use the derived string value
+            knowledge_store=knowledge_store,
             overall_project_goal=task_graph.overall_project_goal
         )
-        node.input_payload_dict = agent_task_input.model_dump() # Log what the agent will receive
+        node.input_payload_dict = agent_task_input.model_dump()
 
         try:
+            # --- Action based on Enum member ---
             if action_to_take == NodeType.PLAN:
                 planner_adapter = get_agent_adapter(node, action_verb="plan")
                 if not planner_adapter:
-                    raise ValueError(f"No PLAN adapter found for node {node.task_id} (Agent: {node.agent_name}, TaskType: {node.task_type.name})")
+                    raise ValueError(f"No PLAN adapter found for node {node.task_id} (Agent: {node.agent_name}, TaskType: {node.task_type.name if isinstance(node.task_type, TaskType) else node.task_type})") # Handle potential string in error message
 
                 print(colored(f"    NodeProcessor: Invoking PLAN adapter '{type(planner_adapter).__name__}' for {node.task_id}", "cyan"))
                 plan_output: PlanOutput = planner_adapter.process(node, agent_task_input)
 
                 if not plan_output or not plan_output.sub_tasks:
                     print(colored(f"    NodeProcessor: Planner for {node.task_id} returned no sub-tasks. Converting to EXECUTE.", "yellow"))
-                    node.node_type = NodeType.EXECUTE # Convert to execute
-                    # Re-prepare context if goal or type changed significantly, for now assume it's fine
-                    # Then call the execute logic directly:
+                    node.node_type = NodeType.EXECUTE # Set Enum member
+                    # Re-prepare context if goal or type changed significantly? (Assume fine for now)
                     self._execute_node_action(node, agent_task_input, task_graph, knowledge_store)
                 else:
                     self._create_sub_nodes_from_plan(node, plan_output, task_graph, knowledge_store)
-                    node.update_status(TaskStatus.PLAN_DONE, result=plan_output.model_dump()) # Store the plan as result
+                    node.update_status(TaskStatus.PLAN_DONE, result=plan_output.model_dump())
             
             elif action_to_take == NodeType.EXECUTE:
-                self._execute_node_action(node, agent_task_input, task_graph, knowledge_store)
+                 self._execute_node_action(node, agent_task_input, task_graph, knowledge_store)
 
-            else: # Should not happen if node_type is always PLAN or EXECUTE
-                raise ValueError(f"Unexpected node action type: {action_to_take} for node {node.task_id}")
+            else: # Should not happen if node_type is always PLAN or EXECUTE Enum after conversion
+                raise ValueError(f"Unexpected node action type Enum: {action_to_take} for node {node.task_id}")
 
         except Exception as e:
             print(colored(f"  NodeProcessor Error: Failed to process READY node {node.task_id}: {e}", "red"))
+            # Ensure status update uses the Enum member
             node.update_status(TaskStatus.FAILED, error_msg=str(e))
         
-        knowledge_store.add_or_update_record_from_node(node) # Final update for this processing attempt
+        knowledge_store.add_or_update_record_from_node(node) # Final update
 
     def _execute_node_action(self, node: TaskNode, agent_task_input: AgentTaskInput, task_graph: TaskGraph, knowledge_store: KnowledgeStore):
-        """Handles the common logic for executing a node, assuming it's NodeType.EXECUTE."""
+        # Ensure node.node_type is an Enum for get_agent_adapter if it expects one
+        if not isinstance(node.node_type, NodeType):
+             node.node_type = NodeType(node.node_type) # Convert if necessary
+        
         executor_adapter = get_agent_adapter(node, action_verb="execute")
         if not executor_adapter:
-            raise ValueError(f"No EXECUTE adapter found for node {node.task_id} (Agent: {node.agent_name}, TaskType: {node.task_type.name})")
+             # Ensure TaskType is handled correctly in error message if it could be string
+             task_type_display = node.task_type.name if isinstance(node.task_type, TaskType) else node.task_type
+             raise ValueError(f"No EXECUTE adapter found for node {node.task_id} (Agent: {node.agent_name}, TaskType: {task_type_display})")
 
         print(colored(f"    NodeProcessor: Invoking EXECUTE adapter '{type(executor_adapter).__name__}' for {node.task_id}", "cyan"))
         execution_result = executor_adapter.process(node, agent_task_input)
         
-        # Store the result. If Agno returns a Pydantic model, it's stored directly.
-        # If it's text, it's stored. Multi-modal refs would also be stored.
-        node.output_type_description = f"{type(execution_result).__name__}_result" # Basic type desc
+        node.output_type_description = f"{type(execution_result).__name__}_result"
         
-        # Check for specific agent signals like "NEEDS_REPLAN"
-        # This part is conceptual and depends on how your agents signal this.
-        # For example, if the result is a string starting with a special token:
         if isinstance(execution_result, str) and execution_result.startswith("<<NEEDS_REPLAN>>"):
             replan_reason = execution_result.replace("<<NEEDS_REPLAN>>", "").strip()
             print(colored(f"    NodeProcessor: Node {node.task_id} requested REPLAN. Reason: {replan_reason}", "yellow"))
+            # Ensure status update uses the Enum member
             node.update_status(TaskStatus.NEEDS_REPLAN, result=replan_reason)
         else:
+            # Ensure status update uses the Enum member
             node.update_status(TaskStatus.DONE, result=execution_result)
 
     def _handle_aggregating_node(self, node: TaskNode, task_graph: TaskGraph, knowledge_store: KnowledgeStore):
@@ -190,24 +200,30 @@ class NodeProcessor:
         if node.sub_graph_id:
             child_nodes = task_graph.get_nodes_in_graph(node.sub_graph_id)
             for child_node in child_nodes:
-                if child_node.status in [TaskStatus.DONE, TaskStatus.FAILED]:
-                    child_results_for_aggregator.append(ContextItem(
+                child_status = child_node.status if isinstance(child_node.status, TaskStatus) else TaskStatus(child_node.status)
+                if child_status in [TaskStatus.DONE, TaskStatus.FAILED]:
+                     child_results_for_aggregator.append(ContextItem(
                         source_task_id=child_node.task_id,
                         source_task_goal=child_node.goal,
-                        content=child_node.result if child_node.status == TaskStatus.DONE else child_node.error,
-                        content_type_description=f"child_{child_node.status.value.lower()}_output"
+                        content=child_node.result if child_status == TaskStatus.DONE else child_node.error,
+                        # Use child_status.value which is the string representation
+                        content_type_description=f"child_{child_status.value.lower()}_output" 
                     ))
         
         agent_task_input = AgentTaskInput(
             current_task_id=node.task_id,
             current_goal=node.goal,
-            current_task_type=TaskType.AGGREGATE.value, # Aggregation is a fixed type of action
-            relevant_context_items=child_results_for_aggregator, # Pass children's results directly
+            current_task_type=TaskType.AGGREGATE.value, # Aggregation is fixed type
+            relevant_context_items=child_results_for_aggregator,
             overall_project_goal=task_graph.overall_project_goal
         )
         node.input_payload_dict = agent_task_input.model_dump() # Log what aggregator will receive
 
         try:
+            # Ensure node.node_type is Enum for get_agent_adapter if needed
+            if not isinstance(node.node_type, NodeType):
+                node.node_type = NodeType(node.node_type) # Convert if necessary
+
             aggregator_adapter = get_agent_adapter(node, action_verb="aggregate")
             if not aggregator_adapter:
                 raise ValueError(f"No AGGREGATE adapter found for node {node.task_id}")
@@ -215,11 +231,13 @@ class NodeProcessor:
             print(colored(f"    NodeProcessor: Invoking AGGREGATE adapter '{type(aggregator_adapter).__name__}' for {node.task_id}", "cyan"))
             aggregated_result = aggregator_adapter.process(node, agent_task_input)
             
-            node.output_type_description = "aggregated_text_result" # Assuming text for now
+            node.output_type_description = "aggregated_text_result"
+            # Ensure status update uses the Enum member
             node.update_status(TaskStatus.DONE, result=aggregated_result)
 
         except Exception as e:
             print(colored(f"  NodeProcessor Error: Failed to process AGGREGATING node {node.task_id}: {e}", "red"))
+            # Ensure status update uses the Enum member
             node.update_status(TaskStatus.FAILED, error_msg=str(e))
         
         knowledge_store.add_or_update_record_from_node(node) # Final update
@@ -230,10 +248,20 @@ class NodeProcessor:
         Processes a node based on its status.
         This method is called by the ExecutionEngine.
         """
-        print(colored(f"NodeProcessor: Received node {node.task_id} with status {node.status.name}", "cyan"))
-        if node.status == TaskStatus.READY:
+        # --- MODIFIED PRINT ---
+        # Get the display name correctly whether it's Enum or string
+        status_display = node.status.name if isinstance(node.status, TaskStatus) else node.status
+        print(colored(f"NodeProcessor: Received node {node.task_id} with status {status_display}", "cyan"))
+        # --- END MODIFIED PRINT ---
+
+        # --- Ensure comparisons use Enum members ---
+        # Convert status to Enum member for reliable comparison
+        current_status = node.status if isinstance(node.status, TaskStatus) else TaskStatus(node.status)
+        
+        if current_status == TaskStatus.READY:
             self._handle_ready_node(node, task_graph, knowledge_store)
-        elif node.status == TaskStatus.AGGREGATING:
+        elif current_status == TaskStatus.AGGREGATING:
             self._handle_aggregating_node(node, task_graph, knowledge_store)
         else:
-            print(colored(f"  NodeProcessor Warning: process_node called on node {node.task_id} with status {node.status.name} - no action taken.", "yellow"))
+            # Use status_display which handles both Enum and string for the warning message
+            print(colored(f"  NodeProcessor Warning: process_node called on node {node.task_id} with status {status_display} - no action taken.", "yellow"))

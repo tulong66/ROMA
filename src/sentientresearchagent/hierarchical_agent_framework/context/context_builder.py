@@ -50,8 +50,11 @@ def resolve_context_for_agent(
     if not current_task_record:
         print(colored(f"ContextBuilder Warning: TaskRecord for current task {current_task_id} not found. Returning empty context.", "yellow"))
         return AgentTaskInput(
-            current_task_id=current_task_id, current_goal=current_goal, task_type=current_task_type,
-            overall_project_goal=overall_project_goal, relevant_context_items=[]
+            current_task_id=current_task_id, 
+            current_goal=current_goal, 
+            current_task_type=current_task_type or "UNKNOWN",
+            overall_project_goal=overall_project_goal, 
+            relevant_context_items=[]
         )
 
     # Rule 1: Aggregators get their direct children's COMPLETED/FAILED output (simplified)
@@ -194,11 +197,11 @@ def resolve_context_for_agent(
     else:
         print(colored(f"ContextBuilder: No relevant context items found for task '{current_task_id}'.", "yellow"))
         
-
+    print(f"DEBUG: About to create AgentTaskInput. current_task_type variable value: {repr(current_task_type)}") # Added debug print
     return AgentTaskInput(
         current_task_id=current_task_id,
         current_goal=current_goal,
-        task_type=current_task_type, # Pass the string task_type
+        current_task_type=current_task_type, # Changed 'task_type' to 'current_task_type'
         overall_project_goal=overall_project_goal,
         relevant_context_items=relevant_items
     )

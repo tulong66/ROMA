@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional, Literal
 from datetime import datetime
+from enum import Enum # Import Enum for the isinstance check
 
 # Using string literals for status, task_type, node_type to align with TaskNode enums
 # but avoid circular dependency if TaskNode itself isn't fully defined when this is imported.
@@ -35,7 +36,7 @@ class TaskRecord(BaseModel):
     error_message: Optional[str] = None
 
     class Config:
-        use_enum_values = True
+        use_enum_values = True # Keep this for serialization consistency if needed elsewhere
 
 
 class KnowledgeStore(BaseModel):
@@ -44,16 +45,24 @@ class KnowledgeStore(BaseModel):
 
     def add_or_update_record_from_node(self, node: Any): # Use Any to avoid circular dep with TaskNode initially
         """Creates or updates a TaskRecord from a TaskNode."""
+        
+        # --- MODIFIED SECTION START ---
+        # Get the string value, checking if the attribute is an Enum or already a string
+        task_type_val = node.task_type.value if isinstance(node.task_type, Enum) else node.task_type
+        node_type_val = node.node_type.value if isinstance(node.node_type, Enum) and node.node_type else node.node_type
+        status_val = node.status.value if isinstance(node.status, Enum) else node.status
+        # --- MODIFIED SECTION END ---
+
         record = TaskRecord(
             task_id=node.task_id,
             goal=node.goal,
-            task_type=node.task_type.value, # Assuming TaskNode enums are used
-            node_type=node.node_type.value if node.node_type else None,
+            task_type=task_type_val, # Use the derived string value
+            node_type=node_type_val, # Use the derived string value (or None)
             agent_name=node.agent_name,
             input_params_dict=node.input_payload_dict or {},
             output_content=node.result,
             output_type_description=node.output_type_description,
-            status=node.status.value,
+            status=status_val, # Use the derived string value
             timestamp_created=node.timestamp_created,
             timestamp_updated=node.timestamp_updated,
             timestamp_completed=node.timestamp_completed,
