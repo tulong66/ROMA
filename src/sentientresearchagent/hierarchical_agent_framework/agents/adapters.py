@@ -1,4 +1,5 @@
-from sentientresearchagent.hierarchical_agent_framework.agents.base_adapter import LlmApiAdapter, colored # Import base adapter
+from loguru import logger
+from sentientresearchagent.hierarchical_agent_framework.agents.base_adapter import LlmApiAdapter
 from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode # Type hinting
 from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models import PlanOutput, AtomizerOutput, AgentTaskInput # For type hinting
 from typing import Any
@@ -23,7 +24,7 @@ class PlannerAdapter(LlmApiAdapter):
         result_content = super().process(node, agent_task_input)
 
         if result_content is None:
-             print(colored(f"  PlannerAdapter Error: Agent '{self.agent_name}' returned None content for node {node.task_id}. Cannot proceed with planning.", "red"))
+             logger.error(f"  PlannerAdapter Error: Agent '{self.agent_name}' returned None content for node {node.task_id}. Cannot proceed with planning.")
              # Raise an error because planning requires a valid PlanOutput
              raise ValueError(f"Planner agent '{self.agent_name}' returned None content for node {node.task_id}.")
 
@@ -31,11 +32,11 @@ class PlannerAdapter(LlmApiAdapter):
         # Since the Agno agent was defined with response_model=PlanOutput,
         # response.content should already be a validated PlanOutput object.
         if not isinstance(result_content, PlanOutput):
-            print(colored(f"  PlannerAdapter Error: Agent '{self.agent_name}' did not return PlanOutput for node {node.task_id}. Got: {type(result_content)}", "red"))
+            logger.error(f"  PlannerAdapter Error: Agent '{self.agent_name}' did not return PlanOutput for node {node.task_id}. Got: {type(result_content)}")
             # This indicates a mismatch between the adapter usage and the agent definition
             raise TypeError(f"Planner agent '{self.agent_name}' was expected to return PlanOutput, but returned {type(result_content)}.")
 
-        print(colored(f"  PlannerAdapter: Successfully received PlanOutput with {len(result_content.sub_tasks)} sub-tasks from agent '{self.agent_name}' for node {node.task_id}.", "green"))
+        logger.success(f"  PlannerAdapter: Successfully received PlanOutput with {len(result_content.sub_tasks)} sub-tasks from agent '{self.agent_name}' for node {node.task_id}.")
         return result_content
 
 
@@ -57,9 +58,9 @@ class ExecutorAdapter(LlmApiAdapter):
         # The NodeProcessor or subsequent tasks will handle the specific result type.
         # We might log a warning if content is None, but allow it to propagate.
         if result_content is None:
-             print(colored(f"  ExecutorAdapter Warning: Agent '{self.agent_name}' returned None content for node {node.task_id}.", "yellow"))
+             logger.warning(f"  ExecutorAdapter Warning: Agent '{self.agent_name}' returned None content for node {node.task_id}.")
 
-        print(colored(f"  ExecutorAdapter: Received result of type '{type(result_content).__name__}' from agent '{self.agent_name}' for node {node.task_id}.", "green"))
+        logger.info(f"  ExecutorAdapter: Received result of type '{type(result_content).__name__}' from agent '{self.agent_name}' for node {node.task_id}.")
         return result_content
 
 
@@ -80,14 +81,14 @@ class AtomizerAdapter(LlmApiAdapter):
         result_content = super().process(node, agent_task_input)
 
         if result_content is None:
-             print(colored(f"  AtomizerAdapter Error: Agent '{self.agent_name}' returned None content for node {node.task_id}. Cannot determine atomicity.", "red"))
+             logger.error(f"  AtomizerAdapter Error: Agent '{self.agent_name}' returned None content for node {node.task_id}. Cannot determine atomicity.")
              raise ValueError(f"Atomizer agent '{self.agent_name}' returned None content for node {node.task_id}.")
 
         if not isinstance(result_content, AtomizerOutput):
-            print(colored(f"  AtomizerAdapter Error: Agent '{self.agent_name}' did not return AtomizerOutput for node {node.task_id}. Got: {type(result_content)}", "red"))
+            logger.error(f"  AtomizerAdapter Error: Agent '{self.agent_name}' did not return AtomizerOutput for node {node.task_id}. Got: {type(result_content)}")
             raise TypeError(f"Atomizer agent '{self.agent_name}' was expected to return AtomizerOutput, but returned {type(result_content)}.")
             
-        print(colored(f"  AtomizerAdapter: Successfully received AtomizerOutput (is_atomic={result_content.is_atomic}) from agent '{self.agent_name}' for node {node.task_id}.", "green"))
+        logger.success(f"  AtomizerAdapter: Successfully received AtomizerOutput (is_atomic={result_content.is_atomic}) from agent '{self.agent_name}' for node {node.task_id}.")
         return result_content
 
 
@@ -107,9 +108,9 @@ class AggregatorAdapter(LlmApiAdapter):
         # Aggregation usually results in text, but allow other types if needed.
         # Convert to string for consistency if it's not already.
         if result_content is None:
-            print(colored(f"  AggregatorAdapter Warning: Agent '{self.agent_name}' returned None content for node {node.task_id}. Aggregation resulted in nothing.", "yellow"))
+            logger.warning(f"  AggregatorAdapter Warning: Agent '{self.agent_name}' returned None content for node {node.task_id}. Aggregation resulted in nothing.")
             return "" # Return empty string instead of None
 
         result_str = str(result_content)
-        print(colored(f"  AggregatorAdapter: Received aggregated result (length {len(result_str)}) from agent '{self.agent_name}' for node {node.task_id}.", "green"))
+        logger.info(f"  AggregatorAdapter: Received aggregated result (length {len(result_str)}) from agent '{self.agent_name}' for node {node.task_id}.")
         return result_str

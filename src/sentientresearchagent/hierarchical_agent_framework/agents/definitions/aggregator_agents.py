@@ -19,4 +19,3 @@ default_aggregator_agno_agent = AgnoAgent(
     name="DefaultAggregator_Agno"
     # No response_model, expects string output
 )
-print("Defined: default_aggregator_agno_agent")

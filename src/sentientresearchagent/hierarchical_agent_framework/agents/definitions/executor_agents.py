@@ -14,7 +14,6 @@ simple_writer_agno_agent = AgnoAgent(
     system_message="You are a writer. Write content for the given goal.",
     name="SimpleWriter_Agno"
 )
-print(f"Defined: {simple_writer_agno_agent.name}")
 
 # A very basic search agent placeholder (actual search needs tools)
 simple_search_agno_agent = AgnoAgent(
@@ -22,7 +21,6 @@ simple_search_agno_agent = AgnoAgent(
     system_message="You are a searcher. Formulate a query for the given goal.", # This would need a search tool
     name="SimpleSearch_Agno"
 )
-print(f"Defined: {simple_search_agno_agent.name}")
 
 
 # --- Research Focused Executor Agents ---
@@ -44,7 +42,6 @@ search_executor_agno_agent = AgnoAgent(
     name="SearchExecutor_Agno"
     # show_tool_calls=True # Useful for debugging tool usage
 )
-print(f"Defined: {search_executor_agno_agent.name}")
 
 
 # --- 2. Search Synthesizer Agent ---
@@ -60,7 +57,6 @@ search_synthesizer_agno_agent = AgnoAgent(
     name="SearchSynthesizer_Agno"
     # No response_model here, expects a string (markdown)
 )
-print(f"Defined: {search_synthesizer_agno_agent.name}")
 
 
 # --- 3. Basic Report Writer Agent ---
@@ -76,4 +72,3 @@ basic_report_writer_agno_agent = AgnoAgent(
     name="BasicReportWriter_Agno"
     # No response_model here, expects a string (markdown)
 )
-print(f"Defined: {basic_report_writer_agno_agent.name}")

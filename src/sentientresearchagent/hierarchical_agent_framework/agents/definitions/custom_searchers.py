@@ -4,18 +4,19 @@ import json
 import types
 from dotenv import load_dotenv
 from typing import Dict, Optional, List
+from loguru import logger
 # Attempt to import genai, but don't fail if not immediately available
 # This allows the file to be parsed even if genai isn't configured for all searchers yet.
 try:
     from google import genai
 except ImportError:
-    print("Warning: google.genai module not found. GeminiSearcherWrapper will not be usable.")
+    logger.warning("Warning: google.genai module not found. GeminiSearcherWrapper will not be usable.")
     genai = None 
 
 try:
     from openai import OpenAI
 except ImportError:
-    print("Warning: openai module not found. OpenAISearcherWrapper will not be usable.")
+    logger.warning("Warning: openai module not found. OpenAISearcherWrapper will not be usable.")
     OpenAI = None
 
 from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models import (
@@ -23,7 +24,7 @@ from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models 
     AnnotationURLCitationModel,
     AgentTaskInput
 )
-from sentientresearchagent.hierarchical_agent_framework.agents.base_adapter import BaseAdapter, colored
+from sentientresearchagent.hierarchical_agent_framework.agents.base_adapter import BaseAdapter
 from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode
 
 load_dotenv()
@@ -102,13 +103,13 @@ class SentientSearcherWrapper:
                   raise ValueError("SentientSearcherWrapper received non-string input without 'input_goal' or 'query' key")
         else:
              query = input_data
-        print(f"--- Calling Sentient Searcher with Query: {query} ---")
+        logger.info(f"--- Calling Sentient Searcher with Query: {query} ---")
         try:
             result_text = self.llm.run(query)
-            print(f"--- Sentient Searcher Result: {result_text[:100]}... ---")
+            logger.info(f"--- Sentient Searcher Result: {result_text[:100]}... ---")
             return types.SimpleNamespace(content=result_text)
         except Exception as e:
-            print(f"Error invoking SentientSearcherWrapper: {e}")
+            logger.error(f"Error invoking SentientSearcherWrapper: {e}")
             raise
 
 # --- OpenAI Custom Searcher with Annotations (Adapter Version) ---
@@ -137,7 +138,7 @@ class OpenAICustomSearchAdapter(BaseAdapter):
         Prioritizes response.output_text, and optionally parses nested text/annotations.
         """
         query = agent_task_input.current_goal
-        print(colored(f"  Adapter '{self.adapter_name}': Processing node {node.task_id} (Query: '{query[:100]}...') with OpenAI model {self.model_id}", "cyan"))
+        logger.info(f"  Adapter '{self.adapter_name}': Processing node {node.task_id} (Query: '{query[:100]}...') with OpenAI model {self.model_id}")
         
         output_text_with_citations = f"Error: Could not retrieve output_text for query: {query}" # Default error
         parsed_text_content: Optional[str] = None
@@ -153,9 +154,9 @@ class OpenAICustomSearchAdapter(BaseAdapter):
             # 1. Prioritize getting api_response.output_text
             if hasattr(api_response, 'output_text') and api_response.output_text:
                 output_text_with_citations = api_response.output_text
-                print(colored(f"    {self.adapter_name}: Retrieved 'output_text' (length: {len(output_text_with_citations)}).", "green"))
+                logger.success(f"    {self.adapter_name}: Retrieved 'output_text' (length: {len(output_text_with_citations)}).")
             else:
-                print(colored(f"    {self.adapter_name}: 'output_text' not found or empty in API response. Main output will be error message.", "red"))
+                logger.error(f"    {self.adapter_name}: 'output_text' not found or empty in API response. Main output will be error message.")
                 # Keep the default error message for output_text_with_citations
 
             # 2. Attempt to parse nested text_content and annotations as supplementary info
@@ -171,9 +172,9 @@ class OpenAICustomSearchAdapter(BaseAdapter):
                 
                 if hasattr(content_item, 'text') and content_item.text:
                     parsed_text_content = content_item.text
-                    print(colored(f"    {self.adapter_name}: Retrieved nested 'text_content' (length: {len(parsed_text_content)}).", "green"))
+                    logger.success(f"    {self.adapter_name}: Retrieved nested 'text_content' (length: {len(parsed_text_content)}).")
                 else:
-                    print(colored(f"    {self.adapter_name}: Nested 'text' attribute not found or empty.", "yellow"))
+                    logger.warning(f"    {self.adapter_name}: Nested 'text' attribute not found or empty.")
 
                 if hasattr(content_item, 'annotations') and isinstance(content_item.annotations, list):
                     temp_raw_annotations = []
@@ -188,21 +189,21 @@ class OpenAICustomSearchAdapter(BaseAdapter):
                         if ann_dict['url'] and ann_dict['start_index'] != -1 and ann_dict['end_index'] != -1:
                             temp_raw_annotations.append(ann_dict)
                         else:
-                            print(colored(f"    {self.adapter_name}: Skipping invalid nested annotation object: {ann_obj}", "yellow"))
+                            logger.warning(f"    {self.adapter_name}: Skipping invalid nested annotation object: {ann_obj}")
                     
                     if temp_raw_annotations:
                         raw_annotations_data = temp_raw_annotations # Assign if we got valid annotations
-                        print(colored(f"    {self.adapter_name}: Retrieved {len(raw_annotations_data)} nested 'annotations'.", "green"))
+                        logger.success(f"    {self.adapter_name}: Retrieved {len(raw_annotations_data)} nested 'annotations'.")
                 else:
-                    print(colored(f"    {self.adapter_name}: Nested 'annotations' attribute not found or not a list.", "yellow"))
+                    logger.warning(f"    {self.adapter_name}: Nested 'annotations' attribute not found or not a list.")
             else:
-                print(colored(f"    {self.adapter_name}: Nested API response structure 'output[1].content[0]' not found. No supplementary text/annotations.", "yellow"))
+                logger.warning(f"    {self.adapter_name}: Nested API response structure 'output[1].content[0]' not found. No supplementary text/annotations.")
 
             for ann_data in raw_annotations_data:
                 try:
                     parsed_annotations.append(AnnotationURLCitationModel(**ann_data))
                 except Exception as e_pydantic:
-                    print(colored(f"    {self.adapter_name}: Error parsing an annotation dict: {ann_data}, Error: {e_pydantic}", "yellow"))
+                    logger.warning(f"    {self.adapter_name}: Error parsing an annotation dict: {ann_data}, Error: {e_pydantic}")
 
             output = CustomSearcherOutput(
                 query_used=query,
@@ -212,13 +213,13 @@ class OpenAICustomSearchAdapter(BaseAdapter):
             )
             
             main_output_preview = output.output_text_with_citations[:150] + "..." if len(output.output_text_with_citations) > 150 else output.output_text_with_citations
-            print(colored(f"  Adapter '{self.adapter_name}': Processed. Main output: '{main_output_preview}', Annotations: {len(output.annotations)}", "green"))
+            logger.success(f"  Adapter '{self.adapter_name}': Processed. Main output: '{main_output_preview}', Annotations: {len(output.annotations)}")
             node.output_type_description = "custom_searcher_output_with_citations"
             return output
 
         except Exception as e:
             error_message = f"Error during {self.adapter_name} execution for node {node.task_id} (Query: {query}): {e}"
-            print(colored(f"  Adapter Error: {error_message}", "red"))
+            logger.error(f"  Adapter Error: {error_message}")
             # Return a CustomSearcherOutput with the error message if the API call itself fails
             return CustomSearcherOutput(
                 query_used=query,

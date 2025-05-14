@@ -151,7 +151,6 @@ simple_test_planner_agno_agent = AgnoAgent(
 # research_planner_system_message = "..."
 # research_planner_agno_agent = AgnoAgent(...)
 
-print("Defined: simple_test_planner_agno_agent with new detailed system message.")
 
 # --- Core Research Planner Agent ---
 LLM_MODEL_ID_RESEARCH = "openrouter/anthropic/claude-3-7-sonnet" # Changed to Haiku for potentially faster/cheaper iteration
@@ -162,4 +161,3 @@ core_research_planner_agno_agent = AgnoAgent(
     response_model=PlanOutput,
     name="CoreResearchPlanner_Agno"
 )
-print("Defined: core_research_planner_agno_agent with new detailed system message.")

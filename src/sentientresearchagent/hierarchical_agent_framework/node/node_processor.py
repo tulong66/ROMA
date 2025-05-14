@@ -1,5 +1,6 @@
 from typing import List, Optional
 from pydantic import BaseModel
+from loguru import logger
 from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode, TaskStatus, NodeType, TaskType
 from sentientresearchagent.hierarchical_agent_framework.graph.task_graph import TaskGraph
 from sentientresearchagent.hierarchical_agent_framework.context.knowledge_store import KnowledgeStore
@@ -14,11 +15,6 @@ from sentientresearchagent.hierarchical_agent_framework.context.context_builder 
     resolve_input_for_planner_agent
 )
 
-# Basic console coloring for logs
-def colored(text, color):
-    colors = {"green": "\033[92m", "cyan": "\033[96m", "yellow": "\033[93m", "red": "\033[91m", "bold": "\033[1m", "end": "\033[0m"}
-    return f"{colors.get(color, '')}{text}{colors['end']}"
-
 # Configuration
 MAX_PLANNING_LAYER = 5 # Max depth for recursive planning
 
@@ -29,7 +25,7 @@ class NodeProcessor:
         # NodeProcessor might not need to store graph_manager or ks if they are passed during process_node
         # However, if context_builder is a member, it might need graph_manager.
         # For now, assuming context_builder will also be instantiated and used locally or passed.
-        print("NodeProcessor initialized.")
+        logger.info("NodeProcessor initialized.")
         # If context_builder becomes complex or needs state, it could be initialized here:
         # self.context_builder = ContextBuilder(task_graph) # If TaskGraph is relatively static or passed on update
 
@@ -42,7 +38,7 @@ class NodeProcessor:
             # This should have been created before calling this function if it's a new plan
             parent_node.sub_graph_id = f"subgraph_{parent_node.task_id}"
             task_graph.add_graph(parent_node.sub_graph_id)
-            print(colored(f"    NodeProcessor: Created new subgraph '{parent_node.sub_graph_id}' for parent '{parent_node.task_id}'", "cyan"))
+            logger.info(f"    NodeProcessor: Created new subgraph '{parent_node.sub_graph_id}' for parent '{parent_node.task_id}'")
         
         sub_graph_id = parent_node.sub_graph_id
         parent_node.planned_sub_task_ids.clear() # Clear any old sub-tasks if replanning
@@ -58,7 +54,7 @@ class NodeProcessor:
                 node_type_enum = NodeType[sub_task_def.node_type.upper()]
             except KeyError as e:
                 error_msg = f"Invalid task_type or node_type string ('{sub_task_def.task_type}'/'{sub_task_def.node_type}') in plan for parent {parent_node.task_id}: {e}"
-                print(colored(f"    NodeProcessor Error: {error_msg}", "red"))
+                logger.error(f"    NodeProcessor Error: {error_msg}")
                 # Optionally, fail the parent node or skip this sub_task
                 # For now, let's skip this potentially invalid sub_task
                 continue
@@ -76,7 +72,7 @@ class NodeProcessor:
             task_graph.add_node_to_graph(sub_graph_id, sub_node)
             knowledge_store.add_or_update_record_from_node(sub_node) # Log new sub_node
             parent_node.planned_sub_task_ids.append(sub_node.task_id)
-            print(colored(f"      Added sub-node: {sub_node} to graph {sub_graph_id}", "green"))
+            logger.success(f"      Added sub-node: {sub_node} to graph {sub_graph_id}")
 
         # Add sequential dependencies for now
         for i in range(len(created_sub_nodes) - 1):
@@ -84,11 +80,11 @@ class NodeProcessor:
             v_node = created_sub_nodes[i+1]
             task_graph.add_edge(sub_graph_id, u_node.task_id, v_node.task_id)
         
-        print(colored(f"    NodeProcessor: Created {len(created_sub_nodes)} sub-nodes for parent {parent_node.task_id}.", "cyan"))
+        logger.info(f"    NodeProcessor: Created {len(created_sub_nodes)} sub-nodes for parent {parent_node.task_id}.")
 
 
     def _handle_ready_node(self, node: TaskNode, task_graph: TaskGraph, knowledge_store: KnowledgeStore):
-        print(colored(f"  NodeProcessor: Handling READY node {node.task_id} (Type: {node.node_type}, Goal: '{node.goal[:30]}...')", "yellow"))
+        logger.info(f"  NodeProcessor: Handling READY node {node.task_id} (Type: {node.node_type}, Goal: '{node.goal[:30]}...')")
         node.update_status(TaskStatus.RUNNING) # Mark as RUNNING before agent call
         knowledge_store.add_or_update_record_from_node(node)
 
@@ -113,7 +109,7 @@ class NodeProcessor:
         is_plan_type = original_node_type == NodeType.PLAN if isinstance(original_node_type, NodeType) else original_node_type == NodeType.PLAN.value
         
         if is_plan_type and node.layer >= MAX_PLANNING_LAYER:
-            print(colored(f"    NodeProcessor: Max planning depth ({MAX_PLANNING_LAYER}) reached for {node.task_id}. Forcing EXECUTE.", "yellow"))
+            logger.warning(f"    NodeProcessor: Max planning depth ({MAX_PLANNING_LAYER}) reached for {node.task_id}. Forcing EXECUTE.")
             node.node_type = NodeType.EXECUTE # Assign Enum member here
             is_atomic_determined = True
         
@@ -137,15 +133,16 @@ class NodeProcessor:
             overall_project_goal=task_graph.overall_project_goal
         )
         node.input_payload_dict = agent_task_input_model.model_dump()
+        logger.debug(f"Node {node.task_id} input payload (general): {node.input_payload_dict}")
 
         try:
             # --- Action based on Enum member ---
             if action_to_take == NodeType.PLAN:
-                print(colored(f"    NodeProcessor: Preparing PlannerInput for {node.task_id}", "cyan"))
+                logger.info(f"    NodeProcessor: Preparing PlannerInput for {node.task_id}")
                 
                 current_overall_objective = node.overall_objective or getattr(task_graph, 'overall_project_goal', None)
                 if not current_overall_objective:
-                     print(colored(f"    NodeProcessor WARNING: overall_objective is not set for node {node.task_id}. Using placeholder.", "yellow"))
+                     logger.warning(f"    NodeProcessor WARNING: overall_objective is not set for node {node.task_id}. Using placeholder.")
                      current_overall_objective = "Undefined overall project goal"
 
                 planner_adapter = get_agent_adapter(node, action_verb="plan")
@@ -165,7 +162,7 @@ class NodeProcessor:
                 plan_output: PlanOutput = planner_adapter.process(node, planner_input_model) # PASSING THE MODEL
 
                 if not plan_output or not plan_output.sub_tasks:
-                    print(colored(f"    NodeProcessor: Planner for {node.task_id} returned no sub-tasks. Converting to EXECUTE.", "yellow"))
+                    logger.warning(f"    NodeProcessor: Planner for {node.task_id} returned no sub-tasks. Converting to EXECUTE.")
                     node.node_type = NodeType.EXECUTE # Set Enum member
                     # Re-prepare context if goal or type changed significantly? (Assume fine for now)
                     self._execute_node_action(node, agent_task_input_model, task_graph, knowledge_store)
@@ -180,7 +177,7 @@ class NodeProcessor:
                 raise ValueError(f"Unexpected node action type Enum: {action_to_take} for node {node.task_id}")
 
         except Exception as e:
-            print(colored(f"  NodeProcessor Error: Failed to process READY node {node.task_id}: {e}", "red"))
+            logger.error(f"  NodeProcessor Error: Failed to process READY node {node.task_id}: {e}")
             # Ensure status update uses the Enum member
             node.update_status(TaskStatus.FAILED, error_msg=str(e))
         
@@ -198,7 +195,7 @@ class NodeProcessor:
              # Removed agent_name from error message
              raise ValueError(f"No EXECUTE adapter found for node {node.task_id} (TaskType: {task_type_display})")
 
-        print(colored(f"    NodeProcessor: Invoking EXECUTE adapter '{type(executor_adapter).__name__}' for {node.task_id}", "cyan"))
+        logger.info(f"    NodeProcessor: Invoking EXECUTE adapter '{type(executor_adapter).__name__}' for {node.task_id}")
         execution_result = executor_adapter.process(node, agent_task_input)
         
         node.output_type_description = f"{type(execution_result).__name__}_result"
@@ -222,11 +219,11 @@ class NodeProcessor:
                     node.output_summary = f"Result of type {type(execution_result).__name__}"
             else:
                 node.output_summary = f"Result of type {type(execution_result).__name__}"
-            print(colored(f"    NodeProcessor: Set output_summary for {node.task_id}: '{node.output_summary[:100]}...'","green"))
+            logger.success(f"    NodeProcessor: Set output_summary for {node.task_id}: '{node.output_summary[:100]}...'")
 
         if isinstance(execution_result, str) and execution_result.startswith("<<NEEDS_REPLAN>>"):
             replan_reason = execution_result.replace("<<NEEDS_REPLAN>>", "").strip()
-            print(colored(f"    NodeProcessor: Node {node.task_id} requested REPLAN. Reason: {replan_reason}", "yellow"))
+            logger.warning(f"    NodeProcessor: Node {node.task_id} requested REPLAN. Reason: {replan_reason}")
             # Ensure status update uses the Enum member
             node.update_status(TaskStatus.NEEDS_REPLAN, result=replan_reason)
         else:
@@ -234,7 +231,7 @@ class NodeProcessor:
             node.update_status(TaskStatus.DONE, result=execution_result)
 
     def _handle_aggregating_node(self, node: TaskNode, task_graph: TaskGraph, knowledge_store: KnowledgeStore):
-        print(colored(f"  NodeProcessor: Handling AGGREGATING node {node.task_id} (Goal: '{node.goal[:30]}...')", "yellow"))
+        logger.info(f"  NodeProcessor: Handling AGGREGATING node {node.task_id} (Goal: '{node.goal[:30]}...')")
         node.update_status(TaskStatus.RUNNING) # Mark as RUNNING before agent call
         knowledge_store.add_or_update_record_from_node(node)
 
@@ -267,6 +264,7 @@ class NodeProcessor:
             overall_project_goal=task_graph.overall_project_goal
         )
         node.input_payload_dict = agent_task_input.model_dump() # Log what aggregator will receive
+        logger.debug(f"Node {node.task_id} input payload (aggregator): {node.input_payload_dict}")
 
         try:
             # Ensure node.node_type is Enum for get_agent_adapter if needed
@@ -277,7 +275,7 @@ class NodeProcessor:
             if not aggregator_adapter:
                 raise ValueError(f"No AGGREGATE adapter found for node {node.task_id}")
 
-            print(colored(f"    NodeProcessor: Invoking AGGREGATE adapter '{type(aggregator_adapter).__name__}' for {node.task_id}", "cyan"))
+            logger.info(f"    NodeProcessor: Invoking AGGREGATE adapter '{type(aggregator_adapter).__name__}' for {node.task_id}")
             aggregated_result = aggregator_adapter.process(node, agent_task_input)
             
             node.output_type_description = "aggregated_text_result"
@@ -285,14 +283,14 @@ class NodeProcessor:
             node.update_status(TaskStatus.DONE, result=aggregated_result)
 
         except Exception as e:
-            print(colored(f"  NodeProcessor Error: Failed to process AGGREGATING node {node.task_id}: {e}", "red"))
+            logger.error(f"  NodeProcessor Error: Failed to process AGGREGATING node {node.task_id}: {e}")
             # Ensure status update uses the Enum member
             node.update_status(TaskStatus.FAILED, error_msg=str(e))
         
         knowledge_store.add_or_update_record_from_node(node) # Final update
 
     def _handle_needs_replan_node(self, node: TaskNode, task_graph: TaskGraph, knowledge_store: KnowledgeStore):
-        print(colored(f"  NodeProcessor: Handling NEEDS_REPLAN node {node.task_id} (Goal: '{node.goal[:30]}...')", "yellow"))
+        logger.info(f"  NodeProcessor: Handling NEEDS_REPLAN node {node.task_id} (Goal: '{node.goal[:30]}...')")
         
         # Mark as RUNNING for the replanning attempt. Could also be a new REPLANNING status.
         node.update_status(TaskStatus.RUNNING, result=f"Attempting to re-plan: {node.result}") 
@@ -315,12 +313,12 @@ class NodeProcessor:
                 previous_attempt_output_summary=prev_summary,
                 specific_guidance_for_replan=None # TODO: Allow agents to provide more specific guidance
             )
-            print(colored(f"    Replan Details: {replan_details.model_dump_json(indent=2, exclude_none=True)}", "cyan"))
+            logger.info(f"    Replan Details: {replan_details.model_dump_json(indent=2, exclude_none=True)}")
 
             # 2. Prepare PlannerInput
             current_overall_objective = node.overall_objective or task_graph.overall_project_goal
             if not current_overall_objective:
-                 print(colored(f"    NodeProcessor WARNING: overall_objective is not set for REPLAN node {node.task_id}. Using placeholder.", "yellow"))
+                 logger.warning(f"    NodeProcessor WARNING: overall_objective is not set for REPLAN node {node.task_id}. Using placeholder.")
                  current_overall_objective = "Undefined overall project goal"
 
             planner_adapter = get_agent_adapter(node, action_verb="plan") # Or "replan" if you have a specific replan adapter
@@ -341,11 +339,11 @@ class NodeProcessor:
 
             # 4. Process New Plan
             if not plan_output or not plan_output.sub_tasks:
-                print(colored(f"    NodeProcessor: Re-Planner for {node.task_id} returned no sub-tasks. Node remains NEEDS_REPLAN or FAILED.", "red"))
+                logger.error(f"    NodeProcessor: Re-Planner for {node.task_id} returned no sub-tasks. Node remains NEEDS_REPLAN or FAILED.")
                 # TODO: Implement retry logic or max attempts for re-planning
                 node.update_status(TaskStatus.FAILED, error_msg="Re-planning failed to produce sub-tasks.", result=node.result) # Keep original reason in result
             else:
-                print(colored(f"    NodeProcessor: Re-Planner for {node.task_id} SUCCEEDED. Creating new sub-nodes.", "green"))
+                logger.success(f"    NodeProcessor: Re-Planner for {node.task_id} SUCCEEDED. Creating new sub-nodes.")
                 # The node itself (which was the parent of the failed plan, or the failed execute node)
                 # will now become a parent to the new sub-tasks.
                 # _create_sub_nodes_from_plan will clear node.planned_sub_task_ids
@@ -356,12 +354,10 @@ class NodeProcessor:
                 self._create_sub_nodes_from_plan(node, plan_output, task_graph, knowledge_store)
                 node.node_type = NodeType.PLAN # Explicitly set node_type to PLAN as it now has a sub-plan
                 node.update_status(TaskStatus.PLAN_DONE, result=plan_output.model_dump())
-                print(colored(f"    NodeProcessor: Node {node.task_id} REPLANNED successfully. Status: PLAN_DONE.", "green"))
+                logger.success(f"    NodeProcessor: Node {node.task_id} REPLANNED successfully. Status: PLAN_DONE.")
 
         except Exception as e:
-            print(colored(f"  NodeProcessor Error: Failed to REPLAN node {node.task_id}: {e}", "red"))
-            import traceback
-            traceback.print_exc()
+            logger.exception(f"  NodeProcessor Error: Failed to REPLAN node {node.task_id}")
             node.update_status(TaskStatus.FAILED, error_msg=f"Exception during re-planning: {str(e)}", result=node.result)
         
         knowledge_store.add_or_update_record_from_node(node) # Final update
@@ -372,7 +368,7 @@ class NodeProcessor:
         This method is called by the ExecutionEngine.
         """
         status_display = node.status.name if isinstance(node.status, TaskStatus) else node.status
-        print(colored(f"NodeProcessor: Received node {node.task_id} (Goal: '{node.goal[:30]}...') with status {status_display}", "cyan"))
+        logger.info(f"NodeProcessor: Received node {node.task_id} (Goal: '{node.goal[:30]}...') with status {status_display}")
 
         current_status = node.status if isinstance(node.status, TaskStatus) else TaskStatus(node.status)
         
@@ -383,4 +379,4 @@ class NodeProcessor:
         elif current_status == TaskStatus.NEEDS_REPLAN:
             self._handle_needs_replan_node(node, task_graph, knowledge_store)
         else:
-            print(colored(f"  NodeProcessor Warning: process_node called on node {node.task_id} with status {status_display} - no action taken.", "yellow"))
+            logger.warning(f"  NodeProcessor Warning: process_node called on node {node.task_id} with status {status_display} - no action taken.")

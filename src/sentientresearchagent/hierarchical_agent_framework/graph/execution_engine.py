@@ -1,3 +1,4 @@
+from loguru import logger
 from sentientresearchagent.hierarchical_agent_framework.graph.task_graph import TaskGraph
 # NodeProcessor will be defined later, so we use a forward reference or Any for now
 # from sentientresearchagent.hierarchical_agent_framework.node.node_processor import NodeProcessor
@@ -8,12 +9,6 @@ from sentientresearchagent.hierarchical_agent_framework.context.knowledge_store 
 
 from typing import Optional, Callable
 import pprint # For logging results
-
-# Basic console coloring for logs, can be replaced with a proper logger
-def colored(text, color):
-    # Simple implementation, replace with a library like 'termcolor' if needed
-    colors = {"green": "\033[92m", "cyan": "\033[96m", "yellow": "\033[93m", "red": "\033[91m", "bold": "\033[1m", "end": "\033[0m"}
-    return f"{colors.get(color, '')}{text}{colors['end']}"
 
 
 class ExecutionEngine:
@@ -36,7 +31,7 @@ class ExecutionEngine:
                           ):
         """Sets up the initial root node for the project."""
         if self.task_graph.root_graph_id is not None:
-            print(colored("CONSOLE LOG: Project already initialized or root graph exists.", "yellow"))
+            logger.warning("Project already initialized or root graph exists.")
             # Potentially load existing state or raise error
             return
 
@@ -61,23 +56,23 @@ class ExecutionEngine:
 
         # if self.viz_handler: ...
 
-        print(colored(f"CONSOLE LOG: Initialized with root node: {root_node.task_id} in graph {root_graph_id}", "green"))
+        logger.success(f"Initialized with root node: {root_node.task_id} in graph {root_graph_id}")
 
     def run_cycle(self, max_steps: int = 50):
         """Runs the execution loop for a specified number of steps or until completion/deadlock."""
-        print(colored("CONSOLE LOG: \n--- Starting Execution Cycle ---", "cyan"))
+        logger.info("\n--- Starting Execution Cycle ---")
         
         if not self.task_graph.root_graph_id or not self.task_graph.get_node("root"):
-            print(colored("CONSOLE LOG: Project not initialized. Please call initialize_project first.", "red"))
+            logger.error("Project not initialized. Please call initialize_project first.")
             return None
 
         for step in range(max_steps):
-            print(colored(f"\nCONSOLE LOG: --- Step {step + 1} of {max_steps} ---", "cyan"))
+            logger.info(f"\n--- Step {step + 1} of {max_steps} ---")
             processed_in_step = False
             
             all_nodes = self.task_graph.get_all_nodes()
             if not all_nodes:
-                print(colored("CONSOLE LOG: No nodes in the graph to process.", "yellow"))
+                logger.warning("No nodes in the graph to process.")
                 break
 
             # --- 1. Update PENDING -> READY transitions ---
@@ -87,7 +82,7 @@ class ExecutionEngine:
                         node.update_status(TaskStatus.READY)
                         self.knowledge_store.add_or_update_record_from_node(node) # Update KS
                         processed_in_step = True
-                        print(colored(f"  Transition: Node {node.task_id} PENDING -> READY", "green"))
+                        logger.info(f"  Transition: Node {node.task_id} PENDING -> READY")
 
 
             # --- 2. Process one READY or AGGREGATING node ---
@@ -99,7 +94,7 @@ class ExecutionEngine:
                 node_to_process = next((n for n in all_nodes if n.status == TaskStatus.READY), None)
 
             if node_to_process:
-                print(colored(f"  Processing Node: {node_to_process.task_id} (Status: {node_to_process.status.name}, Layer: {node_to_process.layer})", "yellow"))
+                logger.info(f"  Processing Node: {node_to_process.task_id} (Status: {node_to_process.status.name}, Layer: {node_to_process.layer})")
                 
                 # NodeProcessor will handle changing status to RUNNING, and then to its outcome.
                 self.node_processor.process_node(node_to_process, self.task_graph, self.knowledge_store)
@@ -113,61 +108,69 @@ class ExecutionEngine:
                 continue 
 
             # --- 3. Update PLAN_DONE -> AGGREGATING transitions ---
-            print(f"DEBUG: ExecutionEngine (Step {step + 1}): Entering PLAN_DONE check. processed_in_step = {processed_in_step}")
+            logger.debug(f"ExecutionEngine (Step {step + 1}): Entering PLAN_DONE check. processed_in_step = {processed_in_step}")
             root_node_in_all_nodes = next((n for n in all_nodes if n.task_id == "root"), None)
             if root_node_in_all_nodes:
-                print(f"DEBUG: ExecutionEngine (Step {step + 1}): Root node status in all_nodes for PLAN_DONE check: {root_node_in_all_nodes.status}")
+                logger.debug(f"ExecutionEngine (Step {step + 1}): Root node status in all_nodes for PLAN_DONE check: {root_node_in_all_nodes.status}")
             else:
-                print(f"DEBUG: ExecutionEngine (Step {step + 1}): Root node NOT FOUND in all_nodes for PLAN_DONE check.")
+                logger.debug(f"ExecutionEngine (Step {step + 1}): Root node NOT FOUND in all_nodes for PLAN_DONE check.")
             
             for node in all_nodes:
                 if node.status == TaskStatus.PLAN_DONE: 
-                    print(f"DEBUG: ExecutionEngine: Checking can_aggregate for PLAN_DONE node {node.task_id} (Type: {node.node_type})")
+                    logger.debug(f"ExecutionEngine: Checking can_aggregate for PLAN_DONE node {node.task_id} (Type: {node.node_type})")
                     if self.state_manager.can_aggregate(node):
                         node.update_status(TaskStatus.AGGREGATING)
                         self.knowledge_store.add_or_update_record_from_node(node) # Update KS
                         processed_in_step = True
-                        print(colored(f"  Transition: Node {node.task_id} PLAN_DONE -> AGGREGATING", "green"))
+                        logger.info(f"  Transition: Node {node.task_id} PLAN_DONE -> AGGREGATING")
 
             # --- Check for completion or deadlock ---
             active_statuses = {TaskStatus.PENDING, TaskStatus.READY, TaskStatus.RUNNING, TaskStatus.PLAN_DONE, TaskStatus.AGGREGATING}
             # Re-fetch all_nodes as their statuses might have changed
             all_nodes = self.task_graph.get_all_nodes()
             if not any(n.status in active_statuses for n in all_nodes):
-                print(colored("CONSOLE LOG: \n--- Execution Finished: No active nodes left. ---", "green"))
+                logger.success("\n--- Execution Finished: No active nodes left. ---")
                 break
 
             if not processed_in_step and any(n.status in active_statuses for n in all_nodes):
-                print(colored("CONSOLE LOG: \n--- Execution Halted: No progress made in this step. Possible deadlock or incomplete logic. ---", "red"))
+                logger.error("\n--- Execution Halted: No progress made in this step. Possible deadlock or incomplete logic. ---")
                 # You might want to log current states of all active nodes here for debugging
                 for n in all_nodes:
                     if n.status in active_statuses:
-                        print(colored(f"    - Active: {n.task_id}, Status: {n.status.name}, Goal: '{n.goal[:50]}...'", "red"))
+                        logger.error(f"    - Active: {n.task_id}, Status: {n.status.name}, Goal: '{n.goal[:50]}...'")
                 break
         
         if step == max_steps -1 and any(n.status in active_statuses for n in self.task_graph.get_all_nodes()):
-            print(colored("CONSOLE LOG: \n--- Execution Finished: Reached max steps. ---", "yellow"))
+            logger.warning("\n--- Execution Finished: Reached max steps. ---")
 
         # Print final results
         self._log_final_statuses()
         
         root_node_final = self.task_graph.get_node("root")
         if root_node_final:
-            print(colored(f"CONSOLE LOG: \nRoot Task ('{root_node_final.goal}') Final Result:", "green"))
-            pprint.pprint(root_node_final.result)
+            logger.success(f"\nRoot Task ('{root_node_final.goal}') Final Result:")
+            # Consider logging this with logger.debug or a more structured way if too verbose for INFO
+            logger.info(f"Root Result: {pprint.pformat(root_node_final.result)}")
             return root_node_final.result
         return None
 
     def _log_final_statuses(self):
-        print(colored("CONSOLE LOG: \n--- Final Node Statuses & Results ---", "cyan"))
+        logger.info("\n--- Final Node Statuses & Results ---")
         all_final_nodes = sorted(self.task_graph.get_all_nodes(), key=lambda n: (n.layer, n.task_id))
         for node in all_final_nodes:
-            status_color = "green" if node.status == TaskStatus.DONE else ("red" if node.status == TaskStatus.FAILED else "yellow")
-            status_str = colored(f"{node.status.name}", status_color)
+            status_str = node.status.name
+            
+            message = f"- Node {node.task_id} (L{node.layer}, Goal: '{node.goal[:30]}...'): Status={status_str}"
             if node.status == TaskStatus.FAILED and node.error:
-                 status_str += colored(f" (Error: {node.error})", "red")
+                 message += f" (Error: {node.error})"
             
             result_display = str(node.result)
             if len(result_display) > 70: result_display = result_display[:70] + "..."
-            
-            print(f"CONSOLE LOG: - Node {node.task_id} (L{node.layer}, Goal: '{node.goal[:30]}...'): Status={status_str}, Result='{result_display}'")
+            message += f", Result='{result_display}'"
+
+            if node.status == TaskStatus.DONE:
+                logger.success(message)
+            elif node.status == TaskStatus.FAILED:
+                logger.error(message)
+            else: # PENDING, READY, RUNNING, PLAN_DONE, AGGREGATING, etc.
+                logger.warning(message) # Or logger.info if warning is too strong for intermediate states

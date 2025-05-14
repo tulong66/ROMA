@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Union, List
+from loguru import logger # Add this
 from agno.agent import Agent as AgnoAgent # Renaming to avoid conflict if we define our own Agent interface
 
 from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode # For type hinting
@@ -9,11 +10,6 @@ from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models 
 
 # Import prompt templates
 from .prompts import INPUT_PROMPT, AGGREGATOR_PROMPT
-
-# Basic console coloring for logs, can be replaced with a proper logger
-def colored(text, color):
-    colors = {"green": "\033[92m", "cyan": "\033[96m", "yellow": "\033[93m", "red": "\033[91m", "bold": "\033[1m", "end": "\033[0m"}
-    return f"{colors.get(color, '')}{text}{colors['end']}"
 
 class BaseAdapter(ABC):
     """
@@ -155,23 +151,19 @@ class LlmApiAdapter(BaseAdapter):
         """
         Processes a TaskNode using the configured AgnoAgent.
         """
-        print(colored(f"  Adapter '{self.agent_name}': Processing node {node.task_id} (Goal: '{node.goal[:50]}...')", "cyan"))
+        logger.info(f"  Adapter '{self.agent_name}': Processing node {node.task_id} (Goal: '{node.goal[:50]}...')")
 
         user_message_string = self._prepare_agno_run_arguments(agent_task_input)
         
-        # --- BEGIN DEBUG PRINT ---
-        print(colored(f"    DEBUG: User message string to Agno Agent '{self.agno_agent.name or 'N/A'}':", "yellow"))
-        print(user_message_string) # Print the string directly
-        # --- END DEBUG PRINT ---
-        
+        # Log the detailed message string at debug level
+        logger.debug(f"    DEBUG: User message string to Agno Agent '{self.agno_agent.name or 'N/A'}':\n{user_message_string}")
+
         try:
             response = self.agno_agent.run(user_message_string)
             
             if response.content is None:
-                 print(colored(f"    Adapter Warning: Agno agent '{self.agent_name}' returned None content for node {node.task_id}.", "yellow"))
+                 logger.warning(f"    Adapter Warning: Agno agent '{self.agent_name}' returned None content for node {node.task_id}.")
             return response.content
         except Exception as e:
-            print(colored(f"  Adapter Error: Exception during Agno agent '{self.agent_name}' execution for node {node.task_id}: {e}", "red"))
-            import traceback # Added import for traceback
-            traceback.print_exc() # Print full traceback for better debugging
+            logger.exception(f"  Adapter Error: Exception during Agno agent '{self.agent_name}' execution for node {node.task_id}")
             raise

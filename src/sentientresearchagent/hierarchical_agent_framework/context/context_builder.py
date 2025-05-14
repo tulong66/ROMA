@@ -1,14 +1,9 @@
 import re
 from typing import List, Optional, Any
+from loguru import logger
 from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models import AgentTaskInput, ContextItem, PlannerInput, ExecutionHistoryItem, ExecutionHistoryAndContext, ReplanRequestDetails # Added new models
 from sentientresearchagent.hierarchical_agent_framework.context.knowledge_store import KnowledgeStore, TaskRecord # Adjusted import
 # Assuming TaskNode related enums/types are not directly needed here, TaskRecord uses Literals
-
-# Basic console coloring for logs
-def colored(text, color):
-    colors = {"green": "\033[92m", "cyan": "\033[96m", "yellow": "\033[93m", "red": "\033[91m", "bold": "\033[1m", "end": "\033[0m"}
-    return f"{colors.get(color, '')}{text}{colors['end']}"
-
 
 def get_task_record_path_to_root(task_id: str, knowledge_store: KnowledgeStore) -> List[TaskRecord]:
     """Helper to get the path of task records from a task_id up to the root."""
@@ -25,7 +20,7 @@ def get_task_record_path_to_root(task_id: str, knowledge_store: KnowledgeStore) 
             break
         count +=1
     if count >= max_depth:
-        print(colored(f"ContextBuilder Warning: Max depth reached finding path to root for {task_id}", "yellow"))
+        logger.warning(f"ContextBuilder Warning: Max depth reached finding path to root for {task_id}")
     return path[::-1] # Return from root to task
 
 def resolve_context_for_agent(
@@ -40,7 +35,7 @@ def resolve_context_for_agent(
     Gathers and structures relevant context for an agent about to process a task.
     The rules for context gathering can be quite sophisticated.
     """
-    print(colored(f"ContextBuilder: Resolving context for task '{current_task_id}' (Agent: {agent_name}, Type: {current_task_type})", "cyan"))
+    logger.info(f"ContextBuilder: Resolving context for task '{current_task_id}' (Agent: {agent_name}, Type: {current_task_type})")
     
     relevant_items: List[ContextItem] = []
     # Keep track of source_task_ids already added to avoid duplicate context items
@@ -48,7 +43,7 @@ def resolve_context_for_agent(
 
     current_task_record = knowledge_store.get_record(current_task_id)
     if not current_task_record:
-        print(colored(f"ContextBuilder Warning: TaskRecord for current task {current_task_id} not found. Returning empty context.", "yellow"))
+        logger.warning(f"ContextBuilder Warning: TaskRecord for current task {current_task_id} not found. Returning empty context.")
         return AgentTaskInput(
             current_task_id=current_task_id, 
             current_goal=current_goal, 
@@ -81,7 +76,7 @@ def resolve_context_for_agent(
                 content_type_description=content_desc
             ))
             processed_context_source_ids.add(parent_record.task_id)
-            print(colored(f"  Added context from PARENT: {parent_record.task_id}", "green"))
+            logger.info(f"  Added context from PARENT: {parent_record.task_id}")
 
 
     # Rule 3: Completed direct prerequisite siblings' output within the same sub-graph.
@@ -108,10 +103,10 @@ def resolve_context_for_agent(
                             content_type_description=prereq_record.output_type_description or "prerequisite_sibling_output"
                         ))
                         processed_context_source_ids.add(prereq_record.task_id)
-                        print(colored(f"  Added context from PREREQUISITE SIBLING: {prereq_record.task_id}", "green"))
+                        logger.info(f"  Added context from PREREQUISITE SIBLING: {prereq_record.task_id}")
             except ValueError:
                 # Current task not found in its parent's generated children list - might be an issue or an ad-hoc task
-                print(colored(f"ContextBuilder Info: Task {current_task_id} not found in parent {parent_of_current_task_record.task_id}'s generated children list.", "yellow"))
+                logger.warning(f"ContextBuilder Info: Task {current_task_id} not found in parent {parent_of_current_task_record.task_id}'s generated children list.")
 
 
     # Rule 4: "Broad Context" for Writers/Thinkers from completed branches of an ancestor plan.
@@ -133,7 +128,7 @@ def resolve_context_for_agent(
                  ancestor_for_broad_context = potential_broader_ancestor
         
         if ancestor_for_broad_context:
-            print(colored(f"  Seeking broad context from children of ancestor '{ancestor_for_broad_context.task_id}'", "cyan"))
+            logger.debug(f"  Seeking broad context from children of ancestor '{ancestor_for_broad_context.task_id}'")
             for sibling_branch_id in ancestor_for_broad_context.child_task_ids_generated:
                 # Avoid adding context from the current task's own direct parent or self
                 if sibling_branch_id == current_task_id or sibling_branch_id == current_task_record.parent_task_id:
@@ -157,7 +152,7 @@ def resolve_context_for_agent(
                         content_type_description=content_type_desc
                     ))
                     processed_context_source_ids.add(sibling_branch_id)
-                    print(colored(f"  Added BROAD context from ANCESTOR BRANCH: {sibling_branch_record.task_id}", "green"))
+                    logger.info(f"  Added BROAD context from ANCESTOR BRANCH: {sibling_branch_record.task_id}")
 
     # Rule 5: Goal-Aware Context - Fetch explicitly mentioned task IDs in the current goal.
     # E.g., "Summarize results from `root.1.2` and `root.1.3`"
@@ -166,7 +161,7 @@ def resolve_context_for_agent(
 
     if explicitly_referenced_task_ids:
         unique_referenced_ids = list(dict.fromkeys(explicitly_referenced_task_ids))
-        print(colored(f"  Task goal references IDs: {unique_referenced_ids}", "cyan"))
+        logger.debug(f"  Task goal references IDs: {unique_referenced_ids}")
         for ref_task_id in unique_referenced_ids:
             if ref_task_id == current_task_id or ref_task_id in processed_context_source_ids:
                 continue
@@ -180,24 +175,24 @@ def resolve_context_for_agent(
                     content_type_description=referenced_record.output_type_description or "explicit_goal_reference"
                 ))
                 processed_context_source_ids.add(ref_task_id)
-                print(colored(f"  Added context from EXPLICITLY REFERENCED task: {ref_task_id}", "green"))
+                logger.info(f"  Added context from EXPLICITLY REFERENCED task: {ref_task_id}")
             elif referenced_record:
-                 print(colored(f"    Referenced task {ref_task_id} not COMPLETED or no output. Status: {referenced_record.status}", "yellow"))
+                 logger.warning(f"    Referenced task {ref_task_id} not COMPLETED or no output. Status: {referenced_record.status}")
             else:
-                 print(colored(f"    Referenced task {ref_task_id} not found in KnowledgeStore.", "yellow"))
+                 logger.warning(f"    Referenced task {ref_task_id} not found in KnowledgeStore.")
 
 
     # --- Final Logging of Context ---
     if relevant_items:
-        print(colored(f"ContextBuilder: Found {len(relevant_items)} relevant context items for task '{current_task_id}':", "green"))
+        logger.success(f"ContextBuilder: Found {len(relevant_items)} relevant context items for task '{current_task_id}':")
         # for item in relevant_items:
         #     content_display = str(item.content)
         #     if len(content_display) > 70: content_display = content_display[:70] + "..."
-        #     print(colored(f"    - Source: {item.source_task_id} ('{item.source_task_goal[:30]}...'), Type: {item.content_type_description}, Content: '{content_display}'", "grey"))
+        #     logger.debug(f"    - Source: {item.source_task_id} ('{item.source_task_goal[:30]}...'), Type: {item.content_type_description}, Content: '{content_display}'")
     else:
-        print(colored(f"ContextBuilder: No relevant context items found for task '{current_task_id}'.", "yellow"))
+        logger.warning(f"ContextBuilder: No relevant context items found for task '{current_task_id}'.")
         
-    print(f"DEBUG: About to create AgentTaskInput. current_task_type variable value: {repr(current_task_type)}") # Added debug print
+    logger.debug(f"DEBUG: About to create AgentTaskInput. current_task_type variable value: {repr(current_task_type)}")
     return AgentTaskInput(
         current_task_id=current_task_id,
         current_goal=current_goal,
@@ -220,12 +215,12 @@ def resolve_input_for_planner_agent(
     Constructs the detailed PlannerInput object for a Planner Agent,
     gathering all necessary hierarchical and historical context.
     """
-    print(colored(f"ContextBuilder: Resolving INPUT for PLANNER for task '{current_task_id}'", "cyan"))
+    logger.info(f"ContextBuilder: Resolving INPUT for PLANNER for task '{current_task_id}'")
 
     current_task_record = knowledge_store.get_record(current_task_id)
     if not current_task_record:
         # This should ideally not happen if NodeProcessor is calling this correctly
-        print(colored(f"ContextBuilder Error: TaskRecord for current planning task {current_task_id} not found!", "red"))
+        logger.error(f"ContextBuilder Error: TaskRecord for current planning task {current_task_id} not found!")
         # Fallback or raise error - for now, returning a minimal input
         return PlannerInput(
             current_task_goal=f"Error: Task {current_task_id} not found",
@@ -273,9 +268,9 @@ def resolve_input_for_planner_agent(
                             )
                         )
                         processed_context_source_ids.add(prereq_record.task_id)
-                        print(colored(f"  PLANNER_INPUT: Added SIBLING context: {prereq_record.task_id}", "green"))
+                        logger.info(f"  PLANNER_INPUT: Added SIBLING context: {prereq_record.task_id}")
             except ValueError:
-                print(colored(f"ContextBuilder Info (Planner): Task {current_task_id} not in parent {parent_of_current_task_record.task_id}'s children list.", "yellow"))
+                logger.warning(f"ContextBuilder Info (Planner): Task {current_task_id} not in parent {parent_of_current_task_record.task_id}'s children list.")
 
     # 2. Relevant Ancestor Outputs
     #    (Leveraging logic from Rule 2 and Rule 4 of resolve_context_for_agent)
@@ -295,13 +290,13 @@ def resolve_input_for_planner_agent(
                 )
             )
             processed_context_source_ids.add(parent_record.task_id)
-            print(colored(f"  PLANNER_INPUT: Added PARENT context: {parent_record.task_id}", "green"))
+            logger.info(f"  PLANNER_INPUT: Added PARENT context: {parent_record.task_id}")
 
     # Broader context from other completed branches of a grandparent (if grandparent was a PLAN node)
     if len(path_to_root) > 2: # Current task has at least a grandparent
         grandparent_record = path_to_root[-3] # Grandparent
         if grandparent_record.node_type == 'PLAN': # Check if grandparent was a planner
-            print(colored(f"  PLANNER_INPUT: Seeking broad context from children of GRANDPARENT '{grandparent_record.task_id}'", "cyan"))
+            logger.debug(f"  PLANNER_INPUT: Seeking broad context from children of GRANDPARENT '{grandparent_record.task_id}'")
             for uncle_branch_id in grandparent_record.child_task_ids_generated:
                 # Avoid current task's own parent branch and already processed items
                 if uncle_branch_id == current_task_record.parent_task_id or uncle_branch_id in processed_context_source_ids:
@@ -319,7 +314,7 @@ def resolve_input_for_planner_agent(
                         )
                     )
                     processed_context_source_ids.add(uncle_branch_id)
-                    print(colored(f"  PLANNER_INPUT: Added GRANDPARENT'S SIBLING BRANCH context: {uncle_branch_record.task_id}", "green"))
+                    logger.info(f"  PLANNER_INPUT: Added GRANDPARENT'S SIBLING BRANCH context: {uncle_branch_record.task_id}")
     
     # 3. Global Knowledge Base Summary
     gkb_summary = None
@@ -341,5 +336,5 @@ def resolve_input_for_planner_agent(
         global_constraints_or_preferences=global_constraints if global_constraints is not None else []
     )
 
-    # print(colored(f"ContextBuilder: Constructed PlannerInput: {planner_input_data.model_dump_json(indent=2)}", "green"))
+    # logger.debug(f"ContextBuilder: Constructed PlannerInput: {planner_input_data.model_dump_json(indent=2)}")
     return planner_input_data

@@ -77,7 +77,6 @@ def get_agent_adapter(node: TaskNode, action_verb: str) -> Optional[BaseAdapter]
     adapter: Optional[BaseAdapter] = None
 
     # 1. Try by specific agent_name assigned to the node
-    print(f"DEBUG: Checking for agent_name in node {node.task_id}. Attributes: {dir(node)}") # DEBUGGING STATEMENT
     if hasattr(node, 'agent_name') and node.agent_name:
         adapter = NAMED_AGENTS.get(node.agent_name)
         if adapter:

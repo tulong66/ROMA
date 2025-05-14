@@ -2,7 +2,7 @@ from litellm import OpenAI
 from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskType # For TaskType enum
 from .registry import register_agent_adapter, AGENT_REGISTRY, NAMED_AGENTS # Import registration function and registries
 from .adapters import PlannerAdapter, ExecutorAdapter, AtomizerAdapter, AggregatorAdapter # Import adapter classes
-
+from loguru import logger
 # Import AgnoAgent definitions
 from .definitions.planner_agents import simple_test_planner_agno_agent, core_research_planner_agno_agent
 from .definitions.executor_agents import (
@@ -22,7 +22,7 @@ from .definitions.aggregator_agents import default_aggregator_agno_agent # Impor
 from .definitions.custom_searchers import OpenAICustomSearchAdapter
 
 
-print("Executing agents/__init__.py: Setting up and registering agents...")
+logger.info("Executing agents/__init__.py: Setting up and registering agents...")
 
 # --- Instantiate and Register Planner Adapters ---
 if simple_test_planner_agno_agent:
@@ -96,7 +96,7 @@ if search_executor_agno_agent:
     # )
 
 # SearchSynthesizer
-print(f"DEBUG: Value of search_synthesizer_agno_agent before registration: {search_synthesizer_agno_agent}") # DEBUGGING STATEMENT
+logger.info(f"DEBUG: Value of search_synthesizer_agno_agent before registration: {search_synthesizer_agno_agent}") # DEBUGGING STATEMENT
 if search_synthesizer_agno_agent:
     search_synthesizer_adapter_instance = ExecutorAdapter(
         agno_agent_instance=search_synthesizer_agno_agent,
@@ -142,7 +142,7 @@ if basic_report_writer_agno_agent:
 #     register_agent_adapter(adapter=simple_atomizer_adapter_instance, name="default_atomizer")
 
 # --- Register the Default Aggregator Agent ---
-print(f"DEBUG: Value of default_aggregator_agno_agent before registration: {default_aggregator_agno_agent}") # DEBUGGING STATEMENT
+logger.info(f"DEBUG: Value of default_aggregator_agno_agent before registration: {default_aggregator_agno_agent}") # DEBUGGING STATEMENT
 if default_aggregator_agno_agent:
     default_aggregator_adapter_instance = AggregatorAdapter( # Use AggregatorAdapter
         agno_agent_instance=default_aggregator_agno_agent,
@@ -162,7 +162,7 @@ if default_aggregator_agno_agent:
         adapter=default_aggregator_adapter_instance,
         name="default_aggregator" # Allow calling by name
     )
-    print(f"Registered adapter: {default_aggregator_adapter_instance.agent_name} for aggregation")
+    logger.info(f"Registered adapter: {default_aggregator_adapter_instance.agent_name} for aggregation")
 
 
 # Register OpenAICustomSearchAdapter directly
@@ -180,14 +180,14 @@ try:
             action_verb="execute",
             task_type=TaskType.SEARCH
         )
-        print(f"Registered direct adapter: {openai_direct_search_adapter_instance.adapter_name} as 'OpenAICustomSearcher' AND for ('execute', SEARCH)")
+        logger.info(f"Registered direct adapter: {openai_direct_search_adapter_instance.adapter_name} as 'OpenAICustomSearcher' AND for ('execute', SEARCH)")
     else:
-        print("Warning: OpenAI library not available, OpenAICustomSearchAdapter not registered.")
+        logger.warning("Warning: OpenAI library not available, OpenAICustomSearchAdapter not registered.")
 except Exception as e:
-    print(f"Warning: Could not initialize and register OpenAICustomSearchAdapter: {e}")
+    logger.warning(f"Warning: Could not initialize and register OpenAICustomSearchAdapter: {e}")
 
 
-print(f"AGENT_REGISTRY populated: {len(AGENT_REGISTRY)} entries.")
-print(f"NAMED_AGENTS populated: {len(NAMED_AGENTS)} entries.")
+logger.info(f"AGENT_REGISTRY populated: {len(AGENT_REGISTRY)} entries.")
+logger.info(f"NAMED_AGENTS populated: {len(NAMED_AGENTS)} entries.")
 if not AGENT_REGISTRY and not NAMED_AGENTS:
-    print("Warning: No agent adapters were registered. The system might not find agents to process tasks.")
+    logger.warning("Warning: No agent adapters were registered. The system might not find agents to process tasks.")

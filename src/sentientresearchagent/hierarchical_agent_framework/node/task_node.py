@@ -3,6 +3,7 @@ from typing import Optional, Any, List, Dict
 from enum import Enum
 from pydantic import BaseModel, Field
 from datetime import datetime
+from loguru import logger
 
 class TaskStatus(Enum):
     PENDING = "PENDING"
@@ -75,7 +76,7 @@ class TaskNode(BaseModel):
             self.timestamp_completed = datetime.now()
         
         # Basic logging, can be replaced with a proper logger
-        print(f"Task {self.task_id} status updated to {new_status}. Result: {str(result)[:50]}..., Error: {error_msg}")
+        logger.info(f"Task {self.task_id} status updated to {new_status}. Result: {str(result)[:50] if result else 'N/A'}..., Error: {error_msg}")
 
     def __repr__(self):
         return (f"TaskNode(id={self.task_id}, goal='{self.goal[:30]}...', "
