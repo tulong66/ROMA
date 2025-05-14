@@ -22,6 +22,7 @@ class TaskRecord(BaseModel):
     input_params_dict: Dict[str, Any] = Field(default_factory=dict)
     output_content: Optional[Any] = None
     output_type_description: Optional[str] = None # e.g., "text_report_section", "plan_output"
+    output_summary: Optional[str] = None
 
     status: TaskStatusLiteral
     timestamp_created: datetime
@@ -60,6 +61,7 @@ class KnowledgeStore(BaseModel):
             input_params_dict=node.input_payload_dict or {},
             output_content=node.result,
             output_type_description=node.output_type_description,
+            output_summary=node.output_summary,
             status=status_val, # Use the derived string value
             timestamp_created=node.timestamp_created,
             timestamp_updated=node.timestamp_updated,

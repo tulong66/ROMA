@@ -3,6 +3,7 @@ from typing import List, Optional, Any
 from loguru import logger
 from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models import AgentTaskInput, ContextItem, PlannerInput, ExecutionHistoryItem, ExecutionHistoryAndContext, ReplanRequestDetails # Added new models
 from sentientresearchagent.hierarchical_agent_framework.context.knowledge_store import KnowledgeStore, TaskRecord # Adjusted import
+from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskStatus # Added import
 # Assuming TaskNode related enums/types are not directly needed here, TaskRecord uses Literals
 
 def get_task_record_path_to_root(task_id: str, knowledge_store: KnowledgeStore) -> List[TaskRecord]:
@@ -63,20 +64,24 @@ def resolve_context_for_agent(
     # Rule 2: Writers/Thinkers often benefit from their parent's output if it was a plan/outline.
     if current_task_record.parent_task_id and current_task_record.parent_task_id not in processed_context_source_ids:
         parent_record = knowledge_store.get_record(current_task_record.parent_task_id)
-        if parent_record and parent_record.status == 'COMPLETED' and parent_record.output_content is not None:
-            # Especially if parent was a PLAN or THINK task that produced an outline/structure
-            content_desc = parent_record.output_type_description or "parent_output"
-            if parent_record.task_type in ['PLAN', 'THINK'] and ("plan" in content_desc or "outline" in content_desc):
-                content_desc = "parental_plan_or_outline"
-            
-            relevant_items.append(ContextItem(
-                source_task_id=parent_record.task_id,
-                source_task_goal=parent_record.goal,
-                content=parent_record.output_content,
-                content_type_description=content_desc
-            ))
-            processed_context_source_ids.add(parent_record.task_id)
-            logger.info(f"  Added context from PARENT: {parent_record.task_id}")
+        if parent_record and parent_record.output_content is not None:
+            # Check if parent is DONE (for general output) or PLAN_DONE (if it's a plan output)
+            is_completed_parent = parent_record.status == TaskStatus.DONE.value
+            is_plan_done_parent = parent_record.status == TaskStatus.PLAN_DONE.value
+
+            if is_completed_parent or is_plan_done_parent:
+                content_desc = parent_record.output_type_description or "parent_output"
+                if parent_record.task_type in ['PLAN', 'THINK'] and ("plan" in content_desc or "outline" in content_desc or is_plan_done_parent):
+                    content_desc = "parental_plan_or_outline"
+                
+                relevant_items.append(ContextItem(
+                    source_task_id=parent_record.task_id,
+                    source_task_goal=parent_record.goal,
+                    content=parent_record.output_content,
+                    content_type_description=content_desc
+                ))
+                processed_context_source_ids.add(parent_record.task_id)
+                logger.info(f"  Added context from PARENT: {parent_record.task_id} (Status: {parent_record.status})")
 
 
     # Rule 3: Completed direct prerequisite siblings' output within the same sub-graph.
@@ -95,7 +100,7 @@ def resolve_context_for_agent(
                         continue
                     
                     prereq_record = knowledge_store.get_record(prereq_sibling_id)
-                    if prereq_record and prereq_record.status == 'COMPLETED' and prereq_record.output_content is not None:
+                    if prereq_record and prereq_record.status == TaskStatus.DONE.value and prereq_record.output_content is not None:
                         relevant_items.append(ContextItem(
                             source_task_id=prereq_record.task_id,
                             source_task_goal=prereq_record.goal,
@@ -137,7 +142,7 @@ def resolve_context_for_agent(
                     continue
 
                 sibling_branch_record = knowledge_store.get_record(sibling_branch_id)
-                if sibling_branch_record and sibling_branch_record.status == 'COMPLETED' and \
+                if sibling_branch_record and sibling_branch_record.status == TaskStatus.DONE.value and \
                    sibling_branch_record.output_content is not None:
                     
                     content_type_desc = sibling_branch_record.output_type_description or "ancestor_branch_output"
@@ -167,7 +172,7 @@ def resolve_context_for_agent(
                 continue
             
             referenced_record = knowledge_store.get_record(ref_task_id)
-            if referenced_record and referenced_record.status == 'COMPLETED' and referenced_record.output_content is not None:
+            if referenced_record and referenced_record.status == TaskStatus.DONE.value and referenced_record.output_content is not None: # Check against DONE status
                 relevant_items.append(ContextItem(
                     source_task_id=referenced_record.task_id,
                     source_task_goal=referenced_record.goal,
@@ -177,7 +182,7 @@ def resolve_context_for_agent(
                 processed_context_source_ids.add(ref_task_id)
                 logger.info(f"  Added context from EXPLICITLY REFERENCED task: {ref_task_id}")
             elif referenced_record:
-                 logger.warning(f"    Referenced task {ref_task_id} not COMPLETED or no output. Status: {referenced_record.status}")
+                 logger.warning(f"    Referenced task {ref_task_id} not {TaskStatus.DONE.value} or no output. Status: {referenced_record.status}")
             else:
                  logger.warning(f"    Referenced task {ref_task_id} not found in KnowledgeStore.")
 
@@ -254,7 +259,7 @@ def resolve_input_for_planner_agent(
                         continue
                     
                     prereq_record = knowledge_store.get_record(prereq_sibling_id)
-                    if prereq_record and prereq_record.status == 'COMPLETED' and prereq_record.output_content is not None:
+                    if prereq_record and prereq_record.status == TaskStatus.DONE.value and prereq_record.output_content is not None:
                         # TODO: Implement robust summarization for prereq_record.output_content
                         summary = str(prereq_record.output_content)[:250] + "..." if len(str(prereq_record.output_content)) > 250 else str(prereq_record.output_content)
                         if prereq_record.output_summary: # Prefer pre-computed summary if available
@@ -279,7 +284,7 @@ def resolve_input_for_planner_agent(
     # Direct Parent (if completed and has output)
     if current_task_record.parent_task_id and current_task_record.parent_task_id not in processed_context_source_ids:
         parent_record = knowledge_store.get_record(current_task_record.parent_task_id)
-        if parent_record and parent_record.status == 'COMPLETED' and parent_record.output_content is not None:
+        if parent_record and parent_record.status == TaskStatus.DONE.value and parent_record.output_content is not None:
             summary = str(parent_record.output_content)[:250] + "..." if len(str(parent_record.output_content)) > 250 else str(parent_record.output_content)
             if parent_record.output_summary: summary = parent_record.output_summary
             history_and_context.relevant_ancestor_outputs.append(
@@ -303,7 +308,7 @@ def resolve_input_for_planner_agent(
                     continue
                 
                 uncle_branch_record = knowledge_store.get_record(uncle_branch_id)
-                if uncle_branch_record and uncle_branch_record.status == 'COMPLETED' and uncle_branch_record.output_content is not None:
+                if uncle_branch_record and uncle_branch_record.status == TaskStatus.DONE.value and uncle_branch_record.output_content is not None:
                     summary = str(uncle_branch_record.output_content)[:250] + "..." if len(str(uncle_branch_record.output_content)) > 250 else str(uncle_branch_record.output_content)
                     if uncle_branch_record.output_summary: summary = uncle_branch_record.output_summary
                     history_and_context.relevant_ancestor_outputs.append(
