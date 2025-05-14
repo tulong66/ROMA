@@ -34,7 +34,7 @@ if simple_test_planner_agno_agent:
     register_agent_adapter(
         adapter=simple_planner_adapter_instance,
         action_verb="plan",
-        task_type=TaskType.WRITE # Example: this planner handles planning for WRITE tasks
+        task_type=TaskType.WRITE # <--- This will be picked for the root node
     )
     register_agent_adapter(
         adapter=simple_planner_adapter_instance,
@@ -96,6 +96,7 @@ if search_executor_agno_agent:
     # )
 
 # SearchSynthesizer
+print(f"DEBUG: Value of search_synthesizer_agno_agent before registration: {search_synthesizer_agno_agent}") # DEBUGGING STATEMENT
 if search_synthesizer_agno_agent:
     search_synthesizer_adapter_instance = ExecutorAdapter(
         agno_agent_instance=search_synthesizer_agno_agent,
@@ -106,11 +107,11 @@ if search_synthesizer_agno_agent:
         name="SearchSynthesizer"
     )
     # Typically for (action="execute", task_type=TaskType.THINK)
-    # register_agent_adapter(
-    #     adapter=search_synthesizer_adapter_instance,
-    #     action_verb="execute",
-    #     task_type=TaskType.THINK
-    # )
+    register_agent_adapter(
+        adapter=search_synthesizer_adapter_instance,
+        action_verb="execute",
+        task_type=TaskType.THINK
+    )
 
 # BasicReportWriter
 if basic_report_writer_agno_agent:
@@ -123,11 +124,11 @@ if basic_report_writer_agno_agent:
         name="BasicReportWriter"
     )
     # Typically for (action="execute", task_type=TaskType.WRITE)
-    # register_agent_adapter(
-    #     adapter=basic_report_writer_adapter_instance,
-    #     action_verb="execute",
-    #     task_type=TaskType.WRITE
-    # )
+    register_agent_adapter(
+        adapter=basic_report_writer_adapter_instance,
+        action_verb="execute",
+        task_type=TaskType.WRITE
+    )
 
 
 # --- Placeholder for Atomizer Agent Registration (Example) ---
@@ -141,6 +142,7 @@ if basic_report_writer_agno_agent:
 #     register_agent_adapter(adapter=simple_atomizer_adapter_instance, name="default_atomizer")
 
 # --- Register the Default Aggregator Agent ---
+print(f"DEBUG: Value of default_aggregator_agno_agent before registration: {default_aggregator_agno_agent}") # DEBUGGING STATEMENT
 if default_aggregator_agno_agent:
     default_aggregator_adapter_instance = AggregatorAdapter( # Use AggregatorAdapter
         agno_agent_instance=default_aggregator_agno_agent,
@@ -172,7 +174,13 @@ try:
             adapter=openai_direct_search_adapter_instance,
             name="OpenAICustomSearcher" # The name to use when assigning tasks
         )
-        print(f"Registered direct adapter: {openai_direct_search_adapter_instance.adapter_name} as 'OpenAICustomSearcher'")
+        # Also register it for the generic ('execute', TaskType.SEARCH) key
+        register_agent_adapter(
+            adapter=openai_direct_search_adapter_instance,
+            action_verb="execute",
+            task_type=TaskType.SEARCH
+        )
+        print(f"Registered direct adapter: {openai_direct_search_adapter_instance.adapter_name} as 'OpenAICustomSearcher' AND for ('execute', SEARCH)")
     else:
         print("Warning: OpenAI library not available, OpenAICustomSearchAdapter not registered.")
 except Exception as e:

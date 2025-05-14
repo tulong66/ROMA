@@ -33,7 +33,6 @@ class ExecutionEngine:
     def initialize_project(self, 
                            root_goal: str, 
                            root_task_type: TaskType = TaskType.WRITE, # Default, can be changed
-                           initial_agent_name: Optional[str] = "default_planner" # Agent for the root
                           ):
         """Sets up the initial root node for the project."""
         if self.task_graph.root_graph_id is not None:
@@ -51,9 +50,9 @@ class ExecutionEngine:
             goal=root_goal,
             task_type=root_task_type, # This might often be a general "project" type
             node_type=NodeType.PLAN,  # Root usually starts by planning
-            agent_name=initial_agent_name, # Agent responsible for decomposing the root goal
             layer=0,
-            task_id=root_node_id
+            task_id=root_node_id,
+            overall_objective=root_goal # For root, objective is its own goal initially
         )
         
         self.task_graph.add_graph(root_graph_id, is_root=True)
@@ -114,10 +113,16 @@ class ExecutionEngine:
                 continue 
 
             # --- 3. Update PLAN_DONE -> AGGREGATING transitions ---
-            # This check should happen *after* an attempt to process READY/AGGREGATING nodes
-            # because a PLAN node might have just become PLAN_DONE in the current step.
+            print(f"DEBUG: ExecutionEngine (Step {step + 1}): Entering PLAN_DONE check. processed_in_step = {processed_in_step}")
+            root_node_in_all_nodes = next((n for n in all_nodes if n.task_id == "root"), None)
+            if root_node_in_all_nodes:
+                print(f"DEBUG: ExecutionEngine (Step {step + 1}): Root node status in all_nodes for PLAN_DONE check: {root_node_in_all_nodes.status}")
+            else:
+                print(f"DEBUG: ExecutionEngine (Step {step + 1}): Root node NOT FOUND in all_nodes for PLAN_DONE check.")
+            
             for node in all_nodes:
-                if node.status == TaskStatus.PLAN_DONE: # Only PLAN type nodes go to PLAN_DONE
+                if node.status == TaskStatus.PLAN_DONE: 
+                    print(f"DEBUG: ExecutionEngine: Checking can_aggregate for PLAN_DONE node {node.task_id} (Type: {node.node_type})")
                     if self.state_manager.can_aggregate(node):
                         node.update_status(TaskStatus.AGGREGATING)
                         self.knowledge_store.add_or_update_record_from_node(node) # Update KS
@@ -165,4 +170,4 @@ class ExecutionEngine:
             result_display = str(node.result)
             if len(result_display) > 70: result_display = result_display[:70] + "..."
             
-            print(f"CONSOLE LOG: - Node {node.task_id} (L{node.layer}, Agent: {node.agent_name}, Goal: '{node.goal[:30]}...'): Status={status_str}, Result='{result_display}'")
+            print(f"CONSOLE LOG: - Node {node.task_id} (L{node.layer}, Goal: '{node.goal[:30]}...'): Status={status_str}, Result='{result_display}'")

@@ -3,7 +3,9 @@ from typing import Dict, Any, Union, List
 from agno.agent import Agent as AgnoAgent # Renaming to avoid conflict if we define our own Agent interface
 
 from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode # For type hinting
-from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models import ContextItem, PlanOutput, AtomizerOutput # For type hinting results
+from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models import (
+    ContextItem, PlanOutput, AtomizerOutput, AgentTaskInput, PlannerInput, ExecutionHistoryItem
+)
 
 # Import prompt templates
 from .prompts import INPUT_PROMPT, AGGREGATOR_PROMPT
@@ -77,85 +79,99 @@ class LlmApiAdapter(BaseAdapter):
         
         return "\n\n".join(context_parts)
 
-    def _prepare_agno_run_arguments(self, agent_task_input: Any) -> Dict[str, Any]:
+    def _prepare_agno_run_arguments(self, agent_task_input: Union[AgentTaskInput, PlannerInput]) -> str:
         """
-        Prepares the arguments for self.agno_agent.run() based on AgentTaskInput.
-        This method will be expanded for multi-modal inputs.
-        For now, it focuses on constructing the main prompt string.
-
-        Args:
-            agent_task_input: An instance of AgentTaskInput.
-
-        Returns:
-            A dictionary of arguments for agno_agent.run().
+        Prepares the user message string for self.agno_agent.run()
+        based on AgentTaskInput or PlannerInput.
         """
-        # Determine which prompt template to use based on adapter type
-        # This is a bit of a hack; ideally, the prompt template choice
-        # might be more configurable or specific to the agent's role.
-        prompt_template_to_use = INPUT_PROMPT # Default
-        if "aggregator" in self.agent_name.lower(): # Simple heuristic
-            prompt_template_to_use = AGGREGATOR_PROMPT
+        if isinstance(agent_task_input, PlannerInput):
+            prompt_parts = [
+                f"Overall Objective: {agent_task_input.overall_objective}",
+                f"Current Task Goal: {agent_task_input.current_task_goal}"
+            ]
 
-        # Format text-based context for the prompt string
-        # Multi-modal context items would be passed directly as arguments (e.g., images=..., audio=...)
-        text_context_str = self._format_context_for_prompt(agent_task_input.relevant_context_items)
-        
-        # Construct the main prompt string
-        # Note: agno.Agent's system_message provides the core instructions.
-        # This input prompt provides the dynamic data (goal, context).
-        main_prompt_content = prompt_template_to_use.format(
-            input_goal=agent_task_input.current_goal,
-            context_str=text_context_str
-        )
-        
-        run_args = {
-            "prompt": main_prompt_content, # Agno expects the main user input as 'prompt' or the first arg
-            # "stream": False, # Default is False, explicitly set if needed
-            # Add other agno.run() parameters here if needed, e.g.:
-            # "images": [img_obj for img_obj in prepared_multimodal_inputs if type(img_obj) is AgnoImage],
-        }
-        return run_args
+            if agent_task_input.parent_task_goal:
+                prompt_parts.append(f"Parent Task Goal: {agent_task_input.parent_task_goal}")
 
-    def process(self, node: TaskNode, agent_task_input: Any) -> Any:
+            prompt_parts.append(f"Current Planning Depth: {agent_task_input.planning_depth}")
+
+            if agent_task_input.global_constraints_or_preferences:
+                constraints_str = "\n  - ".join(agent_task_input.global_constraints_or_preferences)
+                prompt_parts.append(f"Global Constraints/Preferences:\n  - {constraints_str}")
+
+            history_context_parts = []
+            if agent_task_input.execution_history_and_context:
+                h_and_c = agent_task_input.execution_history_and_context
+                if h_and_c.prior_sibling_task_outputs:
+                    history_context_parts.append("  Prior Sibling Task Outputs:")
+                    for item in h_and_c.prior_sibling_task_outputs:
+                        history_context_parts.append(f"    - Task: {item.task_goal}, Summary: {item.outcome_summary}")
+                if h_and_c.relevant_ancestor_outputs:
+                    history_context_parts.append("  Relevant Ancestor Outputs:")
+                    for item in h_and_c.relevant_ancestor_outputs:
+                        history_context_parts.append(f"    - Task: {item.task_goal}, Summary: {item.outcome_summary}")
+                if h_and_c.global_knowledge_base_summary:
+                     history_context_parts.append(f"  Global Knowledge Base Summary: {h_and_c.global_knowledge_base_summary}")
+            
+            if history_context_parts:
+                prompt_parts.append("Execution History & Context:")
+                prompt_parts.extend(history_context_parts)
+
+            if agent_task_input.replan_request_details:
+                replan_parts = ["Re-plan Details (CRITICAL - address this in your new plan):"]
+                rd = agent_task_input.replan_request_details
+                replan_parts.append(f"  Failed Sub-Goal: {rd.failed_sub_goal}")
+                replan_parts.append(f"  Reason for Re-plan: {rd.reason_for_failure_or_replan}")
+                if rd.previous_attempt_output_summary:
+                    replan_parts.append(f"  Previous Attempt Summary: {rd.previous_attempt_output_summary}")
+                if rd.specific_guidance_for_replan:
+                    replan_parts.append(f"  Specific Guidance: {rd.specific_guidance_for_replan}")
+                prompt_parts.extend(replan_parts)
+
+            prompt_parts.append("\nBased on the 'Current Task Goal' and other provided information, generate a plan to achieve it.")
+            
+            formatted_user_message_string = "\n\n".join(prompt_parts)
+            return formatted_user_message_string
+
+        elif isinstance(agent_task_input, AgentTaskInput):
+            prompt_template_to_use = INPUT_PROMPT
+            if "aggregator" in self.agent_name.lower():
+                prompt_template_to_use = AGGREGATOR_PROMPT
+
+            text_context_str = self._format_context_for_prompt(agent_task_input.relevant_context_items)
+            overall_goal_for_template = agent_task_input.overall_project_goal or "Not specified"
+            
+            main_user_message_content = prompt_template_to_use.format(
+                input_goal=agent_task_input.current_goal,
+                context_str=text_context_str,
+                overall_project_goal=overall_goal_for_template
+            )
+            return main_user_message_content
+        
+        else:
+            raise TypeError(f"Unsupported agent_task_input type: {type(agent_task_input)}")
+
+    def process(self, node: TaskNode, agent_task_input: Union[AgentTaskInput, PlannerInput]) -> Any:
         """
         Processes a TaskNode using the configured AgnoAgent.
-
-        Args:
-            node: The TaskNode to process.
-            agent_task_input: An AgentTaskInput object.
-
-        Returns:
-            The content from the Agno RunResponse (e.g., a Pydantic model instance, string).
         """
         print(colored(f"  Adapter '{self.agent_name}': Processing node {node.task_id} (Goal: '{node.goal[:50]}...')", "cyan"))
 
-        run_arguments = self._prepare_agno_run_arguments(agent_task_input)
+        user_message_string = self._prepare_agno_run_arguments(agent_task_input)
         
-        # For debugging, print the prompt being sent (or part of it)
-        # print(colored(f"    To Agno Agent '{self.agno_agent.name or 'N/A'}': Prompt: {str(run_arguments.get('prompt'))[:200]}...", "grey"))
-
+        # --- BEGIN DEBUG PRINT ---
+        print(colored(f"    DEBUG: User message string to Agno Agent '{self.agno_agent.name or 'N/A'}':", "yellow"))
+        print(user_message_string) # Print the string directly
+        # --- END DEBUG PRINT ---
+        
         try:
-            # AgnoAgent.run() handles structured output if 'response_model' was set on the agent.
-            # It also handles the tool execution loop internally if tools were provided to the agent.
-            response = self.agno_agent.run(**run_arguments)
-            
-            # print(colored(f"    Adapter '{self.agent_name}': Received RunResponse. Content type: {response.content_type}", "cyan"))
-            # pprint.pprint(response) # For deep debugging of the full RunResponse
-
-            # The primary result is in response.content
-            # If response_model was used, response.content is the Pydantic object.
-            # Otherwise, it's typically a string.
-            # Multi-modal outputs would be in response.images, response.audio etc. (to be handled later)
+            response = self.agno_agent.run(user_message_string)
             
             if response.content is None:
                  print(colored(f"    Adapter Warning: Agno agent '{self.agent_name}' returned None content for node {node.task_id}.", "yellow"))
-                 # Decide how to handle None content - raise error, return specific value, etc.
-                 # For now, let it propagate, NodeProcessor might fail the task.
-
-            return response.content # This is the core result
-
+            return response.content
         except Exception as e:
             print(colored(f"  Adapter Error: Exception during Agno agent '{self.agent_name}' execution for node {node.task_id}: {e}", "red"))
-            # Re-raise to allow NodeProcessor to handle it (e.g., fail the task)
-            # Consider wrapping in a custom AdapterError
+            import traceback # Added import for traceback
+            traceback.print_exc() # Print full traceback for better debugging
             raise

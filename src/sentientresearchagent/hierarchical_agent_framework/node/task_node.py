@@ -36,12 +36,13 @@ class TaskNode(BaseModel):
     node_type: NodeType  # Initial type, might be changed by atomizer
 
     task_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    layer: int = 0
+    layer: int = 0 # Can be used as planning_depth
     parent_node_id: Optional[str] = None
-    agent_name: Optional[str] = None # Suggested agent to run this
+    overall_objective: Optional[str] = None # The ultimate high-level goal of the entire operation
 
     status: TaskStatus = TaskStatus.PENDING
     result: Optional[Any] = None # Will store Pydantic models, text, or multi-modal references
+    output_summary: Optional[str] = None # Concise summary of the result for context building
     error: Optional[str] = None
 
     # For PLAN nodes, to link to the graph of their sub-tasks
@@ -78,5 +79,5 @@ class TaskNode(BaseModel):
 
     def __repr__(self):
         return (f"TaskNode(id={self.task_id}, goal='{self.goal[:30]}...', "
-                f"agent={self.agent_name}, type={self.task_type}/{self.node_type}, "
+                f"type={self.task_type}/{self.node_type}, "
                 f"status={self.status}, layer={self.layer})")

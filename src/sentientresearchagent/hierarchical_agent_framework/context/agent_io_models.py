@@ -9,7 +9,6 @@ class SubTask(BaseModel):
     # For now, using strings and will be validated/converted by adapter or node_processor
     task_type: str = Field(..., description="Type of task (e.g., 'WRITE', 'THINK', 'SEARCH').")
     node_type: str = Field(..., description="Node type ('EXECUTE' for atomic, 'PLAN' for complex).")
-    agent_name: Optional[str] = Field(None, description="Suggested agent for this sub-task.")
     # You could add estimated_effort, dependencies_within_plan etc. later
 
 class PlanOutput(BaseModel):
@@ -83,3 +82,39 @@ class CustomSearcherOutput(BaseModel):
     def __str__(self) -> str:
         # Prioritize the main output text for string conversion
         return self.output_text_with_citations
+
+
+# --- New Planner Input Schemas (for the enhanced PLANNER_SYSTEM_MESSAGE) ---
+
+class ExecutionHistoryItem(BaseModel):
+    """Represents a single item in the execution history (sibling or ancestor output)."""
+    task_goal: str = Field(..., description="Goal of the historical task.")
+    outcome_summary: str = Field(..., description="Brief summary of what the task achieved or produced.")
+    full_output_reference_id: Optional[str] = Field(None, description="An ID to fetch the full output if needed.")
+
+class ExecutionHistoryAndContext(BaseModel):
+    """Structured execution history and context for the planner."""
+    prior_sibling_task_outputs: List[ExecutionHistoryItem] = Field(default_factory=list)
+    relevant_ancestor_outputs: List[ExecutionHistoryItem] = Field(default_factory=list)
+    global_knowledge_base_summary: Optional[str] = Field(None)
+
+class ReplanRequestDetails(BaseModel):
+    """Structured feedback for a re-plan request."""
+    failed_sub_goal: str = Field(..., description="The specific sub-goal that previously failed or requires re-planning.")
+    reason_for_failure_or_replan: str = Field(..., description="Detailed explanation of why the previous attempt failed or why a re-plan is necessary.")
+    previous_attempt_output_summary: Optional[str] = Field(None, description="Summary of what the failed attempt did produce, if anything.")
+    specific_guidance_for_replan: Optional[str] = Field(None, description="Concrete suggestions on how to approach the re-plan differently.")
+
+class PlannerInput(BaseModel):
+    """Defines the structured input for the enhanced Planner Agent."""
+    current_task_goal: str = Field(..., description="The specific goal for this planning instance.")
+    overall_objective: str = Field(..., description="The ultimate high-level goal of the entire operation.")
+    parent_task_goal: Optional[str] = Field(None, description="The goal of the immediate parent task. Null if root task.")
+    planning_depth: Optional[int] = Field(0, description="Current recursion depth (e.g., 0 for initial, 1 for sub-tasks).")
+    execution_history_and_context: ExecutionHistoryAndContext = Field(default_factory=ExecutionHistoryAndContext)
+    replan_request_details: Optional[ReplanRequestDetails] = Field(None)
+    global_constraints_or_preferences: Optional[List[str]] = Field(default_factory=list)
+    # Potentially add available_executor_capabilities: List[str] = Field(default_factory=list) in the future
+
+    class Config:
+        validate_assignment = True # Ensures that even if you update fields later, they are validated.

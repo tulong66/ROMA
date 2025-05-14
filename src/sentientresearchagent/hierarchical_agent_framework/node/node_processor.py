@@ -1,11 +1,18 @@
-from typing import List
+from typing import List, Optional
+from pydantic import BaseModel
 from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode, TaskStatus, NodeType, TaskType
 from sentientresearchagent.hierarchical_agent_framework.graph.task_graph import TaskGraph
 from sentientresearchagent.hierarchical_agent_framework.context.knowledge_store import KnowledgeStore
-from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models import AgentTaskInput, PlanOutput, AtomizerOutput, ContextItem
+from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models import (
+    AgentTaskInput, PlanOutput, AtomizerOutput, ContextItem,
+    PlannerInput, ReplanRequestDetails
+)
 from sentientresearchagent.hierarchical_agent_framework.agents.registry import get_agent_adapter
 from sentientresearchagent.hierarchical_agent_framework.agents.base_adapter import BaseAdapter # For type hinting
-from sentientresearchagent.hierarchical_agent_framework.context.context_builder import resolve_context_for_agent # We'll need to port this
+from sentientresearchagent.hierarchical_agent_framework.context.context_builder import (
+    resolve_context_for_agent,
+    resolve_input_for_planner_agent
+)
 
 # Basic console coloring for logs
 def colored(text, color):
@@ -60,10 +67,10 @@ class NodeProcessor:
                 goal=sub_task_def.goal,
                 task_type=task_type_enum,
                 node_type=node_type_enum,
-                agent_name=sub_task_def.agent_name, # Agent suggestion from planner
                 task_id=sub_node_id,
                 layer=parent_node.layer + 1,
                 parent_node_id=parent_node.task_id,
+                overall_objective=parent_node.overall_objective
             )
             created_sub_nodes.append(sub_node)
             task_graph.add_node_to_graph(sub_graph_id, sub_node)
@@ -115,39 +122,59 @@ class NodeProcessor:
         action_to_take = node.node_type if isinstance(node.node_type, NodeType) else NodeType(node.node_type)
 
         # 2. Prepare AgentTaskInput
-        # Use .value to pass the string representation to the input model if needed
         current_task_type_value = node.task_type.value if isinstance(node.task_type, TaskType) else node.task_type
-        agent_task_input = resolve_context_for_agent(
+        
+        # agent_name is no longer part of TaskNode, so it's not used here for resolve_context_for_agent
+        # The agent_name parameter in resolve_context_for_agent might need to be re-evaluated 
+        # or set to a generic value if it's still required by that function's logic.
+        # For now, assuming resolve_context_for_agent can handle agent_name=None or a generic placeholder.
+        agent_task_input_model = resolve_context_for_agent(
             current_task_id=node.task_id,
             current_goal=node.goal,
-            current_task_type=current_task_type_value, # Pass string value
-            agent_name=node.agent_name or f"agent_for_{current_task_type_value}", # Use the derived string value
+            current_task_type=current_task_type_value, 
+            agent_name=f"agent_for_{current_task_type_value}", # Generic placeholder if agent_name is needed by context resolver
             knowledge_store=knowledge_store,
             overall_project_goal=task_graph.overall_project_goal
         )
-        node.input_payload_dict = agent_task_input.model_dump()
+        node.input_payload_dict = agent_task_input_model.model_dump()
 
         try:
             # --- Action based on Enum member ---
             if action_to_take == NodeType.PLAN:
+                print(colored(f"    NodeProcessor: Preparing PlannerInput for {node.task_id}", "cyan"))
+                
+                current_overall_objective = node.overall_objective or getattr(task_graph, 'overall_project_goal', None)
+                if not current_overall_objective:
+                     print(colored(f"    NodeProcessor WARNING: overall_objective is not set for node {node.task_id}. Using placeholder.", "yellow"))
+                     current_overall_objective = "Undefined overall project goal"
+
                 planner_adapter = get_agent_adapter(node, action_verb="plan")
                 if not planner_adapter:
-                    raise ValueError(f"No PLAN adapter found for node {node.task_id} (Agent: {node.agent_name}, TaskType: {node.task_type.name if isinstance(node.task_type, TaskType) else node.task_type})") # Handle potential string in error message
+                    # Removed agent_name from error message
+                    raise ValueError(f"No PLAN adapter found for node {node.task_id} (TaskType: {node.task_type})")
 
-                print(colored(f"    NodeProcessor: Invoking PLAN adapter '{type(planner_adapter).__name__}' for {node.task_id}", "cyan"))
-                plan_output: PlanOutput = planner_adapter.process(node, agent_task_input)
+                planner_input_model = resolve_input_for_planner_agent(
+                    current_task_id=node.task_id,
+                    knowledge_store=knowledge_store,
+                    overall_objective=current_overall_objective,
+                    planning_depth=node.layer,
+                    replan_details=None, 
+                    global_constraints=getattr(task_graph, 'global_constraints', [])
+                )
+                node.input_payload_dict = planner_input_model.model_dump() # For logging
+                plan_output: PlanOutput = planner_adapter.process(node, planner_input_model) # PASSING THE MODEL
 
                 if not plan_output or not plan_output.sub_tasks:
                     print(colored(f"    NodeProcessor: Planner for {node.task_id} returned no sub-tasks. Converting to EXECUTE.", "yellow"))
                     node.node_type = NodeType.EXECUTE # Set Enum member
                     # Re-prepare context if goal or type changed significantly? (Assume fine for now)
-                    self._execute_node_action(node, agent_task_input, task_graph, knowledge_store)
+                    self._execute_node_action(node, agent_task_input_model, task_graph, knowledge_store)
                 else:
                     self._create_sub_nodes_from_plan(node, plan_output, task_graph, knowledge_store)
                     node.update_status(TaskStatus.PLAN_DONE, result=plan_output.model_dump())
             
             elif action_to_take == NodeType.EXECUTE:
-                 self._execute_node_action(node, agent_task_input, task_graph, knowledge_store)
+                 self._execute_node_action(node, agent_task_input_model, task_graph, knowledge_store)
 
             else: # Should not happen if node_type is always PLAN or EXECUTE Enum after conversion
                 raise ValueError(f"Unexpected node action type Enum: {action_to_take} for node {node.task_id}")
@@ -168,13 +195,35 @@ class NodeProcessor:
         if not executor_adapter:
              # Ensure TaskType is handled correctly in error message if it could be string
              task_type_display = node.task_type.name if isinstance(node.task_type, TaskType) else node.task_type
-             raise ValueError(f"No EXECUTE adapter found for node {node.task_id} (Agent: {node.agent_name}, TaskType: {task_type_display})")
+             # Removed agent_name from error message
+             raise ValueError(f"No EXECUTE adapter found for node {node.task_id} (TaskType: {task_type_display})")
 
         print(colored(f"    NodeProcessor: Invoking EXECUTE adapter '{type(executor_adapter).__name__}' for {node.task_id}", "cyan"))
         execution_result = executor_adapter.process(node, agent_task_input)
         
         node.output_type_description = f"{type(execution_result).__name__}_result"
         
+        if execution_result is not None:
+            # TODO: Implement robust summarization.
+            # For Pydantic models, check if they have a summary method/attribute.
+            if hasattr(execution_result, 'get_summary_for_context') and callable(execution_result.get_summary_for_context):
+                node.output_summary = execution_result.get_summary_for_context()
+            elif hasattr(execution_result, 'summary'):
+                 node.output_summary = str(execution_result.summary)
+            elif isinstance(execution_result, str):
+                node.output_summary = execution_result[:500] + "..." if len(execution_result) > 500 else execution_result
+            elif isinstance(execution_result, BaseModel): # For Pydantic models without specific summary
+                try:
+                    # Try to get a compact representation, excluding verbose fields if any
+                    summary_dict = execution_result.model_dump(exclude_none=True)
+                    summary_str = str(summary_dict)
+                    node.output_summary = summary_str[:500] + "..." if len(summary_str) > 500 else summary_str
+                except Exception:
+                    node.output_summary = f"Result of type {type(execution_result).__name__}"
+            else:
+                node.output_summary = f"Result of type {type(execution_result).__name__}"
+            print(colored(f"    NodeProcessor: Set output_summary for {node.task_id}: '{node.output_summary[:100]}...'","green"))
+
         if isinstance(execution_result, str) and execution_result.startswith("<<NEEDS_REPLAN>>"):
             replan_reason = execution_result.replace("<<NEEDS_REPLAN>>", "").strip()
             print(colored(f"    NodeProcessor: Node {node.task_id} requested REPLAN. Reason: {replan_reason}", "yellow"))
@@ -242,26 +291,96 @@ class NodeProcessor:
         
         knowledge_store.add_or_update_record_from_node(node) # Final update
 
+    def _handle_needs_replan_node(self, node: TaskNode, task_graph: TaskGraph, knowledge_store: KnowledgeStore):
+        print(colored(f"  NodeProcessor: Handling NEEDS_REPLAN node {node.task_id} (Goal: '{node.goal[:30]}...')", "yellow"))
+        
+        # Mark as RUNNING for the replanning attempt. Could also be a new REPLANNING status.
+        node.update_status(TaskStatus.RUNNING, result=f"Attempting to re-plan: {node.result}") 
+        knowledge_store.add_or_update_record_from_node(node)
+
+        try:
+            # 1. Construct ReplanRequestDetails
+            reason_for_replan = str(node.result) if node.result else "No specific reason provided for re-plan."
+            # remove the <<NEEDS_REPLAN>> prefix if present, as it's already handled
+            if "<<NEEDS_REPLAN>>" in reason_for_replan:
+                 reason_for_replan = reason_for_replan.split("<<NEEDS_REPLAN>>",1)[-1].strip()
+            
+            # previous_attempt_output_summary should be node.output_summary from the failed/problematic execution
+            # This assumes output_summary was populated even for tasks that ended up in NEEDS_REPLAN
+            prev_summary = node.output_summary if node.output_summary else "No summary of previous attempt available."
+
+            replan_details = ReplanRequestDetails(
+                failed_sub_goal=node.goal, # The current node's goal is the one that failed/needs replan
+                reason_for_failure_or_replan=reason_for_replan,
+                previous_attempt_output_summary=prev_summary,
+                specific_guidance_for_replan=None # TODO: Allow agents to provide more specific guidance
+            )
+            print(colored(f"    Replan Details: {replan_details.model_dump_json(indent=2, exclude_none=True)}", "cyan"))
+
+            # 2. Prepare PlannerInput
+            current_overall_objective = node.overall_objective or task_graph.overall_project_goal
+            if not current_overall_objective:
+                 print(colored(f"    NodeProcessor WARNING: overall_objective is not set for REPLAN node {node.task_id}. Using placeholder.", "yellow"))
+                 current_overall_objective = "Undefined overall project goal"
+
+            planner_adapter = get_agent_adapter(node, action_verb="plan") # Or "replan" if you have a specific replan adapter
+            if not planner_adapter:
+                # Removed agent_name from error message
+                raise ValueError(f"No PLAN/REPLAN adapter found for node {node.task_id} (TaskType: {node.task_type})")
+
+            planner_input_model = resolve_input_for_planner_agent(
+                current_task_id=node.task_id,
+                knowledge_store=knowledge_store,
+                overall_objective=current_overall_objective,
+                planning_depth=node.layer, # Use the current node's layer for planning depth
+                replan_details=replan_details,
+                global_constraints=task_graph.global_constraints if hasattr(task_graph, 'global_constraints') else []
+            )
+            node.input_payload_dict = planner_input_model.model_dump() # For logging
+            plan_output: PlanOutput = planner_adapter.process(node, planner_input_model) # PASSING THE MODEL
+
+            # 4. Process New Plan
+            if not plan_output or not plan_output.sub_tasks:
+                print(colored(f"    NodeProcessor: Re-Planner for {node.task_id} returned no sub-tasks. Node remains NEEDS_REPLAN or FAILED.", "red"))
+                # TODO: Implement retry logic or max attempts for re-planning
+                node.update_status(TaskStatus.FAILED, error_msg="Re-planning failed to produce sub-tasks.", result=node.result) # Keep original reason in result
+            else:
+                print(colored(f"    NodeProcessor: Re-Planner for {node.task_id} SUCCEEDED. Creating new sub-nodes.", "green"))
+                # The node itself (which was the parent of the failed plan, or the failed execute node)
+                # will now become a parent to the new sub-tasks.
+                # _create_sub_nodes_from_plan will clear node.planned_sub_task_ids
+                if not node.sub_graph_id: # Ensure subgraph exists if it was an EXECUTE node being replanned into a PLAN
+                     node.sub_graph_id = f"subgraph_{node.task_id}"
+                     task_graph.add_graph(node.sub_graph_id)
+
+                self._create_sub_nodes_from_plan(node, plan_output, task_graph, knowledge_store)
+                node.node_type = NodeType.PLAN # Explicitly set node_type to PLAN as it now has a sub-plan
+                node.update_status(TaskStatus.PLAN_DONE, result=plan_output.model_dump())
+                print(colored(f"    NodeProcessor: Node {node.task_id} REPLANNED successfully. Status: PLAN_DONE.", "green"))
+
+        except Exception as e:
+            print(colored(f"  NodeProcessor Error: Failed to REPLAN node {node.task_id}: {e}", "red"))
+            import traceback
+            traceback.print_exc()
+            node.update_status(TaskStatus.FAILED, error_msg=f"Exception during re-planning: {str(e)}", result=node.result)
+        
+        knowledge_store.add_or_update_record_from_node(node) # Final update
 
     def process_node(self, node: TaskNode, task_graph: TaskGraph, knowledge_store: KnowledgeStore):
         """
         Processes a node based on its status.
         This method is called by the ExecutionEngine.
         """
-        # --- MODIFIED PRINT ---
-        # Get the display name correctly whether it's Enum or string
         status_display = node.status.name if isinstance(node.status, TaskStatus) else node.status
-        print(colored(f"NodeProcessor: Received node {node.task_id} with status {status_display}", "cyan"))
-        # --- END MODIFIED PRINT ---
+        print(colored(f"NodeProcessor: Received node {node.task_id} (Goal: '{node.goal[:30]}...') with status {status_display}", "cyan"))
 
-        # --- Ensure comparisons use Enum members ---
-        # Convert status to Enum member for reliable comparison
         current_status = node.status if isinstance(node.status, TaskStatus) else TaskStatus(node.status)
         
         if current_status == TaskStatus.READY:
             self._handle_ready_node(node, task_graph, knowledge_store)
         elif current_status == TaskStatus.AGGREGATING:
             self._handle_aggregating_node(node, task_graph, knowledge_store)
+        elif current_status == TaskStatus.NEEDS_REPLAN:
+            self._handle_needs_replan_node(node, task_graph, knowledge_store)
         else:
-            # Use status_display which handles both Enum and string for the warning message
             print(colored(f"  NodeProcessor Warning: process_node called on node {node.task_id} with status {status_display} - no action taken.", "yellow"))

@@ -1,6 +1,6 @@
 import re
 from typing import List, Optional, Any
-from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models import AgentTaskInput, ContextItem
+from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models import AgentTaskInput, ContextItem, PlannerInput, ExecutionHistoryItem, ExecutionHistoryAndContext, ReplanRequestDetails # Added new models
 from sentientresearchagent.hierarchical_agent_framework.context.knowledge_store import KnowledgeStore, TaskRecord # Adjusted import
 # Assuming TaskNode related enums/types are not directly needed here, TaskRecord uses Literals
 
@@ -205,3 +205,141 @@ def resolve_context_for_agent(
         overall_project_goal=overall_project_goal,
         relevant_context_items=relevant_items
     )
+
+# --- New function to build input specifically for Planner Agents ---
+def resolve_input_for_planner_agent(
+    current_task_id: str, # The ID of the task that requires planning (or re-planning)
+    knowledge_store: KnowledgeStore,
+    overall_objective: str, # The ultimate high-level goal
+    # Optional parameters that the NodeProcessor will need to supply:
+    planning_depth: int = 0, 
+    replan_details: Optional[ReplanRequestDetails] = None,
+    global_constraints: Optional[List[str]] = None
+) -> PlannerInput:
+    """
+    Constructs the detailed PlannerInput object for a Planner Agent,
+    gathering all necessary hierarchical and historical context.
+    """
+    print(colored(f"ContextBuilder: Resolving INPUT for PLANNER for task '{current_task_id}'", "cyan"))
+
+    current_task_record = knowledge_store.get_record(current_task_id)
+    if not current_task_record:
+        # This should ideally not happen if NodeProcessor is calling this correctly
+        print(colored(f"ContextBuilder Error: TaskRecord for current planning task {current_task_id} not found!", "red"))
+        # Fallback or raise error - for now, returning a minimal input
+        return PlannerInput(
+            current_task_goal=f"Error: Task {current_task_id} not found",
+            overall_objective=overall_objective
+        )
+
+    current_task_goal = current_task_record.goal # The goal of the task needing decomposition
+
+    parent_task_goal: Optional[str] = None
+    if current_task_record.parent_task_id:
+        parent_record = knowledge_store.get_record(current_task_record.parent_task_id)
+        if parent_record:
+            parent_task_goal = parent_record.goal
+
+    # --- Populate ExecutionHistoryAndContext ---
+    history_and_context = ExecutionHistoryAndContext()
+    processed_context_source_ids = set() # To avoid duplicate entries from different rules
+
+    # 1. Prior Sibling Task Outputs
+    #    (Leveraging logic similar to Rule 3 of resolve_context_for_agent)
+    if current_task_record.parent_task_id:
+        parent_of_current_task_record = knowledge_store.get_record(current_task_record.parent_task_id)
+        if parent_of_current_task_record and parent_of_current_task_record.child_task_ids_generated:
+            try:
+                sibling_ids_in_plan = parent_of_current_task_record.child_task_ids_generated
+                current_task_index_in_plan = sibling_ids_in_plan.index(current_task_id)
+                
+                for i in range(current_task_index_in_plan):
+                    prereq_sibling_id = sibling_ids_in_plan[i]
+                    if prereq_sibling_id in processed_context_source_ids:
+                        continue
+                    
+                    prereq_record = knowledge_store.get_record(prereq_sibling_id)
+                    if prereq_record and prereq_record.status == 'COMPLETED' and prereq_record.output_content is not None:
+                        # TODO: Implement robust summarization for prereq_record.output_content
+                        summary = str(prereq_record.output_content)[:250] + "..." if len(str(prereq_record.output_content)) > 250 else str(prereq_record.output_content)
+                        if prereq_record.output_summary: # Prefer pre-computed summary if available
+                             summary = prereq_record.output_summary
+
+                        history_and_context.prior_sibling_task_outputs.append(
+                            ExecutionHistoryItem(
+                                task_goal=prereq_record.goal,
+                                outcome_summary=summary, # Placeholder for actual summarization
+                                full_output_reference_id=prereq_record.task_id # Assuming task_id can serve as ref
+                            )
+                        )
+                        processed_context_source_ids.add(prereq_record.task_id)
+                        print(colored(f"  PLANNER_INPUT: Added SIBLING context: {prereq_record.task_id}", "green"))
+            except ValueError:
+                print(colored(f"ContextBuilder Info (Planner): Task {current_task_id} not in parent {parent_of_current_task_record.task_id}'s children list.", "yellow"))
+
+    # 2. Relevant Ancestor Outputs
+    #    (Leveraging logic from Rule 2 and Rule 4 of resolve_context_for_agent)
+    path_to_root = get_task_record_path_to_root(current_task_id, knowledge_store)
+
+    # Direct Parent (if completed and has output)
+    if current_task_record.parent_task_id and current_task_record.parent_task_id not in processed_context_source_ids:
+        parent_record = knowledge_store.get_record(current_task_record.parent_task_id)
+        if parent_record and parent_record.status == 'COMPLETED' and parent_record.output_content is not None:
+            summary = str(parent_record.output_content)[:250] + "..." if len(str(parent_record.output_content)) > 250 else str(parent_record.output_content)
+            if parent_record.output_summary: summary = parent_record.output_summary
+            history_and_context.relevant_ancestor_outputs.append(
+                ExecutionHistoryItem(
+                    task_goal=parent_record.goal,
+                    outcome_summary=summary,
+                    full_output_reference_id=parent_record.task_id
+                )
+            )
+            processed_context_source_ids.add(parent_record.task_id)
+            print(colored(f"  PLANNER_INPUT: Added PARENT context: {parent_record.task_id}", "green"))
+
+    # Broader context from other completed branches of a grandparent (if grandparent was a PLAN node)
+    if len(path_to_root) > 2: # Current task has at least a grandparent
+        grandparent_record = path_to_root[-3] # Grandparent
+        if grandparent_record.node_type == 'PLAN': # Check if grandparent was a planner
+            print(colored(f"  PLANNER_INPUT: Seeking broad context from children of GRANDPARENT '{grandparent_record.task_id}'", "cyan"))
+            for uncle_branch_id in grandparent_record.child_task_ids_generated:
+                # Avoid current task's own parent branch and already processed items
+                if uncle_branch_id == current_task_record.parent_task_id or uncle_branch_id in processed_context_source_ids:
+                    continue
+                
+                uncle_branch_record = knowledge_store.get_record(uncle_branch_id)
+                if uncle_branch_record and uncle_branch_record.status == 'COMPLETED' and uncle_branch_record.output_content is not None:
+                    summary = str(uncle_branch_record.output_content)[:250] + "..." if len(str(uncle_branch_record.output_content)) > 250 else str(uncle_branch_record.output_content)
+                    if uncle_branch_record.output_summary: summary = uncle_branch_record.output_summary
+                    history_and_context.relevant_ancestor_outputs.append(
+                        ExecutionHistoryItem(
+                            task_goal=uncle_branch_record.goal,
+                            outcome_summary=summary,
+                            full_output_reference_id=uncle_branch_record.task_id
+                        )
+                    )
+                    processed_context_source_ids.add(uncle_branch_id)
+                    print(colored(f"  PLANNER_INPUT: Added GRANDPARENT'S SIBLING BRANCH context: {uncle_branch_record.task_id}", "green"))
+    
+    # 3. Global Knowledge Base Summary
+    gkb_summary = None
+    if hasattr(knowledge_store, 'store_description'):
+        # Only access if attribute exists
+        store_desc_val = getattr(knowledge_store, 'store_description')
+        if store_desc_val: # Check if it's not None or empty
+            gkb_summary = store_desc_val
+    history_and_context.global_knowledge_base_summary = gkb_summary
+
+
+    planner_input_data = PlannerInput(
+        current_task_goal=current_task_goal,
+        overall_objective=overall_objective,
+        parent_task_goal=parent_task_goal,
+        planning_depth=planning_depth,
+        execution_history_and_context=history_and_context,
+        replan_request_details=replan_details,
+        global_constraints_or_preferences=global_constraints if global_constraints is not None else []
+    )
+
+    # print(colored(f"ContextBuilder: Constructed PlannerInput: {planner_input_data.model_dump_json(indent=2)}", "green"))
+    return planner_input_data

@@ -18,7 +18,6 @@ class TaskRecord(BaseModel):
     goal: str
     task_type: TaskTypeLiteral
     node_type: Optional[NodeTypeLiteral] = None
-    agent_name: Optional[str] = None
     
     input_params_dict: Dict[str, Any] = Field(default_factory=dict)
     output_content: Optional[Any] = None
@@ -58,7 +57,6 @@ class KnowledgeStore(BaseModel):
             goal=node.goal,
             task_type=task_type_val, # Use the derived string value
             node_type=node_type_val, # Use the derived string value (or None)
-            agent_name=node.agent_name,
             input_params_dict=node.input_payload_dict or {},
             output_content=node.result,
             output_type_description=node.output_type_description,
