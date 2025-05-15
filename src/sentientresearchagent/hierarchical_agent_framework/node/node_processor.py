@@ -6,7 +6,8 @@ from sentientresearchagent.hierarchical_agent_framework.graph.task_graph import 
 from sentientresearchagent.hierarchical_agent_framework.context.knowledge_store import KnowledgeStore
 from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models import (
     AgentTaskInput, PlanOutput, AtomizerOutput, ContextItem,
-    PlannerInput, ReplanRequestDetails
+    PlannerInput, ReplanRequestDetails,
+    CustomSearcherOutput # Added for type checking in output_summary
 )
 from sentientresearchagent.hierarchical_agent_framework.agents.registry import get_agent_adapter
 from sentientresearchagent.hierarchical_agent_framework.agents.base_adapter import BaseAdapter # For type hinting
@@ -14,6 +15,8 @@ from sentientresearchagent.hierarchical_agent_framework.context.context_builder 
     resolve_context_for_agent,
     resolve_input_for_planner_agent
 )
+# NEW IMPORT for summarization utility
+from sentientresearchagent.hierarchical_agent_framework.agents.utils import get_context_summary, TARGET_WORD_COUNT_FOR_CTX_SUMMARIES
 
 # Configuration
 MAX_PLANNING_LAYER = 5 # Max depth for recursive planning
@@ -205,21 +208,35 @@ class NodeProcessor:
             # For Pydantic models, check if they have a summary method/attribute.
             if hasattr(execution_result, 'get_summary_for_context') and callable(execution_result.get_summary_for_context):
                 node.output_summary = execution_result.get_summary_for_context()
-            elif hasattr(execution_result, 'summary'):
+                logger.debug(f"NodeProcessor: Used 'get_summary_for_context()' for {node.task_id}'s output_summary.")
+            elif hasattr(execution_result, 'summary') and isinstance(getattr(execution_result, 'summary'), str):
                  node.output_summary = str(execution_result.summary)
+                 logger.debug(f"NodeProcessor: Used '.summary' attribute for {node.task_id}'s output_summary.")
             elif isinstance(execution_result, str):
-                node.output_summary = execution_result[:500] + "..." if len(execution_result) > 500 else execution_result
-            elif isinstance(execution_result, BaseModel): # For Pydantic models without specific summary
-                try:
-                    # Try to get a compact representation, excluding verbose fields if any
-                    summary_dict = execution_result.model_dump(exclude_none=True)
-                    summary_str = str(summary_dict)
-                    node.output_summary = summary_str[:500] + "..." if len(summary_str) > 500 else summary_str
-                except Exception:
-                    node.output_summary = f"Result of type {type(execution_result).__name__}"
+                # If the result itself is a string, summarize it if it's too long
+                if len(execution_result.split()) > TARGET_WORD_COUNT_FOR_CTX_SUMMARIES * 0.8: # Heuristic: if it's already a decent length string
+                    logger.debug(f"NodeProcessor: Result for {node.task_id} is a string, attempting summarization.")
+                    node.output_summary = get_context_summary(execution_result, target_word_count=TARGET_WORD_COUNT_FOR_CTX_SUMMARIES)
+                else: # If it's a short string, use as is
+                    node.output_summary = execution_result
+                logger.debug(f"NodeProcessor: String result for {node.task_id} processed for output_summary (len: {len(node.output_summary)}). First 50: '{node.output_summary[:50]}'")
+            elif isinstance(execution_result, CustomSearcherOutput):
+                # Specifically handle CustomSearcherOutput to summarize its main text content
+                logger.debug(f"NodeProcessor: Result for {node.task_id} is CustomSearcherOutput. Summarizing 'output_text_with_citations'.")
+                text_to_summarize = execution_result.output_text_with_citations
+                node.output_summary = get_context_summary(text_to_summarize, target_word_count=TARGET_WORD_COUNT_FOR_CTX_SUMMARIES)
+            elif isinstance(execution_result, BaseModel): # For other Pydantic models
+                logger.debug(f"NodeProcessor: Result for {node.task_id} is a generic BaseModel {type(execution_result).__name__}. Summarizing its JSON representation.")
+                # Fallback to summarizing the JSON representation if no better text part found
+                node.output_summary = get_context_summary(execution_result, target_word_count=TARGET_WORD_COUNT_FOR_CTX_SUMMARIES) 
             else:
-                node.output_summary = f"Result of type {type(execution_result).__name__}"
-            logger.success(f"    NodeProcessor: Set output_summary for {node.task_id}: '{node.output_summary[:100]}...'")
+                logger.debug(f"NodeProcessor: Result for {node.task_id} is of unknown type {type(execution_result).__name__} for summarization. Using str().")
+                node.output_summary = str(execution_result)[:500] + "..." if len(str(execution_result)) > 500 else str(execution_result)
+            
+            if node.output_summary:
+                logger.success(f"    NodeProcessor: Set output_summary for {node.task_id} (len {len(node.output_summary)}): '{node.output_summary[:100]}...'")
+            else:
+                logger.warning(f"    NodeProcessor: output_summary for {node.task_id} ended up empty.")
 
         if isinstance(execution_result, str) and execution_result.startswith("<<NEEDS_REPLAN>>"):
             replan_reason = execution_result.replace("<<NEEDS_REPLAN>>", "").strip()
