@@ -45,6 +45,8 @@ class TaskNode(BaseModel):
     result: Optional[Any] = None # Will store Pydantic models, text, or multi-modal references
     output_summary: Optional[str] = None # Concise summary of the result for context building
     error: Optional[str] = None
+    
+    agent_name: Optional[str] = None # NEW: Name/type of the agent handling this task
 
     # For PLAN nodes, to link to the graph of their sub-tasks
     sub_graph_id: Optional[str] = None

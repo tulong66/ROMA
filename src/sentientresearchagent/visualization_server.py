@@ -1,0 +1,250 @@
+from flask import Flask, jsonify, request, make_response
+from flask_cors import CORS # Import CORS
+from sentientresearchagent.hierarchical_agent_framework.graph.task_graph import TaskGraph
+from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode, TaskStatus, NodeType, TaskType
+from datetime import datetime
+import uuid # For generating unique IDs for sample data
+import threading # For background execution
+
+# Your project's core components
+from sentientresearchagent.hierarchical_agent_framework.node.node_processor import NodeProcessor
+from sentientresearchagent.hierarchical_agent_framework.graph.state_manager import StateManager
+from sentientresearchagent.hierarchical_agent_framework.context.knowledge_store import KnowledgeStore
+from sentientresearchagent.hierarchical_agent_framework.graph.execution_engine import ExecutionEngine
+
+# --- Create a Flask App ---
+app = Flask(__name__)
+CORS(app, origins=["http://127.0.0.1:8080"], methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"], allow_headers=["Content-Type", "Authorization"], supports_credentials=True)
+
+# --- Instantiate Core Backend Components ---
+# These will be shared and live for the duration of the server
+# The TaskGraph instance here will be populated by the ExecutionEngine
+live_task_graph = TaskGraph()
+live_knowledge_store = KnowledgeStore()
+live_state_manager = StateManager(live_task_graph) # StateManager needs the TaskGraph
+live_node_processor = NodeProcessor() # Assuming NodeProcessor is stateless or configured globally
+
+live_execution_engine = ExecutionEngine(
+    task_graph=live_task_graph,
+    node_processor=live_node_processor,
+    state_manager=live_state_manager,
+    knowledge_store=live_knowledge_store
+)
+
+def create_sample_task_graph():
+    """Populates the global task_graph_instance with sample data for demonstration."""
+    # Clear existing graph data if any, to avoid duplication on server restart with 'stat'
+    live_task_graph.graphs.clear()
+    live_task_graph.nodes.clear()
+    live_task_graph.root_graph_id = None
+    live_task_graph.overall_project_goal = "Test Markdown results and agent names."
+    
+    root_graph_id = "root_graph_" + str(uuid.uuid4())
+    live_task_graph.add_graph(graph_id=root_graph_id, is_root=True)
+
+    # Node 1 (Producer)
+    node1_id = "task_producer_" + str(uuid.uuid4())
+    node1_markdown_result = """
+### Key Findings from Initial Research:
+- **Paper A (2023):** Discusses the impact of X on Y.
+  - *Key takeaway:* Significant correlation found.
+- **Paper B (2022):** Focuses on Z.
+  - `Code snippet example for Z analysis`
+- **Statistics:**
+  1. Metric 1: 75%
+  2. Metric 2: Increased by 20%
+"""
+    node1 = TaskNode(
+        task_id=node1_id,
+        goal="Initial research and data gathering",
+        task_type=TaskType.SEARCH,
+        node_type=NodeType.EXECUTE,
+        agent_name="WebSearchAgent_v1",
+        layer=0,
+        overall_objective=live_task_graph.overall_project_goal,
+        status=TaskStatus.DONE,
+        output_summary="Found 3 relevant papers and key statistics. See full result for details.",
+        result=node1_markdown_result
+    )
+    live_task_graph.add_node_to_graph(root_graph_id, node1)
+
+    # Node 2 (Consumer of context from Node 1, and a PLAN node)
+    node2_id = "task_planner_consumer_" + str(uuid.uuid4())
+    node2_input_payload = {
+        "current_task_id": node2_id,
+        "current_goal": "Plan main writing sections based on research",
+        "current_task_type": TaskType.THINK.value, # Assuming string value needed by agent
+        "overall_project_goal": live_task_graph.overall_project_goal,
+        "relevant_context_items": [
+            {
+                "source_task_id": node1_id,
+                "source_task_goal": node1.goal, # Goal of the task that produced this context
+                "content": {"summary": node1.output_summary},
+                "content_type_description": 'research_summary'
+            }
+        ]
+    }
+    node2_plan_result = { # Example of a structured (JSON) result
+        "planTitle": "Main Writing Sections",
+        "sections": [
+            {"name": "Introduction", "points": ["Hook", "Thesis Statement", "Roadmap"]},
+            {"name": "Body Paragraphs", "points": ["Topic Sentence 1", "Evidence 1", "Analysis 1"]},
+            {"name": "Conclusion", "points": ["Restate Thesis", "Summarize", "Call to Action"]}
+        ],
+        "notes": "Ensure smooth transitions between sections."
+    }
+    node2 = TaskNode(
+        task_id=node2_id,
+        goal="Plan main writing sections based on research",
+        task_type=TaskType.THINK,
+        node_type=NodeType.PLAN,
+        agent_name="HierarchicalPlannerAgent_v2",
+        layer=0,
+        overall_objective=live_task_graph.overall_project_goal,
+        status=TaskStatus.DONE,
+        output_summary="Planned 3 main sections. Full plan in details.",
+        result=node2_plan_result,
+        input_payload_dict=node2_input_payload
+    )
+    live_task_graph.add_node_to_graph(root_graph_id, node2)
+    live_task_graph.add_edge(root_graph_id, node1_id, node2_id) # node2 depends on node1
+
+    # Sub-graph for Node 2
+    sub_graph_id = "sub_graph_for_" + node2_id
+    node2.sub_graph_id = sub_graph_id
+    live_task_graph.add_graph(graph_id=sub_graph_id)
+    live_task_graph.nodes[node2_id] = node2 # Update node in map
+
+    # Sub-node 1 (Potentially consumes context from its parent, Node 2)
+    sub_node1_id = "task_sub1_" + str(uuid.uuid4())
+    sub_node1_input_payload = {
+        "current_task_id": sub_node1_id,
+        "current_goal": "Draft Introduction using overall plan",
+        "current_task_type": TaskType.WRITE.value,
+        "overall_project_goal": live_task_graph.overall_project_goal,
+        "relevant_context_items": [
+            {"source_task_id": node2_id, "source_task_goal": node2.goal, "content_type_description": 'overall_plan'},
+            {"source_task_id": node1_id, "source_task_goal": node1.goal, "content_type_description": 'research_summary'}
+        ]
+    }
+    sub_node1 = TaskNode(
+        task_id=sub_node1_id,
+        goal="Draft Introduction using overall plan",
+        task_type=TaskType.WRITE,
+        node_type=NodeType.EXECUTE,
+        agent_name="DraftingAgent_v1.2",
+        layer=1,
+        parent_node_id=node2_id,
+        overall_objective=live_task_graph.overall_project_goal,
+        status=TaskStatus.PENDING,
+        input_payload_dict=sub_node1_input_payload,
+        result="Introduction draft is pending..."
+    )
+    live_task_graph.add_node_to_graph(sub_graph_id, sub_node1)
+    node2.planned_sub_task_ids.append(sub_node1_id)
+
+    # Sub-node 2 (For simplicity, no complex context input here)
+    sub_node2_id = "task_sub2_" + str(uuid.uuid4())
+    sub_node2 = TaskNode(
+        task_id=sub_node2_id,
+        goal="Outline Body section",
+        task_type=TaskType.THINK,
+        node_type=NodeType.EXECUTE,
+        agent_name="OutliningAgent_v1",
+        layer=1,
+        parent_node_id=node2_id,
+        overall_objective=live_task_graph.overall_project_goal,
+        status=TaskStatus.READY
+        # input_payload_dict for sub_node2 could also be added
+    )
+    live_task_graph.add_node_to_graph(sub_graph_id, sub_node2)
+    node2.planned_sub_task_ids.append(sub_node2_id)
+
+    print("Sample task graph with Markdown results created.")
+
+
+# --- API Endpoint for Task Graph Data ---
+@app.route('/api/task-graph', methods=['GET'])
+def get_task_graph_data():
+    """Endpoint to get the LIVE task graph data for visualization."""
+    if not live_task_graph.overall_project_goal and not live_task_graph.nodes:
+        pass
+    data = live_task_graph.to_visualization_dict()
+    
+    response = make_response(jsonify(data))
+    response.headers['Access-Control-Allow-Origin'] = 'http://127.0.0.1:8080'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+    return response
+
+@app.route('/api/task-graph', methods=['OPTIONS']) # Add an OPTIONS handler
+def handle_task_graph_options():
+    response = make_response()
+    response.headers['Access-Control-Allow-Origin'] = 'http://127.0.0.1:8080'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+    response.status_code = 204 # No Content for OPTIONS
+    return response
+
+# --- API Endpoint to Start a New Project ---
+def run_project_cycle_background(goal, max_steps):
+    """Function to be run in a background thread."""
+    print(f"Background thread: Initializing project with goal: '{goal}'")
+    try:
+        # Clear previous project state from the graph before initializing a new one
+        # This ensures a fresh start for each new project submission.
+        # Depending on ExecutionEngine's design, it might handle this,
+        # or we might need to manually clear live_task_graph.
+        # Let's assume re-initialization handles clearing or overwriting.
+        
+        # Re-initialize the task graph for a new project (if necessary for your engine design)
+        # This might involve clearing nodes, graphs, root_graph_id, etc.
+        live_task_graph.nodes.clear()
+        live_task_graph.graphs.clear()
+        live_task_graph.root_graph_id = None
+        live_task_graph.overall_project_goal = None # Will be set by initialize_project
+        
+        # The following is crucial: Ensure all components of the engine are reset or
+        # re-instantiated if they carry state from previous runs that shouldn't persist.
+        # For this example, we assume initialize_project and run_cycle correctly manage their state
+        # based on the (now cleared) live_task_graph.
+
+        live_execution_engine.initialize_project(root_goal=goal)
+        print(f"Background thread: Project initialized. Running cycle (max_steps={max_steps})...")
+        live_execution_engine.run_cycle(max_steps=max_steps)
+        print(f"Background thread: run_cycle for goal '{goal}' completed.")
+    except Exception as e:
+        print(f"Background thread: Error during project execution for goal '{goal}': {e}")
+        # Optionally, update a global status or the graph itself to reflect the error
+        if live_task_graph.root_graph_id: # If a graph was started
+            root_node_id = live_task_graph.root_graph_id # This might not be a node ID
+            # A better way would be to find the root TaskNode if one exists
+            # For now, just logging. Consider adding an error state to overall_project_goal or a dedicated status field.
+            pass 
+
+
+@app.route('/api/start-project', methods=['POST'])
+def start_project():
+    data = request.get_json()
+    if not data or 'project_goal' not in data:
+        return jsonify({"error": "project_goal not provided"}), 400
+    
+    project_goal = data['project_goal']
+    max_steps = data.get('max_steps', 50) # Default to 50 if not provided
+
+    print(f"Received request to start project with goal: '{project_goal}', max_steps: {max_steps}")
+
+    # Start the project execution in a background thread
+    # Pass the *same* live_execution_engine instance
+    thread = threading.Thread(target=run_project_cycle_background, args=(project_goal, max_steps))
+    thread.daemon = True # Allows main program to exit even if threads are running
+    thread.start()
+
+    return jsonify({"message": f"Project '{project_goal}' initiated. Graph will update in real-time."}), 202
+
+# --- Main entry point to run the Flask app ---
+if __name__ == '__main__':
+    print("Flask server starting with live ExecutionEngine integration...")
+    print("API available at http://127.0.0.1:5000/api/task-graph")
+    print("Submit new projects via POST to http://127.0.0.1:5000/api/start-project")
+    app.run(debug=True, use_reloader=False) # use_reloader=False is important when using threads with Flask's dev server 

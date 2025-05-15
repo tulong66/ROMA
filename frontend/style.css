@@ -1,0 +1,404 @@
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    margin: 0;
+    padding: 20px;
+    background-color: #f7f9fc;
+    color: #333;
+    font-size: 14px;
+}
+
+h1 {
+    text-align: center;
+    color: #1a237e;
+    margin-bottom: 25px;
+}
+
+#overall-goal {
+    text-align: center;
+    margin-bottom: 25px;
+    font-size: 1.1em;
+    color: #3949ab;
+    padding: 12px 15px;
+    background-color: #e8eaf6;
+    border-left: 5px solid #3949ab;
+    border-radius: 4px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+#main-container {
+    display: flex;
+    flex-direction: row;
+    gap: 25px;
+}
+
+#task-graph {
+    width: 70%;
+    height: 750px;
+    border: 1px solid #d1d9e6;
+    background-color: #ffffff;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    border-radius: 5px;
+}
+
+#node-details {
+    width: 30%;
+    padding: 20px;
+    border: 1px solid #d1d9e6;
+    background-color: #ffffff;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    height: 750px;
+    overflow-y: auto;
+    border-radius: 5px;
+}
+
+#node-details h2, 
+#node-details h3 {
+    margin-top: 0;
+    color: #1a237e;
+    border-bottom: 2px solid #e8eaf6;
+    padding-bottom: 10px;
+    margin-bottom: 15px;
+    font-size: 1.3em;
+}
+
+#node-details h4 {
+    color: #3949ab;
+    font-size: 1.1em;
+    margin-top: 20px;
+    margin-bottom: 8px;
+}
+
+#node-details dl {
+    margin-bottom: 15px;
+}
+
+#node-details dt {
+    font-weight: 600;
+    color: #2c3e50;
+    margin-top: 8px;
+    font-size: 0.95em;
+}
+
+#node-details dd {
+    margin-left: 15px;
+    margin-bottom: 8px;
+    color: #555;
+    font-size: 0.9em;
+    word-wrap: break-word;
+}
+
+#node-details dd pre {
+    background-color: #f0f2f5;
+    padding: 8px;
+    border-radius: 4px;
+    border: 1px solid #e0e4e8;
+    font-size: 0.85em;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+#node-details ul {
+    list-style-type: none;
+    padding-left: 5px;
+    margin-bottom: 15px;
+}
+
+#node-details ul li {
+    background-color: #f7f9fc;
+    border: 1px solid #e8eaf6;
+    border-left: 3px solid #7986cb;
+    padding: 8px 12px;
+    margin-bottom: 6px;
+    border-radius: 4px;
+    font-size: 0.88em;
+}
+
+#node-details ul li code {
+    background-color: #e0e4e8;
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-family: 'Courier New', Courier, monospace;
+    color: #c51162;
+}
+
+#node-details ul li i {
+    color: #455a64;
+}
+
+pre#details-content {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-size: 0.9em;
+    border-radius: 5px;
+}
+
+#node-details p {
+    color: #777;
+    font-style: italic;
+}
+
+/* Styling for Markdown Rendered Content */
+.result-content {
+    margin-top: 5px;
+    padding: 10px;
+    background-color: #fdfdfd;
+    border: 1px solid #eee;
+    border-radius: 4px;
+    font-size: 0.9em;
+}
+
+.result-content h1, .result-content h2, .result-content h3, .result-content h4 {
+    color: #333; /* Darker headings within markdown */
+    border-bottom: 1px solid #f0f0f0;
+    margin-top: 1em;
+    margin-bottom: 0.5em;
+}
+
+.result-content p {
+    line-height: 1.6;
+    margin-bottom: 0.8em;
+    font-style: normal; /* Override default italic p in #node-details */
+    color: #444;
+}
+
+.result-content ul, .result-content ol {
+    margin-left: 20px; /* Indent lists */
+    padding-left: 10px;
+}
+.result-content ul li, .result-content ol li {
+    /* Override specific context list styling if it conflicts */
+    background-color: transparent;
+    border: none;
+    padding: 2px 0;
+    margin-bottom: 2px;
+}
+
+
+.result-content pre {
+    background-color: #2d2d2d; /* Dark background for code blocks */
+    color: #f8f8f2; /* Light text for code blocks */
+    padding: 10px;
+    border-radius: 4px;
+    overflow-x: auto; /* Scroll for long lines */
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.85em;
+    white-space: pre; /* Respect whitespace in code blocks */
+}
+
+.result-content code { /* Inline code */
+    background-color: #f0f2f5;
+    padding: 2px 5px;
+    border-radius: 3px;
+    font-family: 'Courier New', Courier, monospace;
+    color: #d63384; /* Bootstrap-like pink for inline code */
+    font-size: 0.9em;
+}
+
+.result-content table {
+    border-collapse: collapse;
+    width: 100%;
+    margin-bottom: 1em;
+}
+
+.result-content th, .result-content td {
+    border: 1px solid #ddd;
+    padding: 8px;
+    text-align: left;
+}
+
+.result-content th {
+    background-color: #f9f9f9;
+}
+
+#node-details h3 { /* Styling for the static H3 */
+    margin-top: 0;
+    color: #1a237e;
+    border-bottom: 2px solid #e8eaf6;
+    padding-bottom: 10px;
+    margin-bottom: 15px;
+    font-size: 1.3em;
+}
+
+#legend-container {
+    width: 100%;
+    margin-top: 25px;
+    padding: 15px;
+    background-color: #ffffff;
+    border: 1px solid #d1d9e6;
+    border-radius: 5px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+}
+
+#legend-container h2 {
+    margin-top: 0;
+    color: #1a237e;
+    border-bottom: 2px solid #e8eaf6;
+    padding-bottom: 10px;
+    margin-bottom: 15px;
+    font-size: 1.3em;
+    text-align: center;
+}
+
+#legend-content {
+    display: flex;
+    flex-wrap: wrap; /* Allow items to wrap to next line */
+    gap: 20px; /* Space between legend sections */
+    justify-content: space-around; /* Distribute sections */
+}
+
+.legend-section {
+    min-width: 200px; /* Minimum width for a section */
+}
+
+.legend-section h4 {
+    font-size: 1.1em;
+    color: #3949ab;
+    margin-bottom: 8px;
+    border-bottom: 1px dotted #c5cae9;
+    padding-bottom: 4px;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    margin-bottom: 6px;
+    font-size: 0.9em;
+}
+
+.legend-item .symbol {
+    width: 20px;
+    height: 20px;
+    margin-right: 10px;
+    border: 1px solid #ccc; /* Default border for symbols */
+    display: inline-block;
+    flex-shrink: 0; /* Prevent shrinking */
+}
+
+.legend-item .line-symbol {
+    width: 30px;
+    height: 2px; /* For solid lines */
+    margin-right: 10px;
+    display: inline-block;
+    border: none; /* Remove border for lines */
+    position: relative; /* For dashed lines */
+    flex-shrink: 0;
+}
+
+.legend-item .line-symbol.dashed {
+    border-top: 2px dashed; /* Use border for dashed effect */
+    height: 0; /* Override height */
+}
+
+
+.legend-item .label {
+    color: #333;
+}
+
+/* Styling for Collapsible Sections */
+.collapsible-section {
+    margin-bottom: 15px; /* Space between collapsible sections */
+}
+
+.collapsible-header {
+    background-color: #f0f4f8; /* Light background for header */
+    padding: 8px 12px;
+    border: 1px solid #d1d9e6;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 1.1em; /* Match legend section h4 */
+    color: #3949ab;
+    margin-top: 15px;
+    margin-bottom: 0; /* Remove bottom margin as content follows */
+    display: flex; /* For aligning toggler and text */
+    align-items: center;
+}
+
+.collapsible-header:hover {
+    background-color: #e8eaf6;
+}
+
+.collapsible-header .toggler {
+    margin-right: 8px;
+    font-size: 0.8em; /* Smaller arrow */
+    display: inline-block;
+    width: 12px; /* Ensure space for arrow */
+}
+
+.collapsible-content {
+    padding: 10px;
+    border: 1px solid #d1d9e6;
+    border-top: none; /* Avoid double border with header */
+    border-radius: 0 0 4px 4px; /* Round bottom corners */
+    /* Styles for specific content like .result-content or #context-sources-list 
+       will apply within this div */
+}
+
+/* Adjusting .result-content to fit within collapsible structure */
+.result-content {
+    margin-top: 0; /* Remove top margin as it's now inside .collapsible-content */
+    padding: 0; /* Padding will be on .collapsible-content */
+    background-color: transparent; /* No specific background, inherit or set on .collapsible-content */
+    border: none; /* No border, border will be on .collapsible-content */
+}
+
+/* Adjust styling for Input Context List within collapsible */
+#node-details ul#context-sources-list { /* Be more specific */
+    list-style-type: none;
+    padding-left: 0; /* Padding will be handled by li or content div */
+    margin-bottom: 0; /* No extra margin at the bottom of the list */
+}
+
+#node-details ul#context-sources-list li {
+    background-color: #f7f9fc;
+    border: 1px solid #e8eaf6;
+    border-left: 3px solid #7986cb;
+    padding: 8px 12px;
+    margin-bottom: 6px; /* Spacing between context items */
+    border-radius: 4px;
+    font-size: 0.88em;
+}
+/* Ensure default p styling for "no context" doesn't conflict badly */
+.context-sources-section p {
+    padding: 10px; /* If "None" message */
+    margin: 0;
+}
+
+#project-starter {
+    background-color: #ffffff;
+    padding: 20px;
+    margin-bottom: 25px;
+    border-radius: 5px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    border: 1px solid #d1d9e6;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+#project-starter input[type="text"] {
+    flex-grow: 1;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 1em;
+}
+
+#project-starter button {
+    padding: 10px 15px;
+    background-color: #3949ab; /* Indigo */
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 1em;
+    transition: background-color 0.2s ease;
+}
+
+#project-starter button:hover {
+    background-color: #2c3e50; /* Darker blue */
+}
+
+#project-status-message {
+    margin-left: 15px;
+    font-size: 0.9em;
+}
