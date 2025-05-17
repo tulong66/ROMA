@@ -4,7 +4,7 @@ from loguru import logger
 from .definitions.utility_agents import context_summarizer_agno_agent
 
 MAX_SUMMARY_LENGTH_FALLBACK_CHARS = 800 # Character limit fallback
-TARGET_WORD_COUNT_FOR_CTX_SUMMARIES = 250 # Default target for LLM summary
+TARGET_WORD_COUNT_FOR_CTX_SUMMARIES = 300 # Default target for LLM summary
 
 def get_context_summary(content: Any, target_word_count: int = TARGET_WORD_COUNT_FOR_CTX_SUMMARIES) -> str:
     if not content:

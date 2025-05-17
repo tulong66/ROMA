@@ -9,6 +9,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const projectStatusMessage = document.getElementById('project-status-message');
     let contextFlowToggle; // Will be initialized in DOMContentLoaded
 
+    if (projectGoalInput) {
+        projectGoalInput.value = "Write me a detailed report about the recent U.S. trade tariffs and their effect on the global economy";
+    }
+
     let allNodesData = {}; // To store full node details for click events
     let network = null; // Keep a reference to the network object
     let contextFlowEdges = new vis.DataSet();

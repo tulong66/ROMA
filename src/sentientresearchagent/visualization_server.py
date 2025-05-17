@@ -1,10 +1,13 @@
-from flask import Flask, jsonify, request, make_response
+from flask import Flask, jsonify, request, make_response, send_file
 from flask_cors import CORS # Import CORS
 from sentientresearchagent.hierarchical_agent_framework.graph.task_graph import TaskGraph
 from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode, TaskStatus, NodeType, TaskType
 from datetime import datetime
 import uuid # For generating unique IDs for sample data
 import threading # For background execution
+import io # For sending file in memory
+# PDF Generation - you'll need to install this: pip install markdown-pdf
+from markdown_pdf import MarkdownPdf, Section # Using markdown-pdf library
 
 # Your project's core components
 from sentientresearchagent.hierarchical_agent_framework.node.node_processor import NodeProcessor
@@ -230,7 +233,7 @@ def start_project():
         return jsonify({"error": "project_goal not provided"}), 400
     
     project_goal = data['project_goal']
-    max_steps = data.get('max_steps', 50) # Default to 50 if not provided
+    max_steps = data.get('max_steps', 100) # Default to 100 if not provided
 
     print(f"Received request to start project with goal: '{project_goal}', max_steps: {max_steps}")
 
@@ -241,6 +244,56 @@ def start_project():
     thread.start()
 
     return jsonify({"message": f"Project '{project_goal}' initiated. Graph will update in real-time."}), 202
+
+@app.route('/api/download-report', methods=['GET'])
+def download_report():
+    """Endpoint to generate and download the final project report as PDF."""
+    root_node_id = "root" # As defined in ExecutionEngine.initialize_project
+    root_node = live_task_graph.get_node(root_node_id)
+
+    if not root_node:
+        return jsonify({"error": "Root node not found or project not initialized."}), 404
+
+    if root_node.status != TaskStatus.DONE:
+        return jsonify({"error": f"Root node is not yet DONE. Current status: {root_node.status.value}"}), 400
+
+    markdown_content = root_node.result
+    if not markdown_content or not isinstance(markdown_content, str):
+        return jsonify({"error": "No markdown content found in the root node result or result is not a string."}), 404
+
+    try:
+        # Initialize MarkdownPdf
+        # You can customize options like toc_level, optimize, etc.
+        # pdf_converter = MarkdownPdf(toc_level=2, optimize=True)
+        pdf_converter = MarkdownPdf() # Basic initialization
+
+        # Add the markdown content as a section
+        # The Section class can take user_css for styling, similar to WeasyPrint
+        # For now, we'll use default styling.
+        # Example with custom CSS:
+        # custom_css = "body { font-family: sans-serif; } h1 { color: blue; }"
+        # pdf_converter.add_section(Section(markdown_content), user_css=custom_css)
+        pdf_converter.add_section(Section(markdown_content))
+        
+        # "Save" the PDF to an in-memory buffer
+        pdf_buffer = io.BytesIO()
+        pdf_converter.save(pdf_buffer)
+        pdf_buffer.seek(0) # Reset buffer's position to the beginning
+        
+        # Send PDF as a file download
+        return send_file(
+            pdf_buffer,
+            mimetype='application/pdf',
+            as_attachment=True,
+            download_name=f"{live_task_graph.overall_project_goal or 'report'}.pdf"
+        )
+
+    except Exception as e:
+        print(f"Error generating PDF with markdown-pdf: {e}")
+        # Consider logging the traceback for more detailed error info
+        # import traceback
+        # print(traceback.format_exc())
+        return jsonify({"error": f"Failed to generate PDF: {str(e)}"}), 500
 
 # --- Main entry point to run the Flask app ---
 if __name__ == '__main__':
