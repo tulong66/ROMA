@@ -221,10 +221,22 @@ class NodeProcessor:
                     node.output_summary = execution_result
                 logger.debug(f"NodeProcessor: String result for {node.task_id} processed for output_summary (len: {len(node.output_summary)}). First 50: '{node.output_summary[:50]}'")
             elif isinstance(execution_result, CustomSearcherOutput):
-                # Specifically handle CustomSearcherOutput to summarize its main text content
-                logger.debug(f"NodeProcessor: Result for {node.task_id} is CustomSearcherOutput. Summarizing 'output_text_with_citations'.")
+                logger.debug(f"NodeProcessor: Result for {node.task_id} is CustomSearcherOutput. Summarizing 'output_text_with_citations' and appending annotations.")
                 text_to_summarize = execution_result.output_text_with_citations
-                node.output_summary = get_context_summary(text_to_summarize, target_word_count=TARGET_WORD_COUNT_FOR_CTX_SUMMARIES)
+                summary_text = get_context_summary(text_to_summarize, target_word_count=TARGET_WORD_COUNT_FOR_CTX_SUMMARIES)
+                
+                citations_str = ""
+                if execution_result.annotations:
+                    citation_parts = ["\n\nCitations:"]
+                    for idx, ann in enumerate(execution_result.annotations):
+                        title = ann.title or "Source"
+                        citation_parts.append(f"- [{title}]({ann.url})")
+                    citations_str = "\n".join(citation_parts)
+                
+                node.output_summary = summary_text + citations_str
+                # Store the full CustomSearcherOutput in result, so original annotations list is preserved
+                node.result = execution_result 
+                node.output_type_description = "CustomSearcherOutput_with_summary_and_citations"
             elif isinstance(execution_result, BaseModel): # For other Pydantic models
                 logger.debug(f"NodeProcessor: Result for {node.task_id} is a generic BaseModel {type(execution_result).__name__}. Summarizing its JSON representation.")
                 # Fallback to summarizing the JSON representation if no better text part found
