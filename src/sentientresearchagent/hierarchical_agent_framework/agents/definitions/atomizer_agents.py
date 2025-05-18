@@ -4,7 +4,7 @@ from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models 
 from loguru import logger
 
 # Choose a model that's fast and good at analysis, potentially cheaper.
-LLM_MODEL_ID_ATOMIZER = "openrouter/anthropic/claude-3-7" # Example, configure as needed
+LLM_MODEL_ID_ATOMIZER = "openrouter/anthropic/claude-3-7-sonnet" # Example, configure as needed
 
 ATOMIZER_SYSTEM_MESSAGE = """You are an expert task atomization assistant. Your primary responsibility is to analyze a given task goal, potentially with supporting context, and determine if it's an "atomic" task. An atomic task is one that can be directly executed by a specialized agent (like a web searcher, a calculator, a code executor, or a simple writer) in a single, focused operation without needing further decomposition or internal planning. If the task is not atomic, it requires further planning.
 
