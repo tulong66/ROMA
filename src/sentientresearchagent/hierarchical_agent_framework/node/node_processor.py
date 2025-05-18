@@ -87,104 +87,150 @@ class NodeProcessor:
 
 
     def _handle_ready_node(self, node: TaskNode, task_graph: TaskGraph, knowledge_store: KnowledgeStore):
-        logger.info(f"  NodeProcessor: Handling READY node {node.task_id} (Type: {node.node_type}, Goal: '{node.goal[:30]}...')")
+        logger.info(f"  NodeProcessor: Handling READY node {node.task_id} (Original Type: {node.node_type}, Goal: '{node.goal[:30]}...')")
         node.update_status(TaskStatus.RUNNING) # Mark as RUNNING before agent call
         knowledge_store.add_or_update_record_from_node(node)
 
-        original_node_type = node.node_type
+        # original_node_type = node.node_type # Keep for reference if needed, but we'll update node.node_type
         
-        # 1. Atomicity Check (Conceptual - for now, let's assume an atomizer agent is called)
-        # In a full implementation, this would involve:
-        # - Getting an 'AtomizerAdapter'.
-        # - Preparing AgentTaskInput for the atomizer.
-        # - Calling adapter.process() to get AtomizerOutput.
-        # - Updating node.goal and node.node_type based on AtomizerOutput.
-        
-        # --- Simplified Atomicity ---
-        # For now, we'll skip explicit atomizer call and proceed based on original node_type
-        # or simple rules. A real implementation would use an AtomizerAdapter.
-        is_atomic_determined = (original_node_type == NodeType.EXECUTE)
-        # If it was planned as EXECUTE, assume it's atomic for now.
-        # If it was PLAN, it needs planning unless max depth is reached.
-
-        # --- Ensure comparisons use Enum members or string values consistently ---
-        # Determine if the original type corresponds to PLAN
-        is_plan_type = original_node_type == NodeType.PLAN if isinstance(original_node_type, NodeType) else original_node_type == NodeType.PLAN.value
-        
-        if is_plan_type and node.layer >= MAX_PLANNING_LAYER:
-            logger.warning(f"    NodeProcessor: Max planning depth ({MAX_PLANNING_LAYER}) reached for {node.task_id}. Forcing EXECUTE.")
-            node.node_type = NodeType.EXECUTE # Assign Enum member here
-            is_atomic_determined = True
-        
-        # Ensure action_to_take holds the Enum member for later logic
-        # If node.node_type might still be string after potential modification:
-        action_to_take = node.node_type if isinstance(node.node_type, NodeType) else NodeType(node.node_type)
-
-        # 2. Prepare AgentTaskInput
+        # 1. Atomicity Check using AtomizerAgent
+        action_to_take: NodeType
         current_task_type_value = node.task_type.value if isinstance(node.task_type, TaskType) else node.task_type
-        
-        # agent_name is no longer part of TaskNode, so it's not used here for resolve_context_for_agent
-        # The agent_name parameter in resolve_context_for_agent might need to be re-evaluated 
-        # or set to a generic value if it's still required by that function's logic.
-        # For now, assuming resolve_context_for_agent can handle agent_name=None or a generic placeholder.
-        agent_task_input_model = resolve_context_for_agent(
+
+        # Prepare general AgentTaskInput for the atomizer
+        # This input will be subject to Part 2 (context summarization)
+        atomizer_input_model = resolve_context_for_agent(
             current_task_id=node.task_id,
-            current_goal=node.goal,
-            current_task_type=current_task_type_value, 
-            agent_name=f"agent_for_{current_task_type_value}", # Generic placeholder if agent_name is needed by context resolver
+            current_goal=node.goal, # Original goal for atomization
+            current_task_type=current_task_type_value,
+            agent_name="default_atomizer", # Or derive more specifically
             knowledge_store=knowledge_store,
             overall_project_goal=task_graph.overall_project_goal
         )
-        node.input_payload_dict = agent_task_input_model.model_dump()
-        logger.debug(f"Node {node.task_id} input payload (general): {node.input_payload_dict}")
+        # Log the input to the atomizer separately if desired, or rely on adapter logging
+        # node.input_payload_dict = atomizer_input_model.model_dump() # This might be overwritten later
+
+        atomizer_adapter = get_agent_adapter(node, action_verb="atomize") # Node's task_type might influence if multiple atomizers exist
+
+        if atomizer_adapter:
+            logger.info(f"    NodeProcessor: Calling Atomizer for node {node.task_id}")
+            try:
+                atomizer_output: AtomizerOutput = atomizer_adapter.process(node, atomizer_input_model)
+                
+                if atomizer_output.updated_goal != node.goal:
+                    logger.info(f"    Atomizer updated goal for {node.task_id}: '{node.goal[:50]}...' -> '{atomizer_output.updated_goal[:50]}...'")
+                    node.goal = atomizer_output.updated_goal
+                
+                if atomizer_output.is_atomic:
+                    logger.info(f"    Atomizer determined {node.task_id} as ATOMIC. Setting NodeType to EXECUTE.")
+                    node.node_type = NodeType.EXECUTE
+                    action_to_take = NodeType.EXECUTE
+                else:
+                    logger.info(f"    Atomizer determined {node.task_id} as COMPLEX. Setting NodeType to PLAN.")
+                    node.node_type = NodeType.PLAN
+                    action_to_take = NodeType.PLAN
+                
+                # Update KS with potentially modified goal and node_type before proceeding
+                knowledge_store.add_or_update_record_from_node(node)
+
+            except Exception as atom_ex:
+                logger.error(f"    NodeProcessor: Atomizer agent failed for {node.task_id}: {atom_ex}. Proceeding with original node_type: {node.node_type}")
+                # Fallback: use the node's original type if atomizer fails
+                action_to_take = node.node_type if isinstance(node.node_type, NodeType) else NodeType(node.node_type)
+        else:
+            logger.warning(f"    NodeProcessor: No AtomizerAdapter found for node {node.task_id}. Proceeding with original node_type: {node.node_type}")
+            action_to_take = node.node_type if isinstance(node.node_type, NodeType) else NodeType(node.node_type)
+
+        # --- Max Planning Depth Check (applies if action_to_take is PLAN after atomization) ---
+        if action_to_take == NodeType.PLAN and node.layer >= MAX_PLANNING_LAYER:
+            logger.warning(f"    NodeProcessor: Max planning depth ({MAX_PLANNING_LAYER}) reached for {node.task_id}. Forcing EXECUTE.")
+            node.node_type = NodeType.EXECUTE 
+            action_to_take = NodeType.EXECUTE
+        
+        # 2. Prepare specific AgentTaskInput or PlannerInput for the chosen action (PLAN or EXECUTE)
+        # The goal used here is potentially the one updated by the atomizer.
+        # The current_task_type_value is from the original node.task_type.
+        
+        # This general_agent_task_input_model is for EXECUTE actions or as a base.
+        # It will use the (potentially updated) node.goal.
+        # We re-resolve context here because the goal might have changed, affecting context relevance.
+        # OR, we could assume the atomizer_input_model's context is still valid if goal refinement is minor.
+        # For safety, let's re-resolve if the goal changed significantly or if action_to_take is EXECUTE.
+        # If action_to_take is PLAN, resolve_input_for_planner_agent will be called which has its own context logic.
+        
+        general_agent_task_input_model: Optional[AgentTaskInput] = None
+        if action_to_take == NodeType.EXECUTE:
+            general_agent_task_input_model = resolve_context_for_agent(
+                current_task_id=node.task_id,
+                current_goal=node.goal, # Use current (potentially updated) goal
+                current_task_type=current_task_type_value,
+                agent_name=f"agent_for_{current_task_type_value}", 
+                knowledge_store=knowledge_store,
+                overall_project_goal=task_graph.overall_project_goal
+            )
+            node.input_payload_dict = general_agent_task_input_model.model_dump()
+            logger.debug(f"Node {node.task_id} input payload (for EXECUTE): {node.input_payload_dict}")
+
 
         try:
-            # --- Action based on Enum member ---
             if action_to_take == NodeType.PLAN:
-                logger.info(f"    NodeProcessor: Preparing PlannerInput for {node.task_id}")
+                logger.info(f"    NodeProcessor: Preparing PlannerInput for {node.task_id} (Goal: '{node.goal[:50]}...')")
                 
                 current_overall_objective = node.overall_objective or getattr(task_graph, 'overall_project_goal', None)
                 if not current_overall_objective:
                      logger.warning(f"    NodeProcessor WARNING: overall_objective is not set for node {node.task_id}. Using placeholder.")
                      current_overall_objective = "Undefined overall project goal"
 
-                planner_adapter = get_agent_adapter(node, action_verb="plan")
+                planner_adapter = get_agent_adapter(node, action_verb="plan") # Node's task_type and updated node_type (PLAN) are used here
                 if not planner_adapter:
-                    # Removed agent_name from error message
-                    raise ValueError(f"No PLAN adapter found for node {node.task_id} (TaskType: {node.task_type})")
+                    raise ValueError(f"No PLAN adapter found for node {node.task_id} (TaskType: {node.task_type}, NodeType: {node.node_type})")
 
                 planner_input_model = resolve_input_for_planner_agent(
-                    current_task_id=node.task_id,
+                    current_task_id=node.task_id, # ID of the current node
                     knowledge_store=knowledge_store,
                     overall_objective=current_overall_objective,
                     planning_depth=node.layer,
                     replan_details=None, 
                     global_constraints=getattr(task_graph, 'global_constraints', [])
+                    # current_task_goal is implicitly fetched from knowledge_store by current_task_id inside resolve_input_for_planner_agent
+                    # so it will use the potentially updated goal.
                 )
                 node.input_payload_dict = planner_input_model.model_dump() # For logging
-                plan_output: PlanOutput = planner_adapter.process(node, planner_input_model) # PASSING THE MODEL
+                logger.debug(f"Node {node.task_id} input payload (for PLAN): {node.input_payload_dict}")
+                plan_output: PlanOutput = planner_adapter.process(node, planner_input_model)
 
                 if not plan_output or not plan_output.sub_tasks:
                     logger.warning(f"    NodeProcessor: Planner for {node.task_id} returned no sub-tasks. Converting to EXECUTE.")
-                    node.node_type = NodeType.EXECUTE # Set Enum member
-                    # Re-prepare context if goal or type changed significantly? (Assume fine for now)
-                    self._execute_node_action(node, agent_task_input_model, task_graph, knowledge_store)
+                    node.node_type = NodeType.EXECUTE
+                    # Re-prepare context for execute if goal or type changed significantly
+                    # This general_agent_task_input_model should be the one prepared for EXECUTE path
+                    if general_agent_task_input_model is None: # If not already prepared
+                        general_agent_task_input_model = resolve_context_for_agent(
+                            current_task_id=node.task_id, current_goal=node.goal,
+                            current_task_type=current_task_type_value, agent_name=f"agent_for_{current_task_type_value}",
+                            knowledge_store=knowledge_store, overall_project_goal=task_graph.overall_project_goal
+                        )
+                        node.input_payload_dict = general_agent_task_input_model.model_dump()
+
+                    self._execute_node_action(node, general_agent_task_input_model, task_graph, knowledge_store)
                 else:
                     self._create_sub_nodes_from_plan(node, plan_output, task_graph, knowledge_store)
                     node.update_status(TaskStatus.PLAN_DONE, result=plan_output.model_dump())
             
             elif action_to_take == NodeType.EXECUTE:
-                 self._execute_node_action(node, agent_task_input_model, task_graph, knowledge_store)
+                 if general_agent_task_input_model is None: # Should have been prepared above
+                     logger.error(f"NodeProcessor CRITICAL: general_agent_task_input_model is None for EXECUTE node {node.task_id}")
+                     raise ValueError(f"Input model not prepared for EXECUTE node {node.task_id}")
+                 self._execute_node_action(node, general_agent_task_input_model, task_graph, knowledge_store)
 
-            else: # Should not happen if node_type is always PLAN or EXECUTE Enum after conversion
-                raise ValueError(f"Unexpected node action type Enum: {action_to_take} for node {node.task_id}")
+            else: 
+                raise ValueError(f"Unexpected node action type: {action_to_take} for node {node.task_id}")
 
         except Exception as e:
-            logger.error(f"  NodeProcessor Error: Failed to process READY node {node.task_id}: {e}")
-            # Ensure status update uses the Enum member
+            logger.exception(f"  NodeProcessor Error: Failed to process READY node {node.task_id}")
             node.update_status(TaskStatus.FAILED, error_msg=str(e))
         
-        knowledge_store.add_or_update_record_from_node(node) # Final update
+        knowledge_store.add_or_update_record_from_node(node) # Final update for status, result, etc.
 
     def _execute_node_action(self, node: TaskNode, agent_task_input: AgentTaskInput, task_graph: TaskGraph, knowledge_store: KnowledgeStore):
         # Ensure node.node_type is an Enum for get_agent_adapter if it expects one

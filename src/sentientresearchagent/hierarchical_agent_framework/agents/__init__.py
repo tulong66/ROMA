@@ -14,6 +14,7 @@ from .definitions.executor_agents import (
     # openai_custom_search_agno_agent # This will be replaced
 )
 # from .definitions.atomizer_agents import simple_atomizer_agno_agent
+from .definitions.atomizer_agents import default_atomizer_agno_agent # Import the new default atomizer
 from .definitions.aggregator_agents import default_aggregator_agno_agent # Import the new aggregator
 
 # Removed import from .definitions.research_agents as its contents are moved
@@ -140,6 +141,31 @@ if basic_report_writer_agno_agent:
 #     # Atomizers might be registered per task type
 #     register_agent_adapter(adapter=simple_atomizer_adapter_instance, action_verb="atomize", task_type=TaskType.WRITE)
 #     register_agent_adapter(adapter=simple_atomizer_adapter_instance, name="default_atomizer")
+
+# --- Register the Default Atomizer Agent ---
+if default_atomizer_agno_agent:
+    default_atomizer_adapter_instance = AtomizerAdapter(
+        agno_agent_instance=default_atomizer_agno_agent,
+        agent_name="DefaultAtomizer" # For adapter logging
+    )
+    # Atomizers are typically general purpose for refining any task goal before planning/execution.
+    # So, register for the "atomize" action verb. TaskType might not be strictly necessary
+    # for selection if there's only one primary atomizer, or it can be registered for all common task types.
+    # For simplicity, let's register it by name and for a general "atomize" action.
+    # The NodeProcessor will specifically request an "atomize" action.
+    register_agent_adapter(
+        adapter=default_atomizer_adapter_instance,
+        action_verb="atomize",
+        task_type=None # Indicates it can atomize any task type goal
+    )
+    register_agent_adapter(
+        adapter=default_atomizer_adapter_instance,
+        name="default_atomizer" # Allow calling by name
+    )
+    logger.info(f"Registered adapter: {default_atomizer_adapter_instance.agent_name} for atomization")
+else:
+    logger.warning("DefaultAtomizer_Agno agent not available. Atomization step will be skipped or limited.")
+
 
 # --- Register the Default Aggregator Agent ---
 logger.info(f"DEBUG: Value of default_aggregator_agno_agent before registration: {default_aggregator_agno_agent}") # DEBUGGING STATEMENT

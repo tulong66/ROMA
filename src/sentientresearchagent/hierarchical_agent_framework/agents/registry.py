@@ -97,12 +97,15 @@ def get_agent_adapter(node: TaskNode, action_verb: str) -> Optional[BaseAdapter]
     else:
         # This log will now show the key with an enum if conversion worked, or still with string if not.
         print(f"AgentRegistry: No adapter found for node {node.task_id} with key {key}.")
-        # You might want to try a more generic fallback, e.g., (action_verb, None) if task_type specific one fails
+        # Fallback to (action_verb, None) if task_type specific one fails,
+        # useful for general adapters like Atomizer or a default Executor/Planner.
+        if key_task_type is not None: # Only try generic if specific one was attempted and failed
+            generic_key = (action_verb.lower(), None)
+            adapter = AGENT_REGISTRY.get(generic_key)
+            if adapter:
+                print(f"AgentRegistry: Found generic adapter '{type(adapter).__name__}' by fallback key {generic_key} for node {node.task_id}.")
+            else:
+                print(f"AgentRegistry: No adapter found for node {node.task_id} with fallback key {generic_key} either.")
         # Or raise an error if no suitable agent can be found.
-        # For example:
-        # generic_key = (action_verb.lower(), None)
-        # adapter = AGENT_REGISTRY.get(generic_key)
-        # if adapter:
-        #     print(f"AgentRegistry: Found generic adapter '{type(adapter).__name__}' by key {generic_key} for node {node.task_id}.")
 
     return adapter
