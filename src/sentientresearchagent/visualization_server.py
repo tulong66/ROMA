@@ -233,7 +233,7 @@ def start_project():
         return jsonify({"error": "project_goal not provided"}), 400
     
     project_goal = data['project_goal']
-    max_steps = data.get('max_steps', 100) # Default to 100 if not provided
+    max_steps = data.get('max_steps', 125) # MODIFIED: Default to 125 if not provided
 
     print(f"Received request to start project with goal: '{project_goal}', max_steps: {max_steps}")
 

@@ -617,7 +617,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ project_goal: goal, max_steps: 50 }),
+                    body: JSON.stringify({ project_goal: goal, max_steps: 125 }),
                 });
 
                 const result = await response.json();
