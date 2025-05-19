@@ -85,28 +85,43 @@ class ExecutionEngine:
                         processed_in_step = True
                         logger.info(f"  Transition: Node {node.task_id} PENDING -> READY")
 
-
-            # --- 2. Process one READY or AGGREGATING node ---
-            # Prioritize AGGREGATING nodes to free up parent PLAN nodes sooner
-            # Then process READY nodes. Could be more sophisticated (e.g., by layer).
+            # --- 2. Process AGGREGATING and/or READY nodes ---
+            # Prioritize AGGREGATING nodes. If one is processed, continue to re-evaluate.
+            # If no AGGREGATING node is processed, process all READY nodes in parallel.
             
-            node_to_process = next((n for n in all_nodes if n.status == TaskStatus.AGGREGATING), None)
-            if not node_to_process:
-                node_to_process = next((n for n in all_nodes if n.status == TaskStatus.READY), None)
+            # Attempt to process one AGGREGATING node
+            aggregating_node_to_process = next((n for n in all_nodes if n.status == TaskStatus.AGGREGATING), None)
 
-            if node_to_process:
-                logger.info(f"  Processing Node: {node_to_process.task_id} (Status: {node_to_process.status.name}, Layer: {node_to_process.layer})")
-                
-                # NodeProcessor will handle changing status to RUNNING, and then to its outcome.
-                await self.node_processor.process_node(node_to_process, self.task_graph, self.knowledge_store)
-                # After processing, node status and KS record are updated by NodeProcessor
-                
+            if aggregating_node_to_process:
+                logger.info(f"  Processing AGGREGATING Node: {aggregating_node_to_process.task_id} (Status: {aggregating_node_to_process.status.name}, Layer: {aggregating_node_to_process.layer})")
+                await self.node_processor.process_node(aggregating_node_to_process, self.task_graph, self.knowledge_store)
                 processed_in_step = True
-                # After a node is processed, its state (and potentially others) might change,
+                # After an aggregating node is processed, its state and potentially others might change,
                 # so we continue to the next step to re-evaluate.
-                # The node_processor should update the node's status (e.g. to RUNNING, then to PLAN_DONE/DONE/FAILED)
-                # and log to knowledge_store.
-                continue 
+                continue
+
+            # If no AGGREGATING node was processed, try all READY nodes in parallel
+            ready_nodes = [n for n in all_nodes if n.status == TaskStatus.READY]
+
+            if ready_nodes:
+                logger.info(f"  Found {len(ready_nodes)} READY nodes to process in parallel.")
+                tasks_to_run = []
+                for ready_node in ready_nodes:
+                    logger.info(f"    Queueing READY Node for parallel processing: {ready_node.task_id} (Status: {ready_node.status.name}, Layer: {ready_node.layer})")
+                    # Each call to process_node is an awaitable coroutine
+                    tasks_to_run.append(
+                        self.node_processor.process_node(ready_node, self.task_graph, self.knowledge_store)
+                    )
+
+                if tasks_to_run:
+                    # Run all queued ready node processing tasks concurrently
+                    # NodeProcessor.process_node is expected to handle its own errors and update node status accordingly (e.g., to FAILED).
+                    # If process_node itself raises an unhandled exception, asyncio.gather will propagate it.
+                    await asyncio.gather(*tasks_to_run)
+                    processed_in_step = True
+                    # After parallel processing, node statuses would have changed.
+                    # Continue to the next step to re-evaluate the graph from the top.
+                    continue
 
             # --- 3. Update PLAN_DONE -> AGGREGATING transitions ---
             logger.debug(f"ExecutionEngine (Step {step + 1}): Entering PLAN_DONE check. processed_in_step = {processed_in_step}")
