@@ -49,7 +49,7 @@ class LlmApiAdapter(BaseAdapter):
             agent_name: A descriptive name for logging.
         """
         if not isinstance(agno_agent_instance, AgnoAgent): # Check against AsyncAgnoAgent if that's the expected type
-            raise ValueError("llm_agent_instance must be an instance of agno.agent.Agent or its async equivalent")
+            raise ValueError("llm_agent_instance must be an instance of agno.agent.Agent")
         self.agno_agent = agno_agent_instance
         self.agent_name = agent_name if agent_name else (getattr(agno_agent_instance, 'name', None) or "UnnamedAgnoAgent")
 
@@ -130,7 +130,7 @@ class LlmApiAdapter(BaseAdapter):
             prompt_parts.append("\nBased on the 'Current Task Goal' and other provided information, generate a plan to achieve it.")
             
             formatted_user_message_string = "\n\n".join(prompt_parts)
-            logger.debug(f"    Adapter '{self.agent_name}': FINAL PROMPT being sent to Agno Agent:\n{formatted_user_message_string}")
+            # logger.debug(f"    Adapter '{self.agent_name}': FINAL PROMPT being sent to Agno Agent:\n{formatted_user_message_string}") # Keep logging minimal here
             return formatted_user_message_string
 
         elif isinstance(agent_task_input, AgentTaskInput):
@@ -146,7 +146,7 @@ class LlmApiAdapter(BaseAdapter):
                 context_str=text_context_str,
                 overall_project_goal=overall_goal_for_template
             )
-            logger.debug(f"    Adapter '{self.agent_name}': FINAL PROMPT being sent to Agno Agent:\n{main_user_message_content}")
+            # logger.debug(f"    Adapter '{self.agent_name}': FINAL PROMPT being sent to Agno Agent:\n{main_user_message_content}") # Keep logging minimal here
             return main_user_message_content
         
         else:
@@ -160,36 +160,42 @@ class LlmApiAdapter(BaseAdapter):
 
         user_message_string = self._prepare_agno_run_arguments(agent_task_input)
         
-        # Log the detailed message string at debug level
-        agno_agent_name = getattr(self.agno_agent, 'name', 'N/A') or 'N/A' # Handle if name is None
-        logger.debug(f"    DEBUG: User message string to Agno Agent '{agno_agent_name}':\n{user_message_string}")
+        agno_agent_name = getattr(self.agno_agent, 'name', 'N/A') or 'N/A'
+        # Limiting verbose logging unless necessary for debugging this specific part
+        # logger.debug(f"    DEBUG: User message string to Agno Agent '{agno_agent_name}':\n{user_message_string}")
 
         try:
-            # Assuming agno_agent has an async method, commonly named arun()
-            # If the agno library uses a different name, this needs to be adjusted.
             if not hasattr(self.agno_agent, 'arun'):
-                logger.error(f"AgnoAgent instance for '{self.agent_name}' does not have an 'arun' method. Async processing will fail.")
+                logger.error(f"AgnoAgent instance for '{self.agent_name}' does not have an 'arun' method.")
                 raise NotImplementedError(f"AgnoAgent for '{self.agent_name}' needs an async 'arun' method.")
 
-            # Step 1: Await arun() to get the RunResponse object
+            # Based on your test: await arun() gives RunResponse object.
+            # .content of this object is the direct data, not a coroutine.
             run_response_obj = await self.agno_agent.arun(user_message_string) 
             
             actual_content_data = None
             if hasattr(run_response_obj, 'content'):
-                # Step 2: If RunResponse.content is a coroutine (e.g., an async property), await it.
-                if asyncio.iscoroutine(run_response_obj.content):
-                    logger.debug(f"    Adapter '{self.agent_name}': run_response_obj.content is a coroutine. Awaiting it.")
-                    actual_content_data = await run_response_obj.content
+                # Crucially, we now assume run_response_obj.content is NOT a coroutine.
+                # Your direct test `print(final_output.content)` supports this.
+                content_value = run_response_obj.content
+                
+                if asyncio.iscoroutine(content_value):
+                    # This case should ideally not happen if your test is representative.
+                    # Logging it explicitly if it does.
+                    logger.error(f"    Adapter Critical Problem: run_response_obj.content for agent '{self.agent_name}' IS UNEXPECTEDLY a coroutine: {type(content_value)}. Awaiting it, but this contradicts direct test behavior.")
+                    actual_content_data = await content_value # Try to await if it's a coroutine
                 else:
-                    # If RunResponse.content is a direct value after arun() has been awaited.
-                    actual_content_data = run_response_obj.content
+                    actual_content_data = content_value # It's a direct value
             else:
                 logger.warning(f"    Adapter Warning: Agno agent '{self.agent_name}' RunResponse object has no 'content' attribute for node {node.task_id}.")
             
             if actual_content_data is None:
                  logger.warning(f"    Adapter Warning: Agno agent '{self.agent_name}' resolved content is None for node {node.task_id}.")
             
+            # Log the type of what's being returned from LlmApiAdapter.process
+            logger.debug(f"    Adapter '{self.agent_name}': Returning content of type {type(actual_content_data)} from process method.")
             return actual_content_data
+            
         except Exception as e:
             logger.exception(f"  Adapter Error: Exception during Agno agent '{self.agent_name}' execution for node {node.task_id}")
             raise
