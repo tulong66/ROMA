@@ -13,7 +13,7 @@ from agno.agent import Agent as AgnoAgent # Renaming to avoid conflict if we def
 class PlannerAdapter(LlmApiAdapter):
     """Adapter specifically for Agno agents that perform planning and return PlanOutput."""
 
-    def process(self, node: TaskNode, agent_task_input: AgentTaskInput) -> PlanOutput:
+    async def process(self, node: TaskNode, agent_task_input: AgentTaskInput) -> PlanOutput:
         """
         Calls the underlying Agno planning agent and expects PlanOutput.
 
@@ -25,7 +25,7 @@ class PlannerAdapter(LlmApiAdapter):
             ValueError: If the Agno agent returns None content.
         """
         # The base class process method handles calling the agent and getting response.content
-        result_content = super().process(node, agent_task_input)
+        result_content = await super().process(node, agent_task_input)
 
         if result_content is None:
              logger.error(f"  PlannerAdapter Error: Agent '{self.agent_name}' returned None content for node {node.task_id}. Cannot proceed with planning.")
@@ -47,7 +47,7 @@ class PlannerAdapter(LlmApiAdapter):
 class ExecutorAdapter(LlmApiAdapter):
     """Adapter for Agno agents performing execution tasks (Write, Think, Search, etc.)."""
     
-    def process(self, node: TaskNode, agent_task_input: AgentTaskInput) -> Any:
+    async def process(self, node: TaskNode, agent_task_input: AgentTaskInput) -> Any:
         """
         Calls the underlying Agno execution agent. The result type depends on the agent.
         It could be a string, a specific Pydantic model (if response_model was set), etc.
@@ -56,7 +56,7 @@ class ExecutorAdapter(LlmApiAdapter):
             Any: The result content from the agent's execution.
         """
         # Base class process handles the call and returns response.content
-        result_content = super().process(node, agent_task_input)
+        result_content = await super().process(node, agent_task_input)
         
         # No specific type check here, as executors can have varied outputs.
         # The NodeProcessor or subsequent tasks will handle the specific result type.
@@ -71,7 +71,7 @@ class ExecutorAdapter(LlmApiAdapter):
 class AtomizerAdapter(LlmApiAdapter):
     """Adapter specifically for Agno agents performing atomicity checks."""
 
-    def process(self, node: TaskNode, agent_task_input: AgentTaskInput) -> AtomizerOutput:
+    async def process(self, node: TaskNode, agent_task_input: AgentTaskInput) -> AtomizerOutput:
         """
         Calls the underlying Agno atomizing agent and expects AtomizerOutput.
 
@@ -82,7 +82,7 @@ class AtomizerAdapter(LlmApiAdapter):
             TypeError: If the Agno agent does not return AtomizerOutput.
             ValueError: If the Agno agent returns None content.
         """
-        result_content = super().process(node, agent_task_input)
+        result_content = await super().process(node, agent_task_input)
 
         if result_content is None:
              logger.error(f"  AtomizerAdapter Error: Agent '{self.agent_name}' returned None content for node {node.task_id}. Cannot determine atomicity.")
@@ -139,7 +139,7 @@ class AggregatorAdapter(LlmApiAdapter):
         
         return "\\n\\n".join(context_parts)
 
-    def process(self, node: TaskNode, agent_task_input: AgentTaskInput) -> str:
+    async def process(self, node: TaskNode, agent_task_input: AgentTaskInput) -> str:
         """
         Calls the underlying Agno aggregation agent, typically expecting a string result.
 
@@ -147,7 +147,7 @@ class AggregatorAdapter(LlmApiAdapter):
             str: The aggregated text content.
         """
         # Base class process handles the call and gets response.content
-        result_content = super().process(node, agent_task_input)
+        result_content = await super().process(node, agent_task_input)
 
         # Aggregation usually results in text, but allow other types if needed.
         # Convert to string for consistency if it's not already.
