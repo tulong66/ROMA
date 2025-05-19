@@ -10,6 +10,7 @@ class SubTask(BaseModel):
     task_type: str = Field(..., description="Type of task (e.g., 'WRITE', 'THINK', 'SEARCH').")
     node_type: str = Field(..., description="Node type ('EXECUTE' for atomic, 'PLAN' for complex).")
     # You could add estimated_effort, dependencies_within_plan etc. later
+    depends_on_indices: Optional[List[int]] = Field(default_factory=list, description="List of 0-based indices of other sub-tasks in *this current plan* that this sub-task depends on. If empty, it only depends on the parent plan completing.")
 
 class PlanOutput(BaseModel):
     """Output schema for a Planner agent, detailing the sub-tasks."""

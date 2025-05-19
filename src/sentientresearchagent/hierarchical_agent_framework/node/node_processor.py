@@ -35,31 +35,27 @@ class NodeProcessor:
     def _create_sub_nodes_from_plan(self, parent_node: TaskNode, plan_output: PlanOutput, task_graph: TaskGraph, knowledge_store: KnowledgeStore):
         """
         Creates TaskNode instances from a plan list, adds them to the graph,
-        sets up sequential dependencies, and updates the parent_node.
+        sets up dependencies based on `depends_on_indices`, and updates the parent_node.
         """
         if not parent_node.sub_graph_id:
-            # This should have been created before calling this function if it's a new plan
             parent_node.sub_graph_id = f"subgraph_{parent_node.task_id}"
             task_graph.add_graph(parent_node.sub_graph_id)
             logger.info(f"    NodeProcessor: Created new subgraph '{parent_node.sub_graph_id}' for parent '{parent_node.task_id}'")
         
         sub_graph_id = parent_node.sub_graph_id
-        parent_node.planned_sub_task_ids.clear() # Clear any old sub-tasks if replanning
+        parent_node.planned_sub_task_ids.clear()
 
         created_sub_nodes: list[TaskNode] = []
 
         for i, sub_task_def in enumerate(plan_output.sub_tasks):
-            sub_node_id = f"{parent_node.task_id}.{i+1}" # Simple sequential ID
+            sub_node_id = f"{parent_node.task_id}.{i+1}" # Simple sequential ID based on order in plan
 
             try:
-                # Validate and convert string types from PlanOutput to Enums for TaskNode
                 task_type_enum = TaskType[sub_task_def.task_type.upper()]
                 node_type_enum = NodeType[sub_task_def.node_type.upper()]
             except KeyError as e:
                 error_msg = f"Invalid task_type or node_type string ('{sub_task_def.task_type}'/'{sub_task_def.node_type}') in plan for parent {parent_node.task_id}: {e}"
                 logger.error(f"    NodeProcessor Error: {error_msg}")
-                # Optionally, fail the parent node or skip this sub_task
-                # For now, let's skip this potentially invalid sub_task
                 continue
 
             sub_node = TaskNode(
@@ -73,17 +69,25 @@ class NodeProcessor:
             )
             created_sub_nodes.append(sub_node)
             task_graph.add_node_to_graph(sub_graph_id, sub_node)
-            knowledge_store.add_or_update_record_from_node(sub_node) # Log new sub_node
+            knowledge_store.add_or_update_record_from_node(sub_node)
             parent_node.planned_sub_task_ids.append(sub_node.task_id)
             logger.success(f"      Added sub-node: {sub_node} to graph {sub_graph_id}")
 
-        # Add sequential dependencies for now
-        for i in range(len(created_sub_nodes) - 1):
-            u_node = created_sub_nodes[i]
-            v_node = created_sub_nodes[i+1]
-            task_graph.add_edge(sub_graph_id, u_node.task_id, v_node.task_id)
-        
-        logger.info(f"    NodeProcessor: Created {len(created_sub_nodes)} sub-nodes for parent {parent_node.task_id}.")
+        # Add dependencies based on the 'depends_on_indices' field
+        for i, sub_node in enumerate(created_sub_nodes):
+            sub_task_def = plan_output.sub_tasks[i] # Get the corresponding sub_task_def
+            if hasattr(sub_task_def, 'depends_on_indices') and sub_task_def.depends_on_indices:
+                for dep_index in sub_task_def.depends_on_indices:
+                    if 0 <= dep_index < len(created_sub_nodes) and dep_index != i:
+                        dependency_node = created_sub_nodes[dep_index]
+                        task_graph.add_edge(sub_graph_id, dependency_node.task_id, sub_node.task_id)
+                        logger.info(f"      Added dependency edge: {dependency_node.task_id} -> {sub_node.task_id} in graph {sub_graph_id}")
+                    else:
+                        logger.warning(f"    NodeProcessor: Invalid dependency index {dep_index} for sub-task {sub_node.task_id} (index {i}). Skipping this dependency.")
+            # If depends_on_indices is empty or not present, the node has no explicit dependencies on its siblings in this plan.
+            # It will become READY once its parent (the PLAN node) is PLAN_DONE.
+
+        logger.info(f"    NodeProcessor: Created {len(created_sub_nodes)} sub-nodes for parent {parent_node.task_id} with specified dependencies.")
 
     async def _handle_ready_node(self, node: TaskNode, task_graph: TaskGraph, knowledge_store: KnowledgeStore):
         logger.info(f"  NodeProcessor: Handling READY node {node.task_id} (Original Type: {node.node_type}, Goal: '{node.goal[:30]}...')")
