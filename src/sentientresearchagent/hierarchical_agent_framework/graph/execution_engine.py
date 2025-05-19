@@ -123,25 +123,56 @@ class ExecutionEngine:
                     # Continue to the next step to re-evaluate the graph from the top.
                     continue
 
-            # --- 3. Update PLAN_DONE -> AGGREGATING transitions ---
-            logger.debug(f"ExecutionEngine (Step {step + 1}): Entering PLAN_DONE check. processed_in_step = {processed_in_step}")
-            root_node_in_all_nodes = next((n for n in all_nodes if n.task_id == "root"), None)
-            if root_node_in_all_nodes:
-                logger.debug(f"ExecutionEngine (Step {step + 1}): Root node status in all_nodes for PLAN_DONE check: {root_node_in_all_nodes.status}")
-            else:
-                logger.debug(f"ExecutionEngine (Step {step + 1}): Root node NOT FOUND in all_nodes for PLAN_DONE check.")
+            # --- 3. Update PLAN_DONE -> AGGREGATING / NEEDS_REPLAN transitions ---
+            logger.debug(f"ExecutionEngine (Step {step + 1}): Entering PLAN_DONE/NEEDS_REPLAN check. processed_in_step = {processed_in_step}")
+            # Re-fetch all_nodes as their statuses might have changed by parallel processing
+            all_nodes = self.task_graph.get_all_nodes()
             
             for node in all_nodes:
                 if node.status == TaskStatus.PLAN_DONE: 
-                    logger.debug(f"ExecutionEngine: Checking can_aggregate for PLAN_DONE node {node.task_id} (Type: {node.node_type})")
+                    logger.debug(f"ExecutionEngine: Checking PLAN_DONE node {node.task_id} (Type: {node.node_type}) for aggregation or replan.")
                     if self.state_manager.can_aggregate(node):
-                        node.update_status(TaskStatus.AGGREGATING)
-                        self.knowledge_store.add_or_update_record_from_node(node) # Update KS
-                        processed_in_step = True
-                        logger.info(f"  Transition: Node {node.task_id} PLAN_DONE -> AGGREGATING")
+                        # Check if any children failed
+                        children_failed = False
+                        if node.sub_graph_id:
+                            sub_graph_nodes = self.task_graph.get_nodes_in_graph(node.sub_graph_id)
+                            if any(sn.status == TaskStatus.FAILED for sn in sub_graph_nodes):
+                                children_failed = True
+                        
+                        if children_failed:
+                            node.update_status(TaskStatus.NEEDS_REPLAN)
+                            self.knowledge_store.add_or_update_record_from_node(node)
+                            processed_in_step = True
+                            logger.info(f"  Transition: Node {node.task_id} PLAN_DONE -> NEEDS_REPLAN (due to failed children)")
+                        else:
+                            node.update_status(TaskStatus.AGGREGATING)
+                            self.knowledge_store.add_or_update_record_from_node(node)
+                            processed_in_step = True
+                            logger.info(f"  Transition: Node {node.task_id} PLAN_DONE -> AGGREGATING")
+            
+            # --- 4. Process NEEDS_REPLAN nodes ---
+            # This should come after PLAN_DONE checks, but before READY node processing
+            # to allow a re-plan to potentially generate new READY tasks in the same cycle.
+            # However, for simplicity and to ensure state changes from re-planning are picked up fresh,
+            # let's process them and 'continue' if any are processed, similar to other state transitions.
+            
+            needs_replan_nodes = [n for n in all_nodes if n.status == TaskStatus.NEEDS_REPLAN]
+            if needs_replan_nodes:
+                # For now, process one NEEDS_REPLAN node per cycle to keep logic simpler.
+                # Parallel re-planning could be complex if multiple parent nodes need re-planning simultaneously.
+                node_to_replan = needs_replan_nodes[0] 
+                logger.info(f"  Processing NEEDS_REPLAN Node: {node_to_replan.task_id}")
+                
+                # This new method will handle the re-planning logic
+                await self.node_processor._handle_needs_replan_node(node_to_replan, self.task_graph, self.knowledge_store)
+                # _handle_needs_replan_node should update the node's status (e.g., back to PLAN_DONE or FAILED)
+                
+                processed_in_step = True
+                # After a re-plan attempt, continue to the next step to re-evaluate the graph state.
+                continue
 
             # --- Check for completion or deadlock ---
-            active_statuses = {TaskStatus.PENDING, TaskStatus.READY, TaskStatus.RUNNING, TaskStatus.PLAN_DONE, TaskStatus.AGGREGATING}
+            active_statuses = {TaskStatus.PENDING, TaskStatus.READY, TaskStatus.RUNNING, TaskStatus.PLAN_DONE, TaskStatus.AGGREGATING, TaskStatus.NEEDS_REPLAN}
             # Re-fetch all_nodes as their statuses might have changed
             all_nodes = self.task_graph.get_all_nodes()
             if not any(n.status in active_statuses for n in all_nodes):

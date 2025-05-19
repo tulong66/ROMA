@@ -263,39 +263,72 @@ def resolve_input_for_planner_agent(
     # Optional parameters that the NodeProcessor will need to supply:
     planning_depth: int = 0, 
     replan_details: Optional[ReplanRequestDetails] = None,
-    global_constraints: Optional[List[str]] = None
+    global_constraints: Optional[List[str]] = None,
+    # NEW: For re-planning, pass outputs from successful children of the previous failed plan
+    previous_attempt_successful_outputs: Optional[List[ExecutionHistoryItem]] = None
 ) -> PlannerInput:
     """
-    Constructs the detailed PlannerInput object for a Planner Agent,
-    gathering all necessary hierarchical and historical context.
+    Gathers and structures relevant context for a PLANNER agent.
+    This is more specialized than the generic resolve_context_for_agent.
     """
     logger.info(f"ContextBuilder: Resolving INPUT for PLANNER for task '{current_task_id}'")
 
     current_task_record = knowledge_store.get_record(current_task_id)
     if not current_task_record:
-        # This should ideally not happen if NodeProcessor is calling this correctly
-        logger.error(f"ContextBuilder Error: TaskRecord for current planning task {current_task_id} not found!")
-        # Fallback or raise error - for now, returning a minimal input
+        # This should ideally not happen if NodeProcessor calls this correctly
+        logger.error(f"ContextBuilder CRITICAL: TaskRecord for current planning task {current_task_id} not found.")
+        # Return a minimal PlannerInput to avoid crashing, but this is an error state
         return PlannerInput(
-            current_task_goal=f"Error: Task {current_task_id} not found",
-            overall_objective=overall_objective
+            current_task_goal="Error: Original task goal not found",
+            overall_objective=overall_objective,
+            parent_task_goal=None,
+            planning_depth=planning_depth,
+            execution_history_and_context=ExecutionHistoryAndContext(), # Empty context
+            replan_request_details=replan_details,
+            global_constraints_or_preferences=global_constraints or []
         )
 
-    current_task_goal = current_task_record.goal # The goal of the task needing decomposition
-
+    current_task_goal = current_task_record.goal
     parent_task_goal: Optional[str] = None
-    if current_task_record.parent_task_id:
-        parent_record = knowledge_store.get_record(current_task_record.parent_task_id)
-        if parent_record:
-            parent_task_goal = parent_record.goal
+    relevant_ancestor_outputs: List[ExecutionHistoryItem] = []
+    prior_sibling_task_outputs_for_context: List[ExecutionHistoryItem] = []
 
-    # --- Populate ExecutionHistoryAndContext ---
-    history_and_context = ExecutionHistoryAndContext()
-    processed_context_source_ids = set() # To avoid duplicate entries from different rules
 
-    # 1. Prior Sibling Task Outputs
-    #    (Leveraging logic similar to Rule 3 of resolve_context_for_agent)
-    if current_task_record.parent_task_id:
+    # 1. Get Parent Task Goal and Relevant Ancestor Outputs
+    path_to_root = get_task_record_path_to_root(current_task_id, knowledge_store)
+    if len(path_to_root) > 1:
+        parent_task_record = path_to_root[-2] # The one before current_task_id in the path
+        parent_task_goal = parent_task_record.goal
+        
+        # For ancestor outputs, we can take the parent's output summary if available and DONE/PLAN_DONE
+        if parent_task_record.status in [TaskStatus.DONE.value, TaskStatus.PLAN_DONE.value]:
+            parent_summary = parent_task_record.output_summary
+            log_reason = "used existing output_summary"
+            if not parent_summary or len(parent_summary.split()) > TARGET_WORD_COUNT_FOR_CTX_SUMMARIES * 1.2:
+                if parent_task_record.output_content is not None:
+                    parent_summary = get_context_summary(parent_task_record.output_content, target_word_count=TARGET_WORD_COUNT_FOR_CTX_SUMMARIES)
+                    log_reason = f"summarized output_content (original content len: {len(str(parent_task_record.output_content))}, summary len: {len(parent_summary)})"
+                elif parent_summary: # Existing summary too long
+                     parent_summary = parent_summary[:(TARGET_WORD_COUNT_FOR_CTX_SUMMARIES * 7)]
+                     log_reason = f"truncated long existing output_summary (summary len: {len(parent_summary)})"
+
+            if parent_summary and parent_summary.strip():
+                relevant_ancestor_outputs.append(ExecutionHistoryItem(
+                    task_goal=parent_task_record.goal,
+                    outcome_summary=parent_summary,
+                    full_output_reference_id=parent_task_record.task_id
+                ))
+                logger.info(f"  PLANNER_INPUT: Added PARENT context from: {parent_task_record.task_id} (Status: {parent_task_record.status}). How: {log_reason}")
+            else:
+                logger.warning(f"  PLANNER_INPUT (Parent {parent_task_record.task_id}): Summarization resulted in empty content. Not added to relevant_ancestor_outputs.")
+
+
+    # 2. Get Prior Sibling Task Outputs
+    # If it's a re-plan and specific successful outputs from the previous attempt are provided, use them.
+    if replan_details and previous_attempt_successful_outputs is not None:
+        prior_sibling_task_outputs_for_context = previous_attempt_successful_outputs
+        logger.info(f"  PLANNER_INPUT (Re-plan): Using {len(previous_attempt_successful_outputs)} successful outputs from previous attempt as prior_sibling_task_outputs.")
+    elif current_task_record.parent_task_id: # Normal planning, not a re-plan with explicit previous outputs
         parent_of_current_task_record = knowledge_store.get_record(current_task_record.parent_task_id)
         if parent_of_current_task_record and parent_of_current_task_record.child_task_ids_generated:
             try:
@@ -304,142 +337,53 @@ def resolve_input_for_planner_agent(
                 
                 for i in range(current_task_index_in_plan):
                     prereq_sibling_id = sibling_ids_in_plan[i]
-                    if prereq_sibling_id in processed_context_source_ids:
-                        continue
-                    
                     prereq_record = knowledge_store.get_record(prereq_sibling_id)
-                    if prereq_record and prereq_record.status == TaskStatus.DONE.value and \
-                       (prereq_record.output_content is not None or prereq_record.output_summary is not None):
-                        summary = ""
-                        summary_source_log = "" # For logging how the summary was derived
-                        if prereq_record.output_summary: # Prefer pre-computed summary
-                            summary = prereq_record.output_summary
-                            summary_source_log = f"used existing output_summary (len: {len(summary)})"
-                            if len(summary.split()) > TARGET_WORD_COUNT_FOR_CTX_SUMMARIES * 1.2:
-                                logger.debug(f"Re-summarizing SIBLING {prereq_record.task_id}'s existing output_summary as it's too long.")
-                                summary = get_context_summary(summary, target_word_count=TARGET_WORD_COUNT_FOR_CTX_SUMMARIES)
-                                summary_source_log += f" -> re-summarized (len: {len(summary)})"
-                        elif prereq_record.output_content is not None:
-                            summary = get_context_summary(prereq_record.output_content, target_word_count=TARGET_WORD_COUNT_FOR_CTX_SUMMARIES)
-                            summary_source_log = f"summarized output_content (original content len: {len(str(prereq_record.output_content))}, summary len: {len(summary)})"
-                        else: # Should not happen due to outer if, but defensive
-                            continue
+                    if prereq_record and prereq_record.status == TaskStatus.DONE.value:
+                        summary = prereq_record.output_summary
+                        log_reason_sib = "used existing output_summary"
+                        if not summary or len(summary.split()) > TARGET_WORD_COUNT_FOR_CTX_SUMMARIES * 1.2:
+                            if prereq_record.output_content is not None:
+                                summary = get_context_summary(prereq_record.output_content, target_word_count=TARGET_WORD_COUNT_FOR_CTX_SUMMARIES)
+                                log_reason_sib = f"summarized output_content (original content len: {len(str(prereq_record.output_content))}, summary len: {len(summary)})"
+                            elif summary: # Existing summary too long
+                                summary = summary[:(TARGET_WORD_COUNT_FOR_CTX_SUMMARIES * 7)]
+                                log_reason_sib = f"truncated long existing output_summary (summary len: {len(summary)})"
                         
-                        if summary: # Ensure summary is not empty
-                            logger.debug(f"  PLANNER_INPUT (Sibling {prereq_record.task_id}): Summary derived: {summary_source_log}. Final summary for context (first 50 chars): '{summary[:50]}...'")
-                            history_and_context.prior_sibling_task_outputs.append(
-                                ExecutionHistoryItem(
-                                    task_goal=prereq_record.goal,
-                                    outcome_summary=summary, 
-                                    full_output_reference_id=prereq_record.task_id 
-                                )
-                            )
-                            processed_context_source_ids.add(prereq_record.task_id)
-                            logger.info(f"  PLANNER_INPUT: Added SIBLING context from: {prereq_record.task_id}")
-                        else:
-                            logger.warning(f"  PLANNER_INPUT (Sibling {prereq_record.task_id}): Summary was empty after processing. Not added.")
-            except ValueError:
-                logger.warning(f"ContextBuilder Info (Planner): Task {current_task_id} not in parent {parent_of_current_task_record.task_id}'s children list.")
-
-    # 2. Relevant Ancestor Outputs
-    path_to_root = get_task_record_path_to_root(current_task_id, knowledge_store)
-
-    # Direct Parent
-    if current_task_record.parent_task_id and current_task_record.parent_task_id not in processed_context_source_ids:
-        parent_record = knowledge_store.get_record(current_task_record.parent_task_id)
-        if parent_record and \
-           (parent_record.status == TaskStatus.DONE.value or parent_record.status == TaskStatus.PLAN_DONE.value) and \
-           (parent_record.output_content is not None or parent_record.output_summary is not None):
-            summary = ""
-            summary_source_log = ""
-            if parent_record.output_summary: 
-                summary = parent_record.output_summary
-                summary_source_log = f"used existing output_summary (len: {len(summary)})"
-                if len(summary.split()) > TARGET_WORD_COUNT_FOR_CTX_SUMMARIES * 1.2:
-                    logger.debug(f"Re-summarizing PARENT {parent_record.task_id}'s existing output_summary as it's too long.")
-                    if parent_record.output_content is not None:
-                        summary = get_context_summary(parent_record.output_content, target_word_count=TARGET_WORD_COUNT_FOR_CTX_SUMMARIES)
-                        summary_source_log += f" -> re-summarized from output_content (len: {len(summary)})"
-                    else:
-                        summary = summary[:(TARGET_WORD_COUNT_FOR_CTX_SUMMARIES * 7)]
-                        summary_source_log += f" -> truncated (len: {len(summary)})"
-
-            elif parent_record.output_content is not None:
-                summary = get_context_summary(parent_record.output_content, target_word_count=TARGET_WORD_COUNT_FOR_CTX_SUMMARIES)
-                summary_source_log = f"summarized output_content (original content len: {len(str(parent_record.output_content))}, summary len: {len(summary)})"
-            
-            if summary and summary.strip():
-                logger.debug(f"  PLANNER_INPUT (Parent {parent_record.task_id}): Summary derived: {summary_source_log}. Final summary for context (first 50 chars): '{summary[:50]}...'")
-                history_and_context.relevant_ancestor_outputs.append(
-                    ExecutionHistoryItem(
-                        task_goal=parent_record.goal,
-                        outcome_summary=summary,
-                        full_output_reference_id=parent_record.task_id
-                    )
-                )
-                processed_context_source_ids.add(parent_record.task_id)
-                logger.info(f"  PLANNER_INPUT: Added PARENT context from: {parent_record.task_id} (Status: {parent_record.status})")
-            else:
-                logger.warning(f"  PLANNER_INPUT (Parent {parent_record.task_id}): Summarization resulted in empty content. Not added.")
-
-    # Broader context from other completed branches of a grandparent (if grandparent was a PLAN node)
-    if len(path_to_root) > 2: 
-        grandparent_record = path_to_root[-3] 
-        if grandparent_record.node_type == 'PLAN': 
-            logger.debug(f"  PLANNER_INPUT: Seeking broad context from children of GRANDPARENT '{grandparent_record.task_id}'")
-            for uncle_branch_id in grandparent_record.child_task_ids_generated:
-                if uncle_branch_id == current_task_record.parent_task_id or uncle_branch_id in processed_context_source_ids:
-                    continue
-                
-                uncle_branch_record = knowledge_store.get_record(uncle_branch_id)
-                if uncle_branch_record and uncle_branch_record.status == TaskStatus.DONE.value and \
-                   (uncle_branch_record.output_content is not None or uncle_branch_record.output_summary is not None):
-                    summary = ""
-                    summary_source_log = ""
-                    if uncle_branch_record.output_summary:
-                        summary = uncle_branch_record.output_summary
-                        summary_source_log = f"used existing output_summary (len: {len(summary)})"
-                        if len(summary.split()) > TARGET_WORD_COUNT_FOR_CTX_SUMMARIES * 1.2:
-                            logger.debug(f"Re-summarizing UNCLE BRANCH {uncle_branch_record.task_id}'s existing output_summary as it's too long.")
-                            summary = get_context_summary(summary, target_word_count=TARGET_WORD_COUNT_FOR_CTX_SUMMARIES)
-                            summary_source_log += f" -> re-summarized (len: {len(summary)})"
-                    elif uncle_branch_record.output_content is not None:
-                        summary = get_context_summary(uncle_branch_record.output_content, target_word_count=TARGET_WORD_COUNT_FOR_CTX_SUMMARIES)
-                        summary_source_log = f"summarized output_content (original content len: {len(str(uncle_branch_record.output_content))}, summary len: {len(summary)})"
-
-                    if summary: 
-                        logger.debug(f"  PLANNER_INPUT (Uncle Branch {uncle_branch_record.task_id}): Summary derived: {summary_source_log}. Final summary for context (first 50 chars): '{summary[:50]}...'")
-                        history_and_context.relevant_ancestor_outputs.append(
-                            ExecutionHistoryItem(
-                                task_goal=uncle_branch_record.goal,
+                        if summary and summary.strip():
+                            prior_sibling_task_outputs_for_context.append(ExecutionHistoryItem(
+                                task_goal=prereq_record.goal,
                                 outcome_summary=summary,
-                                full_output_reference_id=uncle_branch_record.task_id
-                            )
-                        )
-                        processed_context_source_ids.add(uncle_branch_id)
-                        logger.info(f"  PLANNER_INPUT: Added UNCLE BRANCH context from: {uncle_branch_record.task_id}")
-                    else:
-                        logger.warning(f"  PLANNER_INPUT (Uncle Branch {uncle_branch_record.task_id}): Summary was empty after processing. Not added.")
-    
-    # 3. Global Knowledge Base Summary
-    gkb_summary = None
-    if hasattr(knowledge_store, 'store_description'):
-        # Only access if attribute exists
-        store_desc_val = getattr(knowledge_store, 'store_description')
-        if store_desc_val: # Check if it's not None or empty
-            gkb_summary = store_desc_val
-    history_and_context.global_knowledge_base_summary = gkb_summary
+                                full_output_reference_id=prereq_record.task_id
+                            ))
+                            logger.info(f"  PLANNER_INPUT: Added SIBLING context from: {prereq_record.task_id}. How: {log_reason_sib}")
+                        else:
+                            logger.warning(f"  PLANNER_INPUT (Sibling {prereq_record.task_id}): Summarization resulted in empty content. Not added to prior_sibling_task_outputs_for_context.")
+            except ValueError:
+                 pass # Task not in parent's list, or other issue, means no prior siblings by this logic.
 
+    # 3. Global Knowledge Base Summary (Simplified for now)
+    # This could be a summary of all DONE root-level tasks or other heuristics
+    global_knowledge_summary: Optional[str] = None # Placeholder
 
-    planner_input_data = PlannerInput(
+    exec_history_context = ExecutionHistoryAndContext(
+        prior_sibling_task_outputs=prior_sibling_task_outputs_for_context,
+        relevant_ancestor_outputs=relevant_ancestor_outputs,
+        global_knowledge_base_summary=global_knowledge_summary
+    )
+
+    planner_input = PlannerInput(
         current_task_goal=current_task_goal,
         overall_objective=overall_objective,
         parent_task_goal=parent_task_goal,
         planning_depth=planning_depth,
-        execution_history_and_context=history_and_context,
+        execution_history_and_context=exec_history_context,
         replan_request_details=replan_details,
-        global_constraints_or_preferences=global_constraints if global_constraints is not None else []
+        global_constraints_or_preferences=global_constraints or []
     )
+    
+    logger.success(f"ContextBuilder: Successfully resolved PlannerInput for task '{current_task_id}'. "
+                   f"Replan: {'Yes' if replan_details else 'No'}. "
+                   f"Prior Siblings in context: {len(prior_sibling_task_outputs_for_context)}. "
+                   f"Ancestor Context Items: {len(relevant_ancestor_outputs)}.")
 
-    # logger.debug(f"ContextBuilder: Constructed PlannerInput: {planner_input_data.model_dump_json(indent=2)}")
-    return planner_input_data
+    return planner_input

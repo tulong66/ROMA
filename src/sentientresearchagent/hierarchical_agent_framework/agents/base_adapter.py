@@ -156,44 +156,62 @@ class LlmApiAdapter(BaseAdapter):
     async def process(self, node: TaskNode, agent_task_input: Union[AgentTaskInput, PlannerInput]) -> Any: # Changed to async def
         """
         Processes a TaskNode using the configured AgnoAgent.
+        Includes a simple retry mechanism for the Agno agent call.
         """
         logger.info(f"  Adapter '{self.agent_name}': Processing node {node.task_id} (Goal: '{node.goal[:50]}...')")
 
         user_message_string = self._prepare_agno_run_arguments(agent_task_input)
         
         agno_agent_name = getattr(self.agno_agent, 'name', 'N/A') or 'N/A'
-        logger.debug(f"    DEBUG: User message string to Agno Agent '{agno_agent_name}':\n{user_message_string[:200]}...") # Log snippet
+        logger.debug(f"    DEBUG: User message string to Agno Agent '{agno_agent_name}':\\n{user_message_string[:200]}...") # Log snippet
 
-        try:
-            if not hasattr(self.agno_agent, 'arun'):
-                logger.error(f"AgnoAgent instance for '{self.agent_name}' does not have an 'arun' method.")
-                raise NotImplementedError(f"AgnoAgent for '{self.agent_name}' needs an async 'arun' method.")
+        max_retries = 3 # Set to 3 for 1 initial attempt + 2 retries
+        retry_delay_seconds = 5 
 
-            logger.debug(f"    Adapter '{self.agent_name}': About to call await self.agno_agent.arun()")
-            run_response_obj = await self.agno_agent.arun(user_message_string) 
-            logger.debug(f"    Adapter '{self.agent_name}': After await self.agno_agent.arun(), run_response_obj type: {type(run_response_obj)}")
-            
-            actual_content_data = None
-            if hasattr(run_response_obj, 'content'):
-                content_attr = run_response_obj.content
-                logger.debug(f"    Adapter '{self.agent_name}': run_response_obj.content exists. Type of content_attr: {type(content_attr)}")
+        for attempt in range(max_retries):
+            try:
+                if not hasattr(self.agno_agent, 'arun'):
+                    logger.error(f"AgnoAgent instance for '{self.agent_name}' does not have an 'arun' method.")
+                    raise NotImplementedError(f"AgnoAgent for '{self.agent_name}' needs an async 'arun' method.")
 
-                if asyncio.iscoroutine(content_attr):
-                    logger.info(f"    Adapter '{self.agent_name}': content_attr IS a coroutine. Awaiting it now.")
-                    actual_content_data = await content_attr
-                    logger.debug(f"    Adapter '{self.agent_name}': After awaiting content_attr, actual_content_data type: {type(actual_content_data)}")
+                logger.debug(f"    Adapter '{self.agent_name}': About to call await self.agno_agent.arun() (Attempt {attempt + 1}/{max_retries})")
+                run_response_obj = await self.agno_agent.arun(user_message_string) 
+                logger.debug(f"    Adapter '{self.agent_name}': After await self.agno_agent.arun(), run_response_obj type: {type(run_response_obj)}")
+                
+                actual_content_data = None
+                if hasattr(run_response_obj, 'content'):
+                    content_attr = run_response_obj.content
+                    logger.debug(f"    Adapter '{self.agent_name}': run_response_obj.content exists. Type of content_attr: {type(content_attr)}")
+
+                    if asyncio.iscoroutine(content_attr):
+                        logger.info(f"    Adapter '{self.agent_name}': content_attr IS a coroutine. Awaiting it now.")
+                        actual_content_data = await content_attr
+                        logger.debug(f"    Adapter '{self.agent_name}': After awaiting content_attr, actual_content_data type: {type(actual_content_data)}")
+                    else:
+                        logger.info(f"    Adapter '{self.agent_name}': content_attr is NOT a coroutine. Using its value directly.")
+                        actual_content_data = content_attr
                 else:
-                    logger.info(f"    Adapter '{self.agent_name}': content_attr is NOT a coroutine. Using its value directly.")
-                    actual_content_data = content_attr
-            else:
-                logger.warning(f"    Adapter Warning: Agno agent '{self.agent_name}' RunResponse object has no 'content' attribute for node {node.task_id}.")
+                    logger.warning(f"    Adapter Warning: Agno agent '{self.agent_name}' RunResponse object has no 'content' attribute for node {node.task_id} (Attempt {attempt + 1}).")
+                
+                # Specific adapters (like PlannerAdapter) are responsible for checking if actual_content_data is None
+                # and raising an error if None is not acceptable for them.
+                # This retry loop is primarily for exceptions during arun() or if arun() itself indicates
+                # a retryable issue, not specifically for None content if None is a possible 
+                # (though perhaps unhelpful) outcome for some agents.
+                
+                logger.info(f"    Adapter '{self.agent_name}': Successfully processed (Attempt {attempt+1}). Type of actual_content_data: {type(actual_content_data)}. Is it a coroutine? {asyncio.iscoroutine(actual_content_data)}")
+                return actual_content_data # Success, return the content
             
-            if actual_content_data is None:
-                 logger.warning(f"    Adapter Warning: Agno agent '{self.agent_name}' resolved content is None for node {node.task_id}.")
-            
-            logger.info(f"    Adapter '{self.agent_name}': Final check before returning. Type of actual_content_data: {type(actual_content_data)}. Is it a coroutine? {asyncio.iscoroutine(actual_content_data)}")
-            return actual_content_data
-            
-        except Exception as e:
-            logger.exception(f"  Adapter Error: Exception during Agno agent '{self.agent_name}' execution for node {node.task_id}")
-            raise
+            except Exception as e:
+                logger.warning(f"  Adapter Error (Attempt {attempt + 1}/{max_retries}): Exception during Agno agent '{self.agent_name}' execution for node {node.task_id}: {e}")
+                if attempt < max_retries - 1:
+                    logger.info(f"    Retrying in {retry_delay_seconds} seconds...")
+                    await asyncio.sleep(retry_delay_seconds)
+                else:
+                    logger.error(f"  Adapter Error: Max retries ({max_retries}) reached for Agno agent '{self.agent_name}' on node {node.task_id}. Re-raising last exception.")
+                    raise # Re-raise the last exception after max retries
+        
+        # This line should ideally not be reached if max_retries > 0 due to the 'raise' in the except block.
+        # However, as a fallback, and to satisfy linters/type checkers that expect a return value.
+        logger.error(f"  Adapter Error: Loop completed without successful return or re-raising exception for node {node.task_id}. This indicates an issue in retry logic.")
+        return None

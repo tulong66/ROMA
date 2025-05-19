@@ -17,9 +17,12 @@ from sentientresearchagent.hierarchical_agent_framework.context.context_builder 
 )
 # NEW IMPORT for summarization utility
 from sentientresearchagent.hierarchical_agent_framework.agents.utils import get_context_summary, TARGET_WORD_COUNT_FOR_CTX_SUMMARIES
+# NEW IMPORT for deepcopy if needed for context items, though typically Pydantic handles this well.
+# import copy
 
 # Configuration
-MAX_PLANNING_LAYER = 3 # Max depth for recursive planning
+MAX_PLANNING_LAYER = 2 # Max depth for recursive planning
+MAX_REPLAN_ATTEMPTS = 1 # Max number of times a single PLAN node can attempt to re-plan.
 
 class NodeProcessor:
     """Handles the processing of a single TaskNode's action."""
@@ -31,6 +34,11 @@ class NodeProcessor:
         logger.info("NodeProcessor initialized.")
         # If context_builder becomes complex or needs state, it could be initialized here:
         # self.context_builder = ContextBuilder(task_graph) # If TaskGraph is relatively static or passed on update
+        # Add a counter for replan attempts if needed, or manage on the node itself.
+        # For now, we can add a simple attribute to the node if it's not too complex,
+        # or rely on the ExecutionEngine to limit overall cycles.
+        # Let's add a replan_attempts field to TaskNode later if we want per-node limits.
+        pass # Add this pass if __init__ becomes empty after removing comments
 
     def _create_sub_nodes_from_plan(self, parent_node: TaskNode, plan_output: PlanOutput, task_graph: TaskGraph, knowledge_store: KnowledgeStore):
         """
@@ -368,77 +376,132 @@ class NodeProcessor:
         knowledge_store.add_or_update_record_from_node(node) # Final update
 
     async def _handle_needs_replan_node(self, node: TaskNode, task_graph: TaskGraph, knowledge_store: KnowledgeStore):
-        logger.info(f"  NodeProcessor: Handling NEEDS_REPLAN node {node.task_id} (Goal: '{node.goal[:30]}...')")
+        logger.info(f"  NodeProcessor: Handling NEEDS_REPLAN node {node.task_id} (Goal: '{node.goal[:50]}...')")
         
-        # Mark as RUNNING for the replanning attempt. Could also be a new REPLANNING status.
-        node.update_status(TaskStatus.RUNNING, result=f"Attempting to re-plan: {node.result}") 
+        # Simple mechanism to prevent infinite re-planning loops for a single node.
+        # This would ideally be a field on the TaskNode itself.
+        if not hasattr(node, '_replan_attempts'):
+            node._replan_attempts = 0
+        
+        if node._replan_attempts >= MAX_REPLAN_ATTEMPTS:
+            logger.error(f"  NodeProcessor: Max re-plan attempts ({MAX_REPLAN_ATTEMPTS}) reached for node {node.task_id}. Marking as FAILED.")
+            node.update_status(TaskStatus.FAILED, error_msg=f"Max re-plan attempts ({MAX_REPLAN_ATTEMPTS}) reached.")
+            knowledge_store.add_or_update_record_from_node(node)
+            return
+
+        node._replan_attempts += 1
+        node.update_status(TaskStatus.RUNNING, result=f"Re-planning attempt {node._replan_attempts}") # Mark as RUNNING during re-plan
         knowledge_store.add_or_update_record_from_node(node)
 
+        failed_sub_goals_info = []
+        successful_sibling_outputs = [] # For context to the new plan
+
+        if node.sub_graph_id:
+            previous_sub_nodes = task_graph.get_nodes_in_graph(node.sub_graph_id)
+            for sub_node in previous_sub_nodes:
+                if sub_node.status == TaskStatus.FAILED:
+                    failed_sub_goals_info.append(
+                        f"Sub-task '{sub_node.goal[:100]}' (ID: {sub_node.task_id}) failed with error: {sub_node.error or 'Unknown error'}"
+                    )
+                elif sub_node.status == TaskStatus.DONE:
+                    # These could be passed as context to the new planning attempt
+                    # This reuses the ExecutionHistoryItem structure from PlannerInput's context part
+                    successful_sibling_outputs.append(
+                        ExecutionHistoryItem(
+                            task_goal=sub_node.goal,
+                            outcome_summary=sub_node.output_summary or str(sub_node.result)[:200], # Provide a summary
+                            full_output_reference_id=sub_node.task_id 
+                        )
+                    )
+        
+        if not failed_sub_goals_info:
+            logger.warning(f"  NodeProcessor: Node {node.task_id} is NEEDS_REPLAN, but no failed sub-tasks found in subgraph {node.sub_graph_id}. Defaulting to general replan.")
+            reason_for_replan = "General re-plan requested, but no specific sub-task failures were identified in the previous attempt. Review the overall goal and previous plan structure."
+            failed_sub_goal_summary = node.goal # Re-plan the main goal
+        else:
+            reason_for_replan = "One or more sub-tasks failed in the previous execution. New plan must address these failures. Failures:\n- " + "\n- ".join(failed_sub_goals_info)
+            # For simplicity, we'll just use the parent node's goal as the "failed_sub_goal" for the replan request,
+            # as the planner is re-planning for this parent node. The detailed reasons contain the specifics.
+            failed_sub_goal_summary = node.goal 
+
+
+        replan_details = ReplanRequestDetails(
+            failed_sub_goal=failed_sub_goal_summary, # The goal of the current PLAN node that needs re-planning
+            reason_for_failure_or_replan=reason_for_replan,
+            previous_attempt_output_summary=f"Previous plan for '{node.goal[:50]}' resulted in failures. Successful sibling outputs from that attempt are provided in context if any.",
+            specific_guidance_for_replan="Review the failed sub-task goals and their errors. Propose a new set of sub-tasks that either breaks down the failed parts more effectively, tries a different approach, or correctly utilizes results from previously successful sibling tasks."
+        )
+
         try:
-            # 1. Construct ReplanRequestDetails
-            reason_for_replan = str(node.result) if node.result else "No specific reason provided for re-plan."
-            # remove the <<NEEDS_REPLAN>> prefix if present, as it's already handled
-            if "<<NEEDS_REPLAN>>" in reason_for_replan:
-                 reason_for_replan = reason_for_replan.split("<<NEEDS_REPLAN>>",1)[-1].strip()
+            current_overall_objective = node.overall_objective or getattr(task_graph, 'overall_project_goal', "Undefined overall project goal")
             
-            # previous_attempt_output_summary should be node.output_summary from the failed/problematic execution
-            # This assumes output_summary was populated even for tasks that ended up in NEEDS_REPLAN
-            prev_summary = node.output_summary if node.output_summary else "No summary of previous attempt available."
-
-            replan_details = ReplanRequestDetails(
-                failed_sub_goal=node.goal, # The current node's goal is the one that failed/needs replan
-                reason_for_failure_or_replan=reason_for_replan,
-                previous_attempt_output_summary=prev_summary,
-                specific_guidance_for_replan=None # TODO: Allow agents to provide more specific guidance
-            )
-            logger.info(f"    Replan Details: {replan_details.model_dump_json(indent=2, exclude_none=True)}")
-
-            # 2. Prepare PlannerInput
-            current_overall_objective = node.overall_objective or task_graph.overall_project_goal
-            if not current_overall_objective:
-                 logger.warning(f"    NodeProcessor WARNING: overall_objective is not set for REPLAN node {node.task_id}. Using placeholder.")
-                 current_overall_objective = "Undefined overall project goal"
-
-            planner_adapter = get_agent_adapter(node, action_verb="plan") # Or "replan" if you have a specific replan adapter
-            if not planner_adapter:
-                # Removed agent_name from error message
-                raise ValueError(f"No PLAN/REPLAN adapter found for node {node.task_id} (TaskType: {node.task_type})")
+            # The planner_input now includes `successful_sibling_outputs` in its context part
+            # This assumes `resolve_input_for_planner_agent` can accept and integrate this.
+            # We might need to adjust `resolve_input_for_planner_agent` or construct the input more manually here.
+            # For now, let's prepare it and pass it. `resolve_input_for_planner_agent` might need prior_sibling_task_outputs
+            
+            # We need to ensure `resolve_input_for_planner_agent` correctly uses these.
+            # The `execution_history_and_context` field in PlannerInput is the place.
+            # `prior_sibling_task_outputs` usually refers to siblings of the *current node being planned*.
+            # In a re-plan, these successful_sibling_outputs are from the *previous attempt* of this node's sub-graph.
+            # This fits the spirit if not the exact prior definition.
 
             planner_input_model = resolve_input_for_planner_agent(
                 current_task_id=node.task_id,
                 knowledge_store=knowledge_store,
                 overall_objective=current_overall_objective,
-                planning_depth=node.layer, # Use the current node's layer for planning depth
+                planning_depth=node.layer, # Keep same layer, it's a re-plan
                 replan_details=replan_details,
-                global_constraints=task_graph.global_constraints if hasattr(task_graph, 'global_constraints') else []
+                # Pass successful parts of the previous plan as context
+                # This field might need adjustment in `resolve_input_for_planner_agent`
+                # or we inject it directly into the context model.
+                # For now, let's assume `resolve_input_for_planner_agent` handles `replan_details` primarily
+                # and we rely on KS for other context. We can refine context for replanning later.
+                # Let's manually create the execution_history_and_context for now for clarity
+                # to include outputs from the *failed plan's successful siblings*.
+                execution_history_override=ExecutionHistoryAndContext(
+                    prior_sibling_task_outputs=successful_sibling_outputs, # These are children from the last failed plan
+                    relevant_ancestor_outputs=[], # Ancestor context should be resolved normally by `resolve_input_for_planner_agent`
+                    global_knowledge_base_summary=None # Let resolver handle this
+                )
             )
-            node.input_payload_dict = planner_input_model.model_dump() # For logging
-            plan_output: PlanOutput = await planner_adapter.process(node, planner_input_model) # PASSING THE MODEL
+            # Override what `resolve_input_for_planner_agent` might put in prior_sibling_task_outputs
+            # if we pass execution_history_override.
+            # The `resolve_input_for_planner_agent` may need a new parameter to accept this cleanly.
+            # For now, this demonstrates the intent. The `PlannerInput` schema has `execution_history_and_context`.
 
-            # 4. Process New Plan
-            if not plan_output or not plan_output.sub_tasks:
-                logger.error(f"    NodeProcessor: Re-Planner for {node.task_id} returned no sub-tasks. Node remains NEEDS_REPLAN or FAILED.")
-                # TODO: Implement retry logic or max attempts for re-planning
-                node.update_status(TaskStatus.FAILED, error_msg="Re-planning failed to produce sub-tasks.", result=node.result) # Keep original reason in result
+            logger.info(f"    NodeProcessor: Preparing PlannerInput for REPLAN of {node.task_id} (Goal: '{node.goal[:50]}...')")
+            node.input_payload_dict = planner_input_model.model_dump() # Log the input
+
+            planner_adapter = get_agent_adapter(node, action_verb="plan")
+            if not planner_adapter:
+                raise ValueError(f"No PLAN adapter found for re-planning node {node.task_id}")
+
+            new_plan_output: PlanOutput = await planner_adapter.process(node, planner_input_model)
+
+            if not new_plan_output or not new_plan_output.sub_tasks:
+                logger.warning(f"    NodeProcessor: Re-Planner for {node.task_id} returned no sub-tasks. Marking node as FAILED.")
+                node.update_status(TaskStatus.FAILED, error_msg="Re-planning attempt by planner resulted in an empty plan.")
             else:
-                logger.success(f"    NodeProcessor: Re-Planner for {node.task_id} SUCCEEDED. Creating new sub-nodes.")
-                # The node itself (which was the parent of the failed plan, or the failed execute node)
-                # will now become a parent to the new sub-tasks.
-                # _create_sub_nodes_from_plan will clear node.planned_sub_task_ids
-                if not node.sub_graph_id: # Ensure subgraph exists if it was an EXECUTE node being replanned into a PLAN
-                     node.sub_graph_id = f"subgraph_{node.task_id}"
-                     task_graph.add_graph(node.sub_graph_id)
+                logger.success(f"    NodeProcessor: Re-Planner for {node.task_id} returned a new plan with {len(new_plan_output.sub_tasks)} sub-tasks.")
+                # Archive or mark old sub-graph nodes? For now, they remain as FAILED/DONE.
+                # A new sub_graph_id will be used for the new plan.
+                
+                # Important: Create a new sub_graph_id for the new plan
+                new_sub_graph_id = f"subgraph_{node.task_id}_replan_{node._replan_attempts}"
+                node.sub_graph_id = new_sub_graph_id # Update node to point to the new sub-graph
+                # task_graph.add_graph(new_sub_graph_id) # _create_sub_nodes_from_plan will do this if it doesn't exist
 
-                self._create_sub_nodes_from_plan(node, plan_output, task_graph, knowledge_store)
-                node.node_type = NodeType.PLAN # Explicitly set node_type to PLAN as it now has a sub-plan
-                node.update_status(TaskStatus.PLAN_DONE, result=plan_output.model_dump())
-                logger.success(f"    NodeProcessor: Node {node.task_id} REPLANNED successfully. Status: PLAN_DONE.")
+                node.planned_sub_task_ids.clear() # Clear out old sub-task IDs
 
-        except Exception as e:
-            logger.exception(f"  NodeProcessor Error: Failed to REPLAN node {node.task_id}")
-            node.update_status(TaskStatus.FAILED, error_msg=f"Exception during re-planning: {str(e)}", result=node.result)
+                self._create_sub_nodes_from_plan(node, new_plan_output, task_graph, knowledge_store)
+                node.update_status(TaskStatus.PLAN_DONE, result=f"Re-plan attempt {node._replan_attempts} successful. New plan created.")
         
-        knowledge_store.add_or_update_record_from_node(node) # Final update
+        except Exception as e:
+            logger.exception(f"  NodeProcessor Error: Failed to re-plan node {node.task_id}")
+            node.update_status(TaskStatus.FAILED, error_msg=f"Re-planning failed: {str(e)}")
+        
+        knowledge_store.add_or_update_record_from_node(node) # Final update for status, result, etc.
 
     async def process_node(self, node: TaskNode, task_graph: TaskGraph, knowledge_store: KnowledgeStore):
         """
