@@ -127,6 +127,7 @@ class LlmApiAdapter(BaseAdapter):
             prompt_parts.append("\nBased on the 'Current Task Goal' and other provided information, generate a plan to achieve it.")
             
             formatted_user_message_string = "\n\n".join(prompt_parts)
+            logger.debug(f"    Adapter '{self.agent_name}': FINAL PROMPT being sent to Agno Agent:\n{formatted_user_message_string}")
             return formatted_user_message_string
 
         elif isinstance(agent_task_input, AgentTaskInput):
@@ -142,6 +143,7 @@ class LlmApiAdapter(BaseAdapter):
                 context_str=text_context_str,
                 overall_project_goal=overall_goal_for_template
             )
+            logger.debug(f"    Adapter '{self.agent_name}': FINAL PROMPT being sent to Agno Agent:\n{main_user_message_content}")
             return main_user_message_content
         
         else:

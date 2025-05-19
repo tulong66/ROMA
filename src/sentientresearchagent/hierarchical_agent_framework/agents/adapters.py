@@ -1,8 +1,8 @@
 from loguru import logger
 from sentientresearchagent.hierarchical_agent_framework.agents.base_adapter import LlmApiAdapter
 from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode # Type hinting
-from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models import PlanOutput, AtomizerOutput, AgentTaskInput # For type hinting
-from typing import Any
+from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models import PlanOutput, AtomizerOutput, AgentTaskInput, ContextItem, CustomSearcherOutput # For type hinting
+from typing import Any, List
 # Assuming the AgnoAgent instances passed to these adapters during initialization
 # are configured with the correct 'response_model' in their definitions.
 
@@ -94,6 +94,46 @@ class AtomizerAdapter(LlmApiAdapter):
 
 class AggregatorAdapter(LlmApiAdapter):
     """Adapter for Agno agents performing aggregation of sub-task results."""
+
+    def _format_context_for_prompt(self, context_items: List[ContextItem]) -> str:
+        logger.debug(f"  AggregatorAdapter ({self.agent_name}): Formatting context with custom (less/no truncation) logic.")
+        if not context_items:
+            return "No relevant context (child task outputs) was provided."
+
+        context_parts = ["Context from Child Tasks (Results):"]
+        for i, item in enumerate(context_items):
+            content_str = ""
+            if isinstance(item.content, CustomSearcherOutput): # Example of specific handling
+                content_str = item.content.output_text_with_citations # Get the richest text part
+            elif isinstance(item.content, str):
+                content_str = item.content
+            elif hasattr(item.content, 'model_dump_json'): # For other Pydantic models
+                try:
+                    # Try to get a clean text representation if available
+                    if hasattr(item.content, "text_content_for_llm"):
+                         content_str = item.content.text_content_for_llm()
+                    elif hasattr(item.content, "text"): # common attribute name
+                         content_str = item.content.text
+                    else: # Fallback to JSON
+                         content_str = item.content.model_dump_json(indent=2) 
+                except Exception:
+                    content_str = str(item.content) # Fallback
+            else:
+                content_str = str(item.content)
+
+            # For Aggregator, drastically increase or remove individual item truncation
+            # MAX_LEN_AGGREGATOR_ITEM = 100000 # Or even higher, or remove truncation
+            # if len(content_str) > MAX_LEN_AGGREGATOR_ITEM:
+            #     logger.warning(f"    AggregatorAdapter: Context item from '{item.source_task_id}' for '{self.agent_name}' still truncated from {len(content_str)} to {MAX_LEN_AGGREGATOR_ITEM} chars.")
+            #     content_str = content_str[:MAX_LEN_AGGREGATOR_ITEM] + f"... (truncated, original length {len(content_str)})"
+            
+            # No individual truncation, but be wary of total prompt size for the LLM
+            
+            context_parts.append(f"--- Child Task Result {i+1} (Source: '{item.source_task_id}', Goal: {item.source_task_goal[:100]}{'...' if len(item.source_task_goal)>100 else ''}) ---")
+            context_parts.append(content_str)
+            context_parts.append(f"--- End Child Task Result {i+1} ---")
+        
+        return "\\n\\n".join(context_parts)
 
     def process(self, node: TaskNode, agent_task_input: AgentTaskInput) -> str:
         """

@@ -19,7 +19,7 @@ from sentientresearchagent.hierarchical_agent_framework.context.context_builder 
 from sentientresearchagent.hierarchical_agent_framework.agents.utils import get_context_summary, TARGET_WORD_COUNT_FOR_CTX_SUMMARIES
 
 # Configuration
-MAX_PLANNING_LAYER = 5 # Max depth for recursive planning
+MAX_PLANNING_LAYER = 3 # Max depth for recursive planning
 
 class NodeProcessor:
     """Handles the processing of a single TaskNode's action."""

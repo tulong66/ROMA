@@ -58,7 +58,7 @@ class ExecutionEngine:
 
         logger.success(f"Initialized with root node: {root_node.task_id} in graph {root_graph_id}")
 
-    def run_cycle(self, max_steps: int = 125):
+    def run_cycle(self, max_steps: int = 250):
         """Runs the execution loop for a specified number of steps or until completion/deadlock."""
         logger.info("\n--- Starting Execution Cycle ---")
         
