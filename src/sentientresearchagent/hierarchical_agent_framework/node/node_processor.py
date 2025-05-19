@@ -85,8 +85,7 @@ class NodeProcessor:
         
         logger.info(f"    NodeProcessor: Created {len(created_sub_nodes)} sub-nodes for parent {parent_node.task_id}.")
 
-
-    def _handle_ready_node(self, node: TaskNode, task_graph: TaskGraph, knowledge_store: KnowledgeStore):
+    async def _handle_ready_node(self, node: TaskNode, task_graph: TaskGraph, knowledge_store: KnowledgeStore):
         logger.info(f"  NodeProcessor: Handling READY node {node.task_id} (Original Type: {node.node_type}, Goal: '{node.goal[:30]}...')")
         node.update_status(TaskStatus.RUNNING) # Mark as RUNNING before agent call
         knowledge_store.add_or_update_record_from_node(node)
@@ -115,7 +114,7 @@ class NodeProcessor:
         if atomizer_adapter:
             logger.info(f"    NodeProcessor: Calling Atomizer for node {node.task_id}")
             try:
-                atomizer_output: AtomizerOutput = atomizer_adapter.process(node, atomizer_input_model)
+                atomizer_output: AtomizerOutput = await atomizer_adapter.process(node, atomizer_input_model)
                 
                 if atomizer_output.updated_goal != node.goal:
                     logger.info(f"    Atomizer updated goal for {node.task_id}: '{node.goal[:50]}...' -> '{atomizer_output.updated_goal[:50]}...'")
@@ -197,7 +196,7 @@ class NodeProcessor:
                 )
                 node.input_payload_dict = planner_input_model.model_dump() # For logging
                 logger.debug(f"Node {node.task_id} input payload (for PLAN): {node.input_payload_dict}")
-                plan_output: PlanOutput = planner_adapter.process(node, planner_input_model)
+                plan_output: PlanOutput = await planner_adapter.process(node, planner_input_model)
 
                 if not plan_output or not plan_output.sub_tasks:
                     logger.warning(f"    NodeProcessor: Planner for {node.task_id} returned no sub-tasks. Converting to EXECUTE.")
@@ -212,7 +211,7 @@ class NodeProcessor:
                         )
                         node.input_payload_dict = general_agent_task_input_model.model_dump()
 
-                    self._execute_node_action(node, general_agent_task_input_model, task_graph, knowledge_store)
+                    await self._execute_node_action(node, general_agent_task_input_model, task_graph, knowledge_store)
                 else:
                     self._create_sub_nodes_from_plan(node, plan_output, task_graph, knowledge_store)
                     node.update_status(TaskStatus.PLAN_DONE, result=plan_output.model_dump())
@@ -221,7 +220,7 @@ class NodeProcessor:
                  if general_agent_task_input_model is None: # Should have been prepared above
                      logger.error(f"NodeProcessor CRITICAL: general_agent_task_input_model is None for EXECUTE node {node.task_id}")
                      raise ValueError(f"Input model not prepared for EXECUTE node {node.task_id}")
-                 self._execute_node_action(node, general_agent_task_input_model, task_graph, knowledge_store)
+                 await self._execute_node_action(node, general_agent_task_input_model, task_graph, knowledge_store)
 
             else: 
                 raise ValueError(f"Unexpected node action type: {action_to_take} for node {node.task_id}")
@@ -232,7 +231,7 @@ class NodeProcessor:
         
         knowledge_store.add_or_update_record_from_node(node) # Final update for status, result, etc.
 
-    def _execute_node_action(self, node: TaskNode, agent_task_input: AgentTaskInput, task_graph: TaskGraph, knowledge_store: KnowledgeStore):
+    async def _execute_node_action(self, node: TaskNode, agent_task_input: AgentTaskInput, task_graph: TaskGraph, knowledge_store: KnowledgeStore):
         # Ensure node.node_type is an Enum for get_agent_adapter if it expects one
         if not isinstance(node.node_type, NodeType):
              node.node_type = NodeType(node.node_type) # Convert if necessary
@@ -245,7 +244,7 @@ class NodeProcessor:
              raise ValueError(f"No EXECUTE adapter found for node {node.task_id} (TaskType: {task_type_display})")
 
         logger.info(f"    NodeProcessor: Invoking EXECUTE adapter '{type(executor_adapter).__name__}' for {node.task_id}")
-        execution_result = executor_adapter.process(node, agent_task_input)
+        execution_result = await executor_adapter.process(node, agent_task_input)
         
         node.output_type_description = f"{type(execution_result).__name__}_result"
         
@@ -305,7 +304,7 @@ class NodeProcessor:
             # Ensure status update uses the Enum member
             node.update_status(TaskStatus.DONE, result=execution_result)
 
-    def _handle_aggregating_node(self, node: TaskNode, task_graph: TaskGraph, knowledge_store: KnowledgeStore):
+    async def _handle_aggregating_node(self, node: TaskNode, task_graph: TaskGraph, knowledge_store: KnowledgeStore):
         logger.info(f"  NodeProcessor: Handling AGGREGATING node {node.task_id} (Goal: '{node.goal[:30]}...')")
         node.update_status(TaskStatus.RUNNING) # Mark as RUNNING before agent call
         knowledge_store.add_or_update_record_from_node(node)
@@ -351,7 +350,7 @@ class NodeProcessor:
                 raise ValueError(f"No AGGREGATE adapter found for node {node.task_id}")
 
             logger.info(f"    NodeProcessor: Invoking AGGREGATE adapter '{type(aggregator_adapter).__name__}' for {node.task_id}")
-            aggregated_result = aggregator_adapter.process(node, agent_task_input)
+            aggregated_result = await aggregator_adapter.process(node, agent_task_input)
             
             node.output_type_description = "aggregated_text_result"
             # Ensure status update uses the Enum member
@@ -364,7 +363,7 @@ class NodeProcessor:
         
         knowledge_store.add_or_update_record_from_node(node) # Final update
 
-    def _handle_needs_replan_node(self, node: TaskNode, task_graph: TaskGraph, knowledge_store: KnowledgeStore):
+    async def _handle_needs_replan_node(self, node: TaskNode, task_graph: TaskGraph, knowledge_store: KnowledgeStore):
         logger.info(f"  NodeProcessor: Handling NEEDS_REPLAN node {node.task_id} (Goal: '{node.goal[:30]}...')")
         
         # Mark as RUNNING for the replanning attempt. Could also be a new REPLANNING status.
@@ -410,7 +409,7 @@ class NodeProcessor:
                 global_constraints=task_graph.global_constraints if hasattr(task_graph, 'global_constraints') else []
             )
             node.input_payload_dict = planner_input_model.model_dump() # For logging
-            plan_output: PlanOutput = planner_adapter.process(node, planner_input_model) # PASSING THE MODEL
+            plan_output: PlanOutput = await planner_adapter.process(node, planner_input_model) # PASSING THE MODEL
 
             # 4. Process New Plan
             if not plan_output or not plan_output.sub_tasks:
@@ -437,7 +436,7 @@ class NodeProcessor:
         
         knowledge_store.add_or_update_record_from_node(node) # Final update
 
-    def process_node(self, node: TaskNode, task_graph: TaskGraph, knowledge_store: KnowledgeStore):
+    async def process_node(self, node: TaskNode, task_graph: TaskGraph, knowledge_store: KnowledgeStore):
         """
         Processes a node based on its status.
         This method is called by the ExecutionEngine.
@@ -448,10 +447,10 @@ class NodeProcessor:
         current_status = node.status if isinstance(node.status, TaskStatus) else TaskStatus(node.status)
         
         if current_status == TaskStatus.READY:
-            self._handle_ready_node(node, task_graph, knowledge_store)
+            await self._handle_ready_node(node, task_graph, knowledge_store)
         elif current_status == TaskStatus.AGGREGATING:
-            self._handle_aggregating_node(node, task_graph, knowledge_store)
+            await self._handle_aggregating_node(node, task_graph, knowledge_store)
         elif current_status == TaskStatus.NEEDS_REPLAN:
-            self._handle_needs_replan_node(node, task_graph, knowledge_store)
+            await self._handle_needs_replan_node(node, task_graph, knowledge_store)
         else:
             logger.warning(f"  NodeProcessor Warning: process_node called on node {node.task_id} with status {status_display} - no action taken.")

@@ -6,6 +6,7 @@ from datetime import datetime
 import uuid # For generating unique IDs for sample data
 import threading # For background execution
 import io # For sending file in memory
+import asyncio # Import asyncio
 # PDF Generation - you'll need to install this: pip install markdown-pdf
 from markdown_pdf import MarkdownPdf, Section # Using markdown-pdf library
 
@@ -190,40 +191,31 @@ def handle_task_graph_options():
     return response
 
 # --- API Endpoint to Start a New Project ---
-def run_project_cycle_background(goal, max_steps):
-    """Function to be run in a background thread."""
-    print(f"Background thread: Initializing project with goal: '{goal}'")
+async def run_project_cycle_async(goal, max_steps): # Renamed and made async
+    """Coroutine to run the project cycle."""
+    print(f"Async task: Initializing project with goal: '{goal}'")
     try:
         # Clear previous project state from the graph before initializing a new one
-        # This ensures a fresh start for each new project submission.
-        # Depending on ExecutionEngine's design, it might handle this,
-        # or we might need to manually clear live_task_graph.
-        # Let's assume re-initialization handles clearing or overwriting.
-        
-        # Re-initialize the task graph for a new project (if necessary for your engine design)
-        # This might involve clearing nodes, graphs, root_graph_id, etc.
         live_task_graph.nodes.clear()
         live_task_graph.graphs.clear()
         live_task_graph.root_graph_id = None
         live_task_graph.overall_project_goal = None # Will be set by initialize_project
         
-        # The following is crucial: Ensure all components of the engine are reset or
-        # re-instantiated if they carry state from previous runs that shouldn't persist.
-        # For this example, we assume initialize_project and run_cycle correctly manage their state
-        # based on the (now cleared) live_task_graph.
-
         live_execution_engine.initialize_project(root_goal=goal)
-        print(f"Background thread: Project initialized. Running cycle (max_steps={max_steps})...")
-        live_execution_engine.run_cycle(max_steps=max_steps)
-        print(f"Background thread: run_cycle for goal '{goal}' completed.")
+        print(f"Async task: Project initialized. Running cycle (max_steps={max_steps})...")
+        await live_execution_engine.run_cycle(max_steps=max_steps) # Await the async run_cycle
+        print(f"Async task: run_cycle for goal '{goal}' completed.")
     except Exception as e:
-        print(f"Background thread: Error during project execution for goal '{goal}': {e}")
+        print(f"Async task: Error during project execution for goal '{goal}': {e}")
         # Optionally, update a global status or the graph itself to reflect the error
-        if live_task_graph.root_graph_id: # If a graph was started
-            root_node_id = live_task_graph.root_graph_id # This might not be a node ID
-            # A better way would be to find the root TaskNode if one exists
-            # For now, just logging. Consider adding an error state to overall_project_goal or a dedicated status field.
+        if live_task_graph.root_graph_id: 
             pass 
+
+def run_project_in_thread(goal, max_steps):
+    """Target function for the thread, runs the asyncio event loop for the async task."""
+    print(f"Thread: Starting asyncio event loop for project goal: '{goal}'")
+    asyncio.run(run_project_cycle_async(goal, max_steps))
+    print(f"Thread: Asyncio event loop for project goal: '{goal}' finished.")
 
 
 @app.route('/api/start-project', methods=['POST'])
@@ -233,14 +225,14 @@ def start_project():
         return jsonify({"error": "project_goal not provided"}), 400
     
     project_goal = data['project_goal']
-    max_steps = data.get('max_steps', 250) # MODIFIED: Default to 125 if not provided
+    max_steps = data.get('max_steps', 250) 
 
     print(f"Received request to start project with goal: '{project_goal}', max_steps: {max_steps}")
 
     # Start the project execution in a background thread
-    # Pass the *same* live_execution_engine instance
-    thread = threading.Thread(target=run_project_cycle_background, args=(project_goal, max_steps))
-    thread.daemon = True # Allows main program to exit even if threads are running
+    # The thread will run an asyncio event loop for our async function.
+    thread = threading.Thread(target=run_project_in_thread, args=(project_goal, max_steps)) # Target the new sync wrapper
+    thread.daemon = True 
     thread.start()
 
     return jsonify({"message": f"Project '{project_goal}' initiated. Graph will update in real-time."}), 202

@@ -9,6 +9,7 @@ from sentientresearchagent.hierarchical_agent_framework.context.knowledge_store 
 
 from typing import Optional, Callable
 import pprint # For logging results
+import asyncio # Import asyncio
 
 
 class ExecutionEngine:
@@ -58,7 +59,7 @@ class ExecutionEngine:
 
         logger.success(f"Initialized with root node: {root_node.task_id} in graph {root_graph_id}")
 
-    def run_cycle(self, max_steps: int = 250):
+    async def run_cycle(self, max_steps: int = 250):
         """Runs the execution loop for a specified number of steps or until completion/deadlock."""
         logger.info("\n--- Starting Execution Cycle ---")
         
@@ -97,7 +98,7 @@ class ExecutionEngine:
                 logger.info(f"  Processing Node: {node_to_process.task_id} (Status: {node_to_process.status.name}, Layer: {node_to_process.layer})")
                 
                 # NodeProcessor will handle changing status to RUNNING, and then to its outcome.
-                self.node_processor.process_node(node_to_process, self.task_graph, self.knowledge_store)
+                await self.node_processor.process_node(node_to_process, self.task_graph, self.knowledge_store)
                 # After processing, node status and KS record are updated by NodeProcessor
                 
                 processed_in_step = True

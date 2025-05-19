@@ -3,6 +3,10 @@ from sentientresearchagent.hierarchical_agent_framework.agents.base_adapter impo
 from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode # Type hinting
 from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models import PlanOutput, AtomizerOutput, AgentTaskInput, ContextItem, CustomSearcherOutput # For type hinting
 from typing import Any, List
+from agno.agent import Agent as AgnoAgent # Renaming to avoid conflict if we define our own Agent interface
+# It's good practice to also import the async version if available and distinct
+# from agno.agent import AsyncAgent as AsyncAgnoAgent # Assuming such an import exists for type hinting
+
 # Assuming the AgnoAgent instances passed to these adapters during initialization
 # are configured with the correct 'response_model' in their definitions.
 

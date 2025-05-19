@@ -14,10 +14,11 @@ except ImportError:
     genai = None 
 
 try:
-    from openai import OpenAI
+    from openai import OpenAI, AsyncOpenAI
 except ImportError:
     logger.warning("Warning: openai module not found. OpenAISearcherWrapper will not be usable.")
     OpenAI = None
+    AsyncOpenAI = None
 
 from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models import (
     CustomSearcherOutput,
@@ -122,16 +123,16 @@ class OpenAICustomSearchAdapter(BaseAdapter):
     adapter_name: str = "OpenAICustomSearchAdapter" 
     model_id: str = "gpt-4.1" # As per your example, can be configured
 
-    def __init__(self, openai_client=None, model_id: str = "gpt-4.1"):
-        if OpenAI is None:
-            raise ImportError("OpenAI library is not installed. Please install it via 'pip install openai'.")
+    def __init__(self, openai_client = None, model_id: str = "gpt-4.1"):
+        if AsyncOpenAI is None:
+            raise ImportError("AsyncOpenAI client from openai library is not available. Please install or update 'openai'.")
         # Ensure the client passed or instantiated has the .responses.create method
-        self.client = openai_client or OpenAI() 
+        self.client = openai_client or AsyncOpenAI()
         self.model_id = model_id
         self.agent_name = self.adapter_name
-        print(f"Initialized {self.adapter_name} with model: {self.model_id}")
+        logger.info(f"Initialized {self.adapter_name} with model: {self.model_id} (Async Client: {isinstance(self.client, AsyncOpenAI)})")
 
-    def process(self, node: TaskNode, agent_task_input: AgentTaskInput) -> CustomSearcherOutput:
+    async def process(self, node: TaskNode, agent_task_input: AgentTaskInput) -> CustomSearcherOutput:
         """
         Processes the task by extracting the goal as a query, calling OpenAI with
         web_search_preview using client.responses.create.
@@ -145,7 +146,12 @@ class OpenAICustomSearchAdapter(BaseAdapter):
         parsed_annotations: List[AnnotationURLCitationModel] = []
 
         try:
-            api_response = self.client.responses.create(
+            # Ensure client is async and has responses.create
+            if not isinstance(self.client, AsyncOpenAI) or not hasattr(self.client.responses, 'create'):
+                 logger.error(f"  {self.adapter_name}: Invalid OpenAI client. Expected AsyncOpenAI with responses.create. Got: {type(self.client)}")
+                 raise TypeError("Invalid OpenAI client setup for async operation.")
+
+            api_response = await self.client.responses.create(
                 model=self.model_id,
                 tools=[{"type": "web_search_preview"}],
                 input=query

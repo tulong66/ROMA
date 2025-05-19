@@ -2,6 +2,9 @@ from abc import ABC, abstractmethod
 from typing import Dict, Any, Union, List
 from loguru import logger # Add this
 from agno.agent import Agent as AgnoAgent # Renaming to avoid conflict if we define our own Agent interface
+# It's good practice to also import the async version if available and distinct
+# from agno.agent import AsyncAgent as AsyncAgnoAgent # Assuming such an import exists for type hinting
+import asyncio # Add this import
 
 from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode # For type hinting
 from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models import (
@@ -18,7 +21,7 @@ class BaseAdapter(ABC):
     TaskNode/context and a specific agent implementation (e.g., an AgnoAgent).
     """
     @abstractmethod
-    def process(self, node: TaskNode, agent_task_input: Any) -> Any:
+    async def process(self, node: TaskNode, agent_task_input: Any) -> Any: # Changed to async def
         """
         Processes a TaskNode using the adapted agent.
 
@@ -39,16 +42,16 @@ class LlmApiAdapter(BaseAdapter):
     This adapter simplifies interaction by leveraging Agno's native
     structured output and tool handling.
     """
-    def __init__(self, agno_agent_instance: AgnoAgent, agent_name: str = "UnnamedAgnoAgent"):
+    def __init__(self, agno_agent_instance: AgnoAgent, agent_name: str = "UnnamedAgnoAgent"): # Consider if agno_agent_instance should be AsyncAgnoAgent
         """
         Args:
             agno_agent_instance: The instantiated AgnoAgent.
             agent_name: A descriptive name for logging.
         """
-        if not isinstance(agno_agent_instance, AgnoAgent):
-            raise ValueError("llm_agent_instance must be an instance of agno.agent.Agent")
+        if not isinstance(agno_agent_instance, AgnoAgent): # Check against AsyncAgnoAgent if that's the expected type
+            raise ValueError("llm_agent_instance must be an instance of agno.agent.Agent or its async equivalent")
         self.agno_agent = agno_agent_instance
-        self.agent_name = agent_name if agent_name else (agno_agent_instance.name or "UnnamedAgnoAgent")
+        self.agent_name = agent_name if agent_name else (getattr(agno_agent_instance, 'name', None) or "UnnamedAgnoAgent")
 
 
     def _format_context_for_prompt(self, context_items: List[ContextItem]) -> str:
@@ -77,7 +80,7 @@ class LlmApiAdapter(BaseAdapter):
 
     def _prepare_agno_run_arguments(self, agent_task_input: Union[AgentTaskInput, PlannerInput]) -> str:
         """
-        Prepares the user message string for self.agno_agent.run()
+        Prepares the user message string for self.agno_agent.arun()
         based on AgentTaskInput or PlannerInput.
         """
         if isinstance(agent_task_input, PlannerInput):
@@ -149,7 +152,7 @@ class LlmApiAdapter(BaseAdapter):
         else:
             raise TypeError(f"Unsupported agent_task_input type: {type(agent_task_input)}")
 
-    def process(self, node: TaskNode, agent_task_input: Union[AgentTaskInput, PlannerInput]) -> Any:
+    async def process(self, node: TaskNode, agent_task_input: Union[AgentTaskInput, PlannerInput]) -> Any: # Changed to async def
         """
         Processes a TaskNode using the configured AgnoAgent.
         """
@@ -158,14 +161,35 @@ class LlmApiAdapter(BaseAdapter):
         user_message_string = self._prepare_agno_run_arguments(agent_task_input)
         
         # Log the detailed message string at debug level
-        logger.debug(f"    DEBUG: User message string to Agno Agent '{self.agno_agent.name or 'N/A'}':\n{user_message_string}")
+        agno_agent_name = getattr(self.agno_agent, 'name', 'N/A') or 'N/A' # Handle if name is None
+        logger.debug(f"    DEBUG: User message string to Agno Agent '{agno_agent_name}':\n{user_message_string}")
 
         try:
-            response = self.agno_agent.run(user_message_string)
+            # Assuming agno_agent has an async method, commonly named arun()
+            # If the agno library uses a different name, this needs to be adjusted.
+            if not hasattr(self.agno_agent, 'arun'):
+                logger.error(f"AgnoAgent instance for '{self.agent_name}' does not have an 'arun' method. Async processing will fail.")
+                raise NotImplementedError(f"AgnoAgent for '{self.agent_name}' needs an async 'arun' method.")
+
+            # Step 1: Await arun() to get the RunResponse object
+            run_response_obj = await self.agno_agent.arun(user_message_string) 
             
-            if response.content is None:
-                 logger.warning(f"    Adapter Warning: Agno agent '{self.agent_name}' returned None content for node {node.task_id}.")
-            return response.content
+            actual_content_data = None
+            if hasattr(run_response_obj, 'content'):
+                # Step 2: If RunResponse.content is a coroutine (e.g., an async property), await it.
+                if asyncio.iscoroutine(run_response_obj.content):
+                    logger.debug(f"    Adapter '{self.agent_name}': run_response_obj.content is a coroutine. Awaiting it.")
+                    actual_content_data = await run_response_obj.content
+                else:
+                    # If RunResponse.content is a direct value after arun() has been awaited.
+                    actual_content_data = run_response_obj.content
+            else:
+                logger.warning(f"    Adapter Warning: Agno agent '{self.agent_name}' RunResponse object has no 'content' attribute for node {node.task_id}.")
+            
+            if actual_content_data is None:
+                 logger.warning(f"    Adapter Warning: Agno agent '{self.agent_name}' resolved content is None for node {node.task_id}.")
+            
+            return actual_content_data
         except Exception as e:
             logger.exception(f"  Adapter Error: Exception during Agno agent '{self.agent_name}' execution for node {node.task_id}")
             raise
