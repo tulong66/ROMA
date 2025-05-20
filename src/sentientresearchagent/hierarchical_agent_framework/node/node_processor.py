@@ -246,8 +246,9 @@ class NodeProcessor:
                 node.input_payload_dict = current_planner_input_model.model_dump() # Log initial input
                 current_plan_output: Optional[PlanOutput] = await initial_planner_adapter.process(node, current_planner_input_model)
 
-                if self.config.enable_hitl_after_plan_generation:
-                    max_modification_attempts = 3 
+                # Check if HITL for plan generation is enabled AND if the current node is the root node (layer 0)
+                if self.config.enable_hitl_after_plan_generation and node.layer == 0:
+                    max_modification_attempts = 3
                     modification_attempts = 0
                     plan_approved = False
                     # Key for retrieving the PlanModifierAdapter from AGENT_REGISTRY
@@ -343,7 +344,7 @@ class NodeProcessor:
                     if not plan_approved and modification_attempts >= max_modification_attempts:
                         logger.warning(f"Node {node.task_id}: Plan not explicitly approved after max HITL attempts. Proceeding with current plan if available.")
                 
-                # --- After HITL Loop or if HITL is disabled ---
+                # --- After HITL Loop or if HITL is disabled / not applicable ---
                 if current_plan_output and current_plan_output.sub_tasks: # Check if a valid plan exists
                     self._create_sub_nodes_from_plan(node, current_plan_output, task_graph, knowledge_store)
                     node.update_status(TaskStatus.PLAN_DONE, result=current_plan_output.model_dump())

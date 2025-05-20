@@ -14,6 +14,7 @@ class TaskStatus(Enum):
     DONE = "DONE"
     FAILED = "FAILED"
     NEEDS_REPLAN = "NEEDS_REPLAN"
+    CANCELLED = "CANCELLED"
 
 class NodeType(Enum):
     PLAN = "PLAN"
