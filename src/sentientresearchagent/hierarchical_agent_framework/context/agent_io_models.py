@@ -119,3 +119,28 @@ class PlannerInput(BaseModel):
 
     class Config:
         validate_assignment = True # Ensures that even if you update fields later, they are validated.
+
+class PlanModifierInput(BaseModel):
+    """
+    Input model for an agent tasked with modifying an existing plan based on user feedback.
+    """
+    original_plan: PlanOutput = Field(description="The current plan (PlanOutput model) that needs modification.")
+    user_modification_instructions: str = Field(description="Textual instructions from the user on how to modify the plan.")
+    overall_objective: str = Field(description="The overarching goal that the original and revised plan must achieve.")
+    # Optional context that might be useful for the modifier agent
+    parent_task_id: Optional[str] = Field(default=None, description="The ID of the parent task for which this plan is being modified.")
+    planning_depth: Optional[int] = Field(default=None, description="The current planning depth/layer of the parent task.")
+    # You could also include prior modification attempts or other metadata if helpful for the LLM
+    # prior_attempts: Optional[List[Dict[str, Any]]] = Field(default_factory=list, description="History of prior modification instructions and outcomes for this plan, if any.")
+
+    # If you prefer to send the plan as a JSON string to the LLM for easier prompting:
+    # original_plan_json: str = Field(description="The current plan (JSON string representation of PlanOutput) that needs modification.")
+    # For now, let's try passing the Pydantic model directly, as Agno might handle its serialization.
+    # If the LLM struggles with the full Pydantic model as context, converting to a simpler dict or JSON string
+    # in the adapter before sending to the LLM might be necessary.
+
+# You might also consider a specific model for what the user provides if it's more structured
+# class UserFeedbackOnPlan(BaseModel):
+#     target_task_index: Optional[int] = None # If feedback is about a specific task
+#     instruction: str # e.g., "Change goal to X", "Remove this task"
+#     new_task_definition: Optional[SubTaskDefinition] = None # If user wants to add/replace a task

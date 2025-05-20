@@ -9,6 +9,7 @@ import io # For sending file in memory
 import asyncio # Import asyncio
 # PDF Generation - you'll need to install this: pip install markdown-pdf
 from markdown_pdf import MarkdownPdf, Section # Using markdown-pdf library
+from agno.exceptions import StopAgentRun # Import StopAgentRun
 
 # Your project's core components
 from sentientresearchagent.hierarchical_agent_framework.node.node_processor import NodeProcessor
@@ -191,29 +192,42 @@ def handle_task_graph_options():
     return response
 
 # --- API Endpoint to Start a New Project ---
-async def run_project_cycle_async(goal, max_steps): # Renamed and made async
+async def run_project_cycle_async(goal, max_steps):
     """Coroutine to run the project cycle."""
     print(f"Async task: Initializing project with goal: '{goal}'")
     try:
-        # Clear previous project state from the graph before initializing a new one
         live_task_graph.nodes.clear()
         live_task_graph.graphs.clear()
         live_task_graph.root_graph_id = None
-        live_task_graph.overall_project_goal = None # Will be set by initialize_project
+        live_task_graph.overall_project_goal = None
         
         live_execution_engine.initialize_project(root_goal=goal)
         print(f"Async task: Project initialized. Running cycle (max_steps={max_steps})...")
-        await live_execution_engine.run_cycle(max_steps=max_steps) # Await the async run_cycle
+        await live_execution_engine.run_cycle(max_steps=max_steps)
         print(f"Async task: run_cycle for goal '{goal}' completed.")
+    except StopAgentRun as sae: # Specifically catch StopAgentRun
+        print(f"Async task: Project execution for goal '{goal}' was intentionally stopped by an agent or HITL: {sae.agent_message if hasattr(sae, 'agent_message') else str(sae)}")
+        # Optionally update graph to reflect this user-driven stop
+        if live_task_graph.root_graph_id and live_task_graph.get_node("root"):
+            root_node = live_task_graph.get_node("root")
+            if root_node.status not in [TaskStatus.DONE, TaskStatus.FAILED, TaskStatus.CANCELLED]:
+                 root_node.update_status(TaskStatus.CANCELLED, result_summary=f"Project stopped by user via HITL: {sae.agent_message if hasattr(sae, 'agent_message') else str(sae)}")
+                 # You might need to manually trigger a knowledge store update if it's not automatic here
+                 live_knowledge_store.add_or_update_record_from_node(root_node)
     except Exception as e:
         print(f"Async task: Error during project execution for goal '{goal}': {e}")
         # Optionally, update a global status or the graph itself to reflect the error
-        if live_task_graph.root_graph_id: 
-            pass 
+        if live_task_graph.root_graph_id and live_task_graph.get_node("root"):
+            root_node = live_task_graph.get_node("root")
+            if root_node.status not in [TaskStatus.DONE, TaskStatus.FAILED, TaskStatus.CANCELLED]:
+                root_node.update_status(TaskStatus.FAILED, error_msg=f"Project execution error: {str(e)}")
+                live_knowledge_store.add_or_update_record_from_node(root_node)
+
 
 def run_project_in_thread(goal, max_steps):
     """Target function for the thread, runs the asyncio event loop for the async task."""
     print(f"Thread: Starting asyncio event loop for project goal: '{goal}'")
+    # The try-except block is now inside run_project_cycle_async for better context
     asyncio.run(run_project_cycle_async(goal, max_steps))
     print(f"Thread: Asyncio event loop for project goal: '{goal}' finished.")
 

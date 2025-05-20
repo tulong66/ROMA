@@ -1,11 +1,13 @@
+import asyncio
 from loguru import logger
 from sentientresearchagent.hierarchical_agent_framework.agents.base_adapter import LlmApiAdapter
 from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode # Type hinting
-from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models import PlanOutput, AtomizerOutput, AgentTaskInput, ContextItem, CustomSearcherOutput # For type hinting
-from typing import Any, List
+from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models import PlanOutput, AtomizerOutput, AgentTaskInput, ContextItem, CustomSearcherOutput, PlannerInput, PlanModifierInput # For type hinting
+from typing import Any, List, Optional
 from agno.agent import Agent as AgnoAgent # Renaming to avoid conflict if we define our own Agent interface
 # It's good practice to also import the async version if available and distinct
 # from agno.agent import AsyncAgent as AsyncAgnoAgent # Assuming such an import exists for type hinting
+from .definitions.plan_modifier_agents import plan_modifier_agno_agent, PLAN_MODIFIER_AGENT_NAME # New import
 
 # Assuming the AgnoAgent instances passed to these adapters during initialization
 # are configured with the correct 'response_model' in their definitions.
@@ -137,7 +139,7 @@ class AggregatorAdapter(LlmApiAdapter):
             context_parts.append(content_str)
             context_parts.append(f"--- End Child Task Result {i+1} ---")
         
-        return "\\n\\n".join(context_parts)
+        return "\n\n".join(context_parts)
 
     async def process(self, node: TaskNode, agent_task_input: AgentTaskInput) -> str:
         """
@@ -158,3 +160,128 @@ class AggregatorAdapter(LlmApiAdapter):
         result_str = str(result_content)
         logger.info(f"  AggregatorAdapter: Received aggregated result (length {len(result_str)}) from agent '{self.agent_name}' for node {node.task_id}.")
         return result_str
+
+
+class PlanModifierAdapter(LlmApiAdapter):
+    """
+    Adapter for the PlanModifierAgent, which revises an existing plan based on user feedback.
+    """
+    def __init__(self, agno_agent_instance: AgnoAgent, agent_name: str = "PlanModifierAdapter"):
+        super().__init__(
+            agno_agent_instance=agno_agent_instance,
+            agent_name=agent_name
+        )
+        # self.agno_agent is now set by the parent LlmApiAdapter's __init__
+        # Ensure the agent was correctly passed and initialized by the parent.
+        if not self.agno_agent:
+            logger.error(f"{self.agent_name}: Agno agent instance was not properly set by the parent initializer.")
+            raise ValueError(f"Agno agent instance is None for {self.agent_name} after super().__init__.")
+        
+        logger.info(f"{self.agent_name} initialized with agent: {getattr(self.agno_agent, 'name', 'Unnamed Agno Agent')}")
+
+    async def process(
+        self, 
+        node: Optional[TaskNode], # Current parent node whose plan is being modified
+        input_data: PlanModifierInput, 
+        **kwargs
+    ) -> PlanOutput:
+        """
+        Processes the plan modification request.
+
+        Args:
+            node: The parent TaskNode (for context, though not directly used in prompt string).
+            input_data: PlanModifierInput containing original plan and user instructions.
+
+        Returns:
+            A PlanOutput object representing the revised plan.
+        """
+        if not self.agno_agent: # This check might be redundant if the __init__ check is robust
+            logger.error(f"{self.agent_name}: Agno agent '{getattr(self.agno_agent, 'name', 'N/A')}' is not available for processing.")
+            raise RuntimeError(f"Agno agent for {self.agent_name} not initialized or became unavailable.")
+
+        if not isinstance(input_data, PlanModifierInput):
+            logger.error(f"{self.agent_name}: Invalid input_data type. Expected PlanModifierInput, got {type(input_data)}")
+            raise TypeError("Invalid input type for PlanModifierAdapter. Expected PlanModifierInput.")
+
+        try:
+            original_plan_json_str = input_data.original_plan.model_dump_json(indent=2)
+        except Exception as e:
+            logger.error(f"Error serializing original_plan to JSON: {e}")
+            original_plan_json_str = str(input_data.original_plan.model_dump()) 
+
+        prompt_content = f"""
+        Overall Objective:
+        {input_data.overall_objective}
+
+        Original Plan JSON:
+        {original_plan_json_str}
+
+        User Modification Instructions:
+        {input_data.user_modification_instructions}
+        """
+        
+        node_id_for_log = node.task_id if node else "N/A"
+        logger.info(f"  Adapter '{self.agent_name}': Processing plan modification for node {node_id_for_log} (Overall Objective: '{input_data.overall_objective[:50]}...')")
+        logger.debug(f"    DEBUG: Prompt content for {getattr(self.agno_agent, 'name', 'N/A')}:\n{prompt_content}")
+        
+        # Re-using the process logic from the base LlmApiAdapter, but we need to construct AgentTaskInput
+        # or something compatible if _prepare_agno_run_arguments is to be used,
+        # or call self.agno_agent.arun directly with appropriate error handling.
+        # For now, let's assume PlanModifierInput is handled differently and doesn't use the standard
+        # _prepare_agno_run_arguments or the base process() method which expects AgentTaskInput or PlannerInput.
+        # We will call arun directly and handle retries.
+
+        max_retries = 3 
+        retry_delay_seconds = 5 
+
+        for attempt in range(max_retries):
+            try:
+                if not hasattr(self.agno_agent, 'arun'):
+                    logger.error(f"AgnoAgent instance for '{self.agent_name}' does not have an 'arun' method.")
+                    raise NotImplementedError(f"AgnoAgent for '{self.agent_name}' needs an async 'arun' method.")
+
+                logger.debug(f"    Adapter '{self.agent_name}': About to call await self.agno_agent.arun() (Attempt {attempt + 1}/{max_retries}) with custom prompt.")
+                
+                # The Agno agent for PlanModifier should be defined with response_model=PlanOutput
+                run_response_obj = await self.agno_agent.arun(prompt_content) 
+                logger.debug(f"    Adapter '{self.agent_name}': After await self.agno_agent.arun(), run_response_obj type: {type(run_response_obj)}")
+                
+                actual_content_data = None
+                if hasattr(run_response_obj, 'content'):
+                    content_attr = run_response_obj.content
+                    if asyncio.iscoroutine(content_attr): # Should not happen if response_model is used correctly
+                        actual_content_data = await content_attr
+                    else:
+                        actual_content_data = content_attr
+                else: # If Agno's arun directly returns the Pydantic model (common if response_model is set)
+                    actual_content_data = run_response_obj
+
+                if not isinstance(actual_content_data, PlanOutput):
+                    logger.error(f"  {self.agent_name}: Agent {getattr(self.agno_agent, 'name', 'N/A')} did not return PlanOutput. Got: {type(actual_content_data)}")
+                    raise TypeError(f"PlanModifier agent was expected to return PlanOutput, but returned {type(actual_content_data)}.")
+                
+                logger.info(f"    Adapter '{self.agent_name}': Successfully processed plan modification (Attempt {attempt+1}).")
+                return actual_content_data
+            
+            except Exception as e:
+                logger.warning(f"  Adapter Error (Attempt {attempt + 1}/{max_retries}): Exception during PlanModifier agent '{self.agent_name}' execution for node {node_id_for_log}: {e}")
+                if attempt < max_retries - 1:
+                    logger.info(f"    Retrying in {retry_delay_seconds} seconds...")
+                    await asyncio.sleep(retry_delay_seconds)
+                else:
+                    logger.error(f"  Adapter Error: Max retries ({max_retries}) reached for PlanModifier agent '{self.agent_name}' on node {node_id_for_log}. Re-raising last exception.")
+                    raise
+        
+        logger.error(f"  Adapter Error: Loop completed without successful return or re-raising exception for PlanModifier node {node_id_for_log}. This indicates an issue in retry logic.")
+        return None # Fallback, should ideally be unreachable
+
+
+# Make sure to add PlanModifierInput to the Union type for AgentAdapterInput if you have one,
+# or ensure your get_agent_adapter logic can handle retrieving this adapter.
+# For example, if AgentAdapterInput was:
+# AgentAdapterInput = Union[AgentTaskInput, PlannerInput, AggregatorInputContext]
+# It might become:
+# AgentAdapterInput = Union[AgentTaskInput, PlannerInput, AggregatorInputContext, PlanModifierInput]
+# This is only relevant if you have a single `process_input_for_agent` type function.
+# If `get_agent_adapter` returns specific adapter types whose `process` methods have specific
+# input model types, this Union might not be in `adapters.py`.

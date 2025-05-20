@@ -1,7 +1,7 @@
 from litellm import OpenAI
 from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskType # For TaskType enum
 from .registry import register_agent_adapter, AGENT_REGISTRY, NAMED_AGENTS # Import registration function and registries
-from .adapters import PlannerAdapter, ExecutorAdapter, AtomizerAdapter, AggregatorAdapter # Import adapter classes
+from .adapters import PlannerAdapter, ExecutorAdapter, AtomizerAdapter, AggregatorAdapter, PlanModifierAdapter # Import adapter classes
 from loguru import logger
 # Import AgnoAgent definitions
 from .definitions.planner_agents import simple_test_planner_agno_agent, core_research_planner_agno_agent
@@ -21,6 +21,9 @@ from .definitions.aggregator_agents import default_aggregator_agno_agent # Impor
 
 # Import the new adapter
 from .definitions.custom_searchers import OpenAICustomSearchAdapter
+
+# Import the new agent and adapter
+from .definitions.plan_modifier_agents import plan_modifier_agno_agent, PLAN_MODIFIER_AGENT_NAME
 
 
 logger.info("Executing agents/__init__.py: Setting up and registering agents...")
@@ -211,6 +214,44 @@ try:
         logger.warning("Warning: OpenAI library not available, OpenAICustomSearchAdapter not registered.")
 except Exception as e:
     logger.warning(f"Warning: Could not initialize and register OpenAICustomSearchAdapter: {e}")
+
+
+# Register the Plan Modifier Agno Agent instance by its name (for potential direct use if needed, not typical for adapters)
+if plan_modifier_agno_agent:
+    if PLAN_MODIFIER_AGENT_NAME in NAMED_AGENTS: # PLAN_MODIFIER_AGENT_NAME is "PlanModifier_Agno"
+        logger.warning(f"Agno agent instance {PLAN_MODIFIER_AGENT_NAME} already exists in NAMED_AGENTS. Overwriting.")
+    NAMED_AGENTS[PLAN_MODIFIER_AGENT_NAME] = plan_modifier_agno_agent # Storing the AgnoAgent itself
+    logger.info(f"Stored Agno agent instance '{PLAN_MODIFIER_AGENT_NAME}' in NAMED_AGENTS.")
+else:
+    logger.error(f"Plan Modifier Agno agent ({PLAN_MODIFIER_AGENT_NAME}) was not initialized. Not adding to NAMED_AGENTS.")
+
+# Register the Plan Modifier Adapter instance using its specific key for lookup by NodeProcessor
+PLAN_MODIFIER_ADAPTER_KEY = "PlanModifier" 
+try:
+    if not plan_modifier_agno_agent:
+        logger.error(f"Cannot instantiate PlanModifierAdapter: plan_modifier_agno_agent ('{PLAN_MODIFIER_AGENT_NAME}') is not available.")
+        raise ValueError(f"Agno agent '{PLAN_MODIFIER_AGENT_NAME}' is required for PlanModifierAdapter but was not loaded.")
+
+    plan_modifier_adapter_instance = PlanModifierAdapter(
+        agno_agent_instance=plan_modifier_agno_agent,
+        # Set the adapter's internal agent_name. Using the KEY ensures clarity if logs from the adapter use self.agent_name.
+        agent_name=PLAN_MODIFIER_ADAPTER_KEY 
+    )
+    
+    # Register the adapter instance by its specific key directly into NAMED_AGENTS
+    # This allows NodeProcessor to fetch it using NAMED_AGENTS.get("PlanModifier")
+    register_agent_adapter(
+        adapter=plan_modifier_adapter_instance,
+        name=PLAN_MODIFIER_ADAPTER_KEY  # This will put it in NAMED_AGENTS with the key "PlanModifier"
+    )
+    # The logger message from register_agent_adapter will be something like:
+    # "AgentRegistry: Registered adapter 'PlanModifierAdapter' with name 'PlanModifier'"
+    # (Actual class name of adapter is PlanModifierAdapter, its self.agent_name is set to "PlanModifier")
+
+except Exception as e:
+    logger.error(f"Failed to initialize or register PlanModifierAdapter: {e}")
+    import traceback
+    logger.error(traceback.format_exc())
 
 
 logger.info(f"AGENT_REGISTRY populated: {len(AGENT_REGISTRY)} entries.")
