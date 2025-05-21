@@ -1,4 +1,10 @@
-from litellm import OpenAI
+from typing import List, Optional, Type, Any
+from pydantic import BaseModel
+
+from litellm import OpenAI # type: ignore
+from agno.agent import Agent as AgnoAgent # Corrected import
+
+from sentientresearchagent.hierarchical_agent_framework.agents.base_adapter import BaseAdapter
 from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskType # For TaskType enum
 from .registry import register_agent_adapter, AGENT_REGISTRY, NAMED_AGENTS # Import registration function and registries
 from .adapters import PlannerAdapter, ExecutorAdapter, AtomizerAdapter, AggregatorAdapter, PlanModifierAdapter # Import adapter classes
@@ -26,228 +32,211 @@ from .definitions.custom_searchers import OpenAICustomSearchAdapter
 from .definitions.plan_modifier_agents import plan_modifier_agno_agent, PLAN_MODIFIER_AGENT_NAME
 
 
-logger.info("Executing agents/__init__.py: Setting up and registering agents...")
+logger.info("Executing agents/__init__.py: Setting up agent configurations...")
 
-# --- Instantiate and Register Planner Adapters ---
+# --- Pydantic Models for Configuration ---
+class RegistrationKey(BaseModel):
+    action_verb: str
+    task_type: Optional[TaskType] = None
+
+class AdapterRegistrationConfig(BaseModel):
+    adapter_class: Type[BaseAdapter]
+    agno_agent_instance: Optional[AgnoAgent] = None # Optional for adapters like OpenAICustomSearchAdapter
+    adapter_agent_name: str # Name passed to the adapter's constructor
+    registration_keys: List[RegistrationKey] = []
+    named_registrations: List[str] = [] # For registration by specific names
+
+    model_config = {"arbitrary_types_allowed": True}
+
+# --- Agent Configuration Data ---
+
+AGENT_CONFIGURATIONS: List[AdapterRegistrationConfig] = []
+
+# SimpleTestPlanner
 if simple_test_planner_agno_agent:
-    simple_planner_adapter_instance = PlannerAdapter(
-        agno_agent_instance=simple_test_planner_agno_agent,
-        agent_name="SimpleTestPlanner" # This name is used for logging by the adapter
-    )
-    # Register for general "plan" actions for common task types
-    register_agent_adapter(
-        adapter=simple_planner_adapter_instance,
-        action_verb="plan",
-        task_type=TaskType.WRITE # <--- This will be picked for the root node
-    )
-    register_agent_adapter(
-        adapter=simple_planner_adapter_instance,
-        action_verb="plan",
-        task_type=TaskType.THINK
-    )
-    register_agent_adapter(
-        adapter=simple_planner_adapter_instance,
-        action_verb="plan",
-        task_type=TaskType.SEARCH
-    )
-    # Also register by a specific name if TaskNode.agent_name might refer to it
-    register_agent_adapter(
-        adapter=simple_planner_adapter_instance,
-        name="default_planner" # Can be used in TaskNode(agent_name="default_planner")
-    )
-    register_agent_adapter(
-        adapter=simple_planner_adapter_instance,
-        name="SimpleTestPlanner"
+    AGENT_CONFIGURATIONS.append(
+        AdapterRegistrationConfig(
+            adapter_class=PlannerAdapter,
+            agno_agent_instance=simple_test_planner_agno_agent,
+            adapter_agent_name="SimpleTestPlanner",
+            registration_keys=[
+                RegistrationKey(action_verb="plan", task_type=TaskType.WRITE),
+                RegistrationKey(action_verb="plan", task_type=TaskType.THINK),
+                RegistrationKey(action_verb="plan", task_type=TaskType.SEARCH),
+            ],
+            named_registrations=["default_planner", "SimpleTestPlanner"]
+        )
     )
 
-# --- Instantiate and Register Core Research Planner ---
+# CoreResearchPlanner
 if core_research_planner_agno_agent:
-    core_research_planner_adapter_instance = PlannerAdapter(
-        agno_agent_instance=core_research_planner_agno_agent,
-        agent_name="CoreResearchPlanner" # Used for adapter logging
+    AGENT_CONFIGURATIONS.append(
+        AdapterRegistrationConfig(
+            adapter_class=PlannerAdapter,
+            agno_agent_instance=core_research_planner_agno_agent,
+            adapter_agent_name="CoreResearchPlanner",
+            named_registrations=["CoreResearchPlanner"]
+            # Example for action_verb/task_type registration if desired:
+            # registration_keys=[RegistrationKey(action_verb="plan", task_type=TaskType.THINK)]
+        )
     )
-    # Register by name, so TaskNode can specify agent_name="CoreResearchPlanner"
-    register_agent_adapter(
-        adapter=core_research_planner_adapter_instance,
-        name="CoreResearchPlanner"
-    )
-    # Optionally, register for a specific action/task_type if it's a default for that
-    # For example, if research planning is typically triggered by a THINK task:
-    # register_agent_adapter(
-    #     adapter=core_research_planner_adapter_instance,
-    #     action_verb="plan",
-    #     task_type=TaskType.THINK 
-    # )
-
-
-# --- Instantiate and Register Research Executor Agents ---
 
 # SearchExecutor
 if search_executor_agno_agent:
-    search_executor_adapter_instance = ExecutorAdapter(
-        agno_agent_instance=search_executor_agno_agent,
-        agent_name="SearchExecutor"
+    AGENT_CONFIGURATIONS.append(
+        AdapterRegistrationConfig(
+            adapter_class=ExecutorAdapter,
+            agno_agent_instance=search_executor_agno_agent,
+            adapter_agent_name="SearchExecutor",
+            named_registrations=["SearchExecutor"]
+            # Example for action_verb/task_type registration if desired:
+            # registration_keys=[RegistrationKey(action_verb="execute", task_type=TaskType.SEARCH)]
+        )
     )
-    register_agent_adapter(
-        adapter=search_executor_adapter_instance,
-        name="SearchExecutor" # For TaskNode.agent_name
-    )
-    # Also could be registered for (action="execute", task_type=TaskType.SEARCH) if it's a default searcher
-    # register_agent_adapter(
-    #     adapter=search_executor_adapter_instance,
-    #     action_verb="execute",
-    #     task_type=TaskType.SEARCH
-    # )
 
 # SearchSynthesizer
 logger.info(f"DEBUG: Value of search_synthesizer_agno_agent before registration: {search_synthesizer_agno_agent}") # DEBUGGING STATEMENT
 if search_synthesizer_agno_agent:
-    search_synthesizer_adapter_instance = ExecutorAdapter(
-        agno_agent_instance=search_synthesizer_agno_agent,
-        agent_name="SearchSynthesizer"
-    )
-    register_agent_adapter(
-        adapter=search_synthesizer_adapter_instance,
-        name="SearchSynthesizer"
-    )
-    # Typically for (action="execute", task_type=TaskType.THINK)
-    register_agent_adapter(
-        adapter=search_synthesizer_adapter_instance,
-        action_verb="execute",
-        task_type=TaskType.THINK
+    AGENT_CONFIGURATIONS.append(
+        AdapterRegistrationConfig(
+            adapter_class=ExecutorAdapter,
+            agno_agent_instance=search_synthesizer_agno_agent,
+            adapter_agent_name="SearchSynthesizer",
+            registration_keys=[RegistrationKey(action_verb="execute", task_type=TaskType.THINK)],
+            named_registrations=["SearchSynthesizer"]
+        )
     )
 
 # BasicReportWriter
 if basic_report_writer_agno_agent:
-    basic_report_writer_adapter_instance = ExecutorAdapter(
-        agno_agent_instance=basic_report_writer_agno_agent,
-        agent_name="BasicReportWriter"
-    )
-    register_agent_adapter(
-        adapter=basic_report_writer_adapter_instance,
-        name="BasicReportWriter"
-    )
-    # Typically for (action="execute", task_type=TaskType.WRITE)
-    register_agent_adapter(
-        adapter=basic_report_writer_adapter_instance,
-        action_verb="execute",
-        task_type=TaskType.WRITE
+    AGENT_CONFIGURATIONS.append(
+        AdapterRegistrationConfig(
+            adapter_class=ExecutorAdapter,
+            agno_agent_instance=basic_report_writer_agno_agent,
+            adapter_agent_name="BasicReportWriter",
+            registration_keys=[RegistrationKey(action_verb="execute", task_type=TaskType.WRITE)],
+            named_registrations=["BasicReportWriter"]
+        )
     )
 
-
-# --- Placeholder for Atomizer Agent Registration (Example) ---
-# if simple_atomizer_agno_agent: # (Assuming you define this Agno agent with response_model=AtomizerOutput)
-#     simple_atomizer_adapter_instance = AtomizerAdapter(
-#         agno_agent_instance=simple_atomizer_agno_agent,
-#         agent_name="SimpleAtomizer"
-#     )
-#     # Atomizers might be registered per task type
-#     register_agent_adapter(adapter=simple_atomizer_adapter_instance, action_verb="atomize", task_type=TaskType.WRITE)
-#     register_agent_adapter(adapter=simple_atomizer_adapter_instance, name="default_atomizer")
-
-# --- Register the Default Atomizer Agent ---
+# DefaultAtomizer
 if default_atomizer_agno_agent:
-    default_atomizer_adapter_instance = AtomizerAdapter(
-        agno_agent_instance=default_atomizer_agno_agent,
-        agent_name="DefaultAtomizer" # For adapter logging
+    AGENT_CONFIGURATIONS.append(
+        AdapterRegistrationConfig(
+            adapter_class=AtomizerAdapter,
+            agno_agent_instance=default_atomizer_agno_agent,
+            adapter_agent_name="DefaultAtomizer",
+            registration_keys=[RegistrationKey(action_verb="atomize", task_type=None)],
+            named_registrations=["default_atomizer"]
+        )
     )
-    # Atomizers are typically general purpose for refining any task goal before planning/execution.
-    # So, register for the "atomize" action verb. TaskType might not be strictly necessary
-    # for selection if there's only one primary atomizer, or it can be registered for all common task types.
-    # For simplicity, let's register it by name and for a general "atomize" action.
-    # The NodeProcessor will specifically request an "atomize" action.
-    register_agent_adapter(
-        adapter=default_atomizer_adapter_instance,
-        action_verb="atomize",
-        task_type=None # Indicates it can atomize any task type goal
-    )
-    register_agent_adapter(
-        adapter=default_atomizer_adapter_instance,
-        name="default_atomizer" # Allow calling by name
-    )
-    logger.info(f"Registered adapter: {default_atomizer_adapter_instance.agent_name} for atomization")
 else:
     logger.warning("DefaultAtomizer_Agno agent not available. Atomization step will be skipped or limited.")
 
-
-# --- Register the Default Aggregator Agent ---
+# DefaultAggregator
 logger.info(f"DEBUG: Value of default_aggregator_agno_agent before registration: {default_aggregator_agno_agent}") # DEBUGGING STATEMENT
 if default_aggregator_agno_agent:
-    default_aggregator_adapter_instance = AggregatorAdapter( # Use AggregatorAdapter
-        agno_agent_instance=default_aggregator_agno_agent,
-        agent_name="DefaultAggregator" # For adapter logging
+    AGENT_CONFIGURATIONS.append(
+        AdapterRegistrationConfig(
+            adapter_class=AggregatorAdapter,
+            agno_agent_instance=default_aggregator_agno_agent,
+            adapter_agent_name="DefaultAggregator",
+            registration_keys=[RegistrationKey(action_verb="aggregate", task_type=None)],
+            named_registrations=["default_aggregator"]
+        )
     )
-    # Register for the generic "aggregate" action, typically TaskType is None or not specified
-    # as aggregation is a phase rather than a specific task type from planning.
-    # The get_agent_adapter logic might need to handle finding an aggregator
-    # when a node is in AGGREGATING status.
-    # For now, let's register it by name and for a general aggregate action.
-    register_agent_adapter(
-        adapter=default_aggregator_adapter_instance,
-        action_verb="aggregate", 
-        task_type=None # Indicates it's a general aggregator for any task type parent
-    )
-    register_agent_adapter(
-        adapter=default_aggregator_adapter_instance,
-        name="default_aggregator" # Allow calling by name
-    )
-    logger.info(f"Registered adapter: {default_aggregator_adapter_instance.agent_name} for aggregation")
+else:
+    logger.warning("DefaultAggregator_Agno agent not available. Aggregation step will be skipped or limited.")
 
 
-# Register OpenAICustomSearchAdapter directly
-# Ensure OpenAI is available and client can be initialized
+# --- Processing Configurations and Registering Adapters ---
+for config in AGENT_CONFIGURATIONS:
+    try:
+        if config.agno_agent_instance:
+            adapter_instance = config.adapter_class(
+                agno_agent_instance=config.agno_agent_instance,
+                agent_name=config.adapter_agent_name
+            )
+        elif config.adapter_class == OpenAICustomSearchAdapter: # Special case for direct adapter instantiation
+             adapter_instance = OpenAICustomSearchAdapter() # Assumes OpenAICustomSearchAdapter has agent_name or similar internally
+             # If OpenAICustomSearchAdapter needs adapter_agent_name, adjust its constructor or this logic
+        else:
+            logger.error(f"Cannot instantiate adapter for {config.adapter_agent_name}: No AgnoAgent instance and not a known special case.")
+            continue
+
+        for key_reg in config.registration_keys:
+            register_agent_adapter(
+                adapter=adapter_instance,
+                action_verb=key_reg.action_verb,
+                task_type=key_reg.task_type
+            )
+        for name_reg in config.named_registrations:
+            register_agent_adapter(
+                adapter=adapter_instance,
+                name=name_reg
+            )
+        logger.info(f"Successfully configured and registered adapter: {config.adapter_agent_name}")
+
+    except Exception as e:
+        logger.error(f"Failed to configure or register adapter {config.adapter_agent_name}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+
+
+# --- Handle Special Registrations (Not fitting the common AdapterRegistrationConfig pattern cleanly) ---
+
+# OpenAICustomSearchAdapter (direct instantiation and registration)
+# This is a non-LLM adapter, instantiated directly.
 try:
-    if OpenAI: # Check if OpenAI was successfully imported in custom_searchers
-        openai_direct_search_adapter_instance = OpenAICustomSearchAdapter() # Uses default "gpt-4.1"
+    # Assuming OpenAI is available (litellm should handle this)
+    # We check if OpenAI class itself is available which custom_searchers.py might depend on.
+    if "OpenAI" in globals() and OpenAI is not None : # Check if litellm.OpenAI was imported
+        openai_direct_search_adapter_instance = OpenAICustomSearchAdapter() # Uses default "gpt-4.1" or its own config
+
         register_agent_adapter(
             adapter=openai_direct_search_adapter_instance,
-            name="OpenAICustomSearcher" # The name to use when assigning tasks
+            name="OpenAICustomSearcher"
         )
-        # Also register it for the generic ('execute', TaskType.SEARCH) key
         register_agent_adapter(
             adapter=openai_direct_search_adapter_instance,
             action_verb="execute",
             task_type=TaskType.SEARCH
         )
-        logger.info(f"Registered direct adapter: {openai_direct_search_adapter_instance.adapter_name} as 'OpenAICustomSearcher' AND for ('execute', SEARCH)")
+        # The adapter_name for logging comes from OpenAICustomSearchAdapter.adapter_name
+        logger.info(f"Registered direct adapter: {getattr(openai_direct_search_adapter_instance, 'adapter_name', 'OpenAICustomSearchAdapter')} as 'OpenAICustomSearcher' AND for ('execute', SEARCH)")
     else:
-        logger.warning("Warning: OpenAI library not available, OpenAICustomSearchAdapter not registered.")
+        logger.warning("Warning: OpenAI library (from litellm) not available or not imported as OpenAI, OpenAICustomSearchAdapter not registered.")
 except Exception as e:
     logger.warning(f"Warning: Could not initialize and register OpenAICustomSearchAdapter: {e}")
+    import traceback
+    logger.error(traceback.format_exc())
 
 
-# Register the Plan Modifier Agno Agent instance by its name (for potential direct use if needed, not typical for adapters)
+# PlanModifier AgnoAgent instance (stored directly in NAMED_AGENTS)
 if plan_modifier_agno_agent:
-    if PLAN_MODIFIER_AGENT_NAME in NAMED_AGENTS: # PLAN_MODIFIER_AGENT_NAME is "PlanModifier_Agno"
+    if PLAN_MODIFIER_AGENT_NAME in NAMED_AGENTS:
         logger.warning(f"Agno agent instance {PLAN_MODIFIER_AGENT_NAME} already exists in NAMED_AGENTS. Overwriting.")
-    NAMED_AGENTS[PLAN_MODIFIER_AGENT_NAME] = plan_modifier_agno_agent # Storing the AgnoAgent itself
+    NAMED_AGENTS[PLAN_MODIFIER_AGENT_NAME] = plan_modifier_agno_agent
     logger.info(f"Stored Agno agent instance '{PLAN_MODIFIER_AGENT_NAME}' in NAMED_AGENTS.")
 else:
     logger.error(f"Plan Modifier Agno agent ({PLAN_MODIFIER_AGENT_NAME}) was not initialized. Not adding to NAMED_AGENTS.")
 
-# Register the Plan Modifier Adapter instance using its specific key for lookup by NodeProcessor
-PLAN_MODIFIER_ADAPTER_KEY = "PlanModifier" 
+# PlanModifierAdapter (registered by specific name)
+PLAN_MODIFIER_ADAPTER_KEY = "PlanModifier"
 try:
     if not plan_modifier_agno_agent:
         logger.error(f"Cannot instantiate PlanModifierAdapter: plan_modifier_agno_agent ('{PLAN_MODIFIER_AGENT_NAME}') is not available.")
-        raise ValueError(f"Agno agent '{PLAN_MODIFIER_AGENT_NAME}' is required for PlanModifierAdapter but was not loaded.")
-
-    plan_modifier_adapter_instance = PlanModifierAdapter(
-        agno_agent_instance=plan_modifier_agno_agent,
-        # Set the adapter's internal agent_name. Using the KEY ensures clarity if logs from the adapter use self.agent_name.
-        agent_name=PLAN_MODIFIER_ADAPTER_KEY 
-    )
-    
-    # Register the adapter instance by its specific key directly into NAMED_AGENTS
-    # This allows NodeProcessor to fetch it using NAMED_AGENTS.get("PlanModifier")
-    register_agent_adapter(
-        adapter=plan_modifier_adapter_instance,
-        name=PLAN_MODIFIER_ADAPTER_KEY  # This will put it in NAMED_AGENTS with the key "PlanModifier"
-    )
-    # The logger message from register_agent_adapter will be something like:
-    # "AgentRegistry: Registered adapter 'PlanModifierAdapter' with name 'PlanModifier'"
-    # (Actual class name of adapter is PlanModifierAdapter, its self.agent_name is set to "PlanModifier")
-
+        # Not raising error here to allow rest of the system to potentially load
+    else:
+        plan_modifier_adapter_instance = PlanModifierAdapter(
+            agno_agent_instance=plan_modifier_agno_agent,
+            agent_name=PLAN_MODIFIER_ADAPTER_KEY
+        )
+        register_agent_adapter(
+            adapter=plan_modifier_adapter_instance,
+            name=PLAN_MODIFIER_ADAPTER_KEY
+        )
+        # Logger message will be handled by register_agent_adapter
 except Exception as e:
     logger.error(f"Failed to initialize or register PlanModifierAdapter: {e}")
     import traceback
