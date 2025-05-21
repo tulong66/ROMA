@@ -158,321 +158,307 @@ class NodeProcessor:
 
         logger.info(f"    NodeProcessor: Created {len(created_sub_nodes)} sub-nodes for parent {parent_node.task_id} with specified dependencies.")
 
+    async def _atomize_node_if_needed(
+        self, node: TaskNode, task_graph: TaskGraph, knowledge_store: KnowledgeStore
+    ) -> Optional[NodeType]:
+        """
+        Calls the Atomizer agent to determine if the node's goal is atomic.
+        Updates node.goal and node.node_type based on atomizer output.
+        Handles HITL after atomization if enabled.
+        Returns the NodeType to proceed with (PLAN or EXECUTE), or None if HITL caused an abort/error.
+        """
+        current_task_type_value = node.task_type.value if isinstance(node.task_type, TaskType) else node.task_type
+        
+        atomizer_input_model = resolve_context_for_agent(
+            current_task_id=node.task_id,
+            current_goal=node.goal,
+            current_task_type=current_task_type_value,
+            agent_name="default_atomizer",
+            knowledge_store=knowledge_store,
+            overall_project_goal=task_graph.overall_project_goal
+        )
+        
+        atomizer_adapter = get_agent_adapter(node, action_verb="atomize") # Node type is not yet set by atomizer here
+        action_to_take: NodeType
+
+        if atomizer_adapter:
+            logger.info(f"    NodeProcessor: Calling Atomizer for node {node.task_id}")
+            atomizer_output: AtomizerOutput = await atomizer_adapter.process(node, atomizer_input_model)
+            
+            if atomizer_output.updated_goal != node.goal:
+                logger.info(f"    Atomizer updated goal for {node.task_id}: '{node.goal[:50]}...' -> '{atomizer_output.updated_goal[:50]}...'")
+                node.goal = atomizer_output.updated_goal
+            
+            action_to_take = NodeType.EXECUTE if atomizer_output.is_atomic else NodeType.PLAN
+            node.node_type = action_to_take 
+            
+            logger.info(f"    Atomizer determined {node.task_id} as {action_to_take.name}. NodeType set to {node.node_type.name}.")
+
+            if self.config.enable_hitl_after_atomizer:
+                hitl_context_msg = f"Review Atomizer output for task '{node.task_id}'."
+                hitl_data = {
+                    "original_goal": atomizer_input_model.current_goal,
+                    "updated_goal": node.goal,
+                    "atomizer_decision_is_atomic": atomizer_output.is_atomic,
+                    "proposed_next_action": action_to_take.value, 
+                    "current_context_summary": get_context_summary(atomizer_input_model.context_items)
+                }
+                hitl_outcome_atomizer = await self._call_hitl("PostAtomizerCheck", hitl_context_msg, hitl_data, node)
+                if hitl_outcome_atomizer["status"] != "approved": 
+                    return None 
+            return action_to_take
+        else: 
+            logger.warning(f"    NodeProcessor: No AtomizerAdapter found for node {node.task_id}. Proceeding with original node_type: {node.node_type}")
+            # Ensure node.node_type is an Enum instance
+            if isinstance(node.node_type, str):
+                 try:
+                    resolved_node_type = NodeType(node.node_type)
+                    node.node_type = resolved_node_type # Assign the enum to the node instance
+                    return resolved_node_type
+                 except ValueError:
+                    logger.error(f"Invalid NodeType string '{node.node_type}' for node {node.task_id} when atomizer is absent. Defaulting to EXECUTE.")
+                    node.node_type = NodeType.EXECUTE # Update node instance
+                    return NodeType.EXECUTE
+            elif isinstance(node.node_type, NodeType):
+                return node.node_type # Already an enum, node.node_type is correct
+            else: 
+                logger.error(f"Unexpected type for node.node_type: {type(node.node_type)}. Defaulting to EXECUTE.")
+                node.node_type = NodeType.EXECUTE # Update node instance
+                return NodeType.EXECUTE
+
+
+    async def _handle_ready_plan_node(
+        self, node: TaskNode, task_graph: TaskGraph, knowledge_store: KnowledgeStore
+    ):
+        """Handles a READY node that needs to be PLANNED."""
+        logger.info(f"    NodeProcessor: Planning for node {node.task_id} (Goal: '{node.goal[:50]}...')")
+        current_overall_objective = node.overall_objective or getattr(task_graph, 'overall_project_goal', "Undefined overall project goal")
+        
+        planner_adapter = get_agent_adapter(node, action_verb="plan")
+        if not planner_adapter:
+            error_msg = f"No PLAN adapter found for node {node.task_id} (TaskType: {node.task_type}) after atomization or explicit PLAN type."
+            logger.error(error_msg)
+            node.update_status(TaskStatus.FAILED, error_msg=error_msg)
+            return
+
+        current_planner_input_model = resolve_input_for_planner_agent(
+            current_task_id=node.task_id, knowledge_store=knowledge_store,
+            overall_objective=current_overall_objective, planning_depth=node.layer,
+            replan_details=None, 
+            global_constraints=getattr(task_graph, 'global_constraints', [])
+        )
+        node.input_payload_dict = current_planner_input_model.model_dump()
+        
+        plan_output: Optional[PlanOutput] = await planner_adapter.process(node, current_planner_input_model)
+
+        if plan_output is None or not plan_output.sub_tasks:
+            if node.status not in [TaskStatus.CANCELLED, TaskStatus.FAILED]: 
+                logger.warning(f"    Node {node.task_id} (PLAN): Planner returned no sub-tasks or None. Considering this a planning failure or no-op.")
+                if plan_output is None:
+                    node.update_status(TaskStatus.FAILED, error_msg="Planner failed to produce an output.")
+                else: 
+                    logger.info(f"    Node {node.task_id} (PLAN): Planner returned an empty list of sub-tasks. Interpreting as task being atomic.")
+                    node.node_type = NodeType.EXECUTE 
+                    node.output_summary = "Planner determined no further sub-tasks are needed; task is atomic."
+                    node.update_status(TaskStatus.PLAN_DONE) 
+            return 
+
+        if self.config.enable_hitl_after_plan_generation and node.layer == 0:
+            hitl_context_msg_plan = f"Review initial plan for root task '{node.task_id}'."
+            plan_for_review = plan_output.model_dump(mode='json') if plan_output else {}
+            
+            # Combine context items for summary
+            context_items_for_summary = (
+                current_planner_input_model.execution_history_and_context.relevant_ancestor_outputs + 
+                current_planner_input_model.execution_history_and_context.prior_sibling_task_outputs
+            )
+
+            hitl_data_plan = {
+                "task_goal": node.goal,
+                "proposed_plan": plan_for_review,
+                "planner_input_summary": {
+                    "overall_objective": current_planner_input_model.overall_objective,
+                    "current_task_summary": current_planner_input_model.current_task_goal, 
+                    "context_summary": get_context_summary(context_items_for_summary)
+                }
+            }
+            hitl_outcome_plan = await self._call_hitl("PostInitialPlanGeneration", hitl_context_msg_plan, hitl_data_plan, node)
+
+            if hitl_outcome_plan["status"] == "request_modification":
+                logger.info(f"Node {node.task_id}: Plan modification requested by user. Setting to NEEDS_REPLAN.")
+                node.replan_reason = f"User requested modification: {hitl_outcome_plan.get('modification_instructions', 'No specific instructions.')}"
+                node.update_status(TaskStatus.NEEDS_REPLAN)
+                node.result = plan_output 
+                node.output_summary = "Initial plan requires user modification."
+                return 
+            elif hitl_outcome_plan["status"] != "approved": 
+                return
+
+        self._create_sub_nodes_from_plan(node, plan_output, task_graph, knowledge_store)
+        node.result = plan_output 
+        node.output_summary = f"Planned {len(plan_output.sub_tasks)} sub-tasks."
+        node.update_status(TaskStatus.PLAN_DONE)
+        logger.success(f"    NodeProcessor: Node {node.task_id} planning complete. Status: {node.status.name}")
+
+
+    async def _handle_ready_execute_node(
+        self, node: TaskNode, task_graph: TaskGraph, knowledge_store: KnowledgeStore
+    ):
+        """Handles a READY node that needs to be EXECUTED."""
+        logger.info(f"    NodeProcessor: Executing node {node.task_id} (TaskType: {node.task_type}, Goal: '{node.goal[:50]}...')")
+        
+        current_task_type_value = node.task_type.value if isinstance(node.task_type, TaskType) else node.task_type
+
+        # Prepare input for the execution agent
+        # If node.input_payload_dict is already populated (e.g., by atomizer or forced execute),
+        # we might want to use it, or re-resolve context. For now, let's re-resolve to ensure freshness,
+        # unless a specific flag indicates otherwise.
+        # The original logic prepared general_agent_task_input_model before the PLAN/EXECUTE split.
+        
+        agent_task_input_model = resolve_context_for_agent(
+            current_task_id=node.task_id,
+            current_goal=node.goal,
+            current_task_type=current_task_type_value, # Pass the string value
+            agent_name=node.agent_name or f"agent_for_{current_task_type_value}", # Use node.agent_name if specified
+            knowledge_store=knowledge_store,
+            overall_project_goal=task_graph.overall_project_goal
+        )
+        node.input_payload_dict = agent_task_input_model.model_dump()
+        logger.debug(f"Node {node.task_id} input payload (for EXECUTE): {node.input_payload_dict}")
+
+        if self.config.enable_hitl_before_execute:
+            hitl_context_msg_exec = f"Review before executing task '{node.task_id}'."
+            hitl_data_exec = {
+                "task_goal": node.goal,
+                "task_type": current_task_type_value,
+                "resolved_input_summary": {
+                    "current_task_summary": agent_task_input_model.current_task_description,
+                     "context_summary": get_context_summary(agent_task_input_model.context_items, max_items=5)
+                }
+            }
+            hitl_outcome_exec = await self._call_hitl("PreExecutionCheck", hitl_context_msg_exec, hitl_data_exec, node)
+            if hitl_outcome_exec["status"] != "approved":
+                # Node status already updated by _call_hitl
+                return
+
+        # Get the appropriate adapter for EXECUTE action
+        # The node.node_type should be EXECUTE at this point.
+        executor_adapter = get_agent_adapter(node, action_verb="execute")
+        if not executor_adapter:
+            error_msg = f"No EXECUTE adapter found for node {node.task_id} (TaskType: {node.task_type}, NodeType: {node.node_type})"
+            logger.error(error_msg)
+            node.update_status(TaskStatus.FAILED, error_msg=error_msg)
+            return
+
+        logger.info(f"    NodeProcessor: Calling executor adapter '{executor_adapter.config.name}' for node {node.task_id}")
+        execution_result: Optional[Any] = await executor_adapter.process(node, agent_task_input_model)
+
+        if execution_result is not None:
+            node.result = execution_result
+            # Determine output_summary (similar to _execute_node_action)
+            if isinstance(execution_result, BaseModel):
+                try:
+                    # Try to get a summary if the model supports it, else use a generic one
+                    if hasattr(execution_result, 'summary') and execution_result.summary:
+                        node.output_summary = str(execution_result.summary)
+                    elif hasattr(execution_result, 'content_summary') and execution_result.content_summary: # For WebSearchResultsOutput
+                        node.output_summary = str(execution_result.content_summary)
+                    elif isinstance(execution_result, CustomSearcherOutput) and execution_result.results:
+                         node.output_summary = f"Found {len(execution_result.results)} search results."
+                    elif isinstance(execution_result, PlanModifierInput): # This seems unlikely as output for EXECUTE
+                        node.output_summary = f"Plan modification result." # Placeholder
+                    else:
+                        node.output_summary = f"Execution completed. Result type: {type(execution_result).__name__}"
+                except Exception as e:
+                    logger.warning(f"Error generating summary from BaseModel result for {node.task_id}: {e}")
+                    node.output_summary = f"Execution completed. Result type: {type(execution_result).__name__} (summary error)."
+            elif isinstance(execution_result, str):
+                node.output_summary = execution_result[:250] + "..." if len(execution_result) > 250 else execution_result
+            else:
+                node.output_summary = f"Execution completed. Data stored in result."
+            
+            node.update_status(TaskStatus.COMPLETED)
+            logger.success(f"    NodeProcessor: Node {node.task_id} execution complete. Status: {node.status.name}. Summary: {node.output_summary}")
+        else:
+            # If adapter.process returns None, it might indicate an issue handled within the adapter (e.g. HITL abort)
+            # or an actual failure to produce a result.
+            # The node status should ideally be set by the adapter or _call_hitl in such cases.
+            if node.status not in [TaskStatus.CANCELLED, TaskStatus.FAILED]:
+                logger.warning(f"    NodeProcessor: Executor for {node.task_id} returned None. Marking as FAILED if not already handled.")
+                node.update_status(TaskStatus.FAILED, error_msg="Executor returned no result.")
+
+
     async def _handle_ready_node(self, node: TaskNode, task_graph: TaskGraph, knowledge_store: KnowledgeStore):
-        logger.info(f"  NodeProcessor: Handling READY node {node.task_id} (Original Type: {node.node_type}, Goal: '{node.goal[:30]}...')")
+        logger.info(f"  NodeProcessor: Handling READY node {node.task_id} (Original NodeType: {node.node_type.value if isinstance(node.node_type, NodeType) else node.node_type}, Goal: '{node.goal[:30]}...')")
         
         try: 
             node.update_status(TaskStatus.RUNNING)
-            # knowledge_store.add_or_update_record_from_node(node) # Moved to finally for guaranteed update
 
-            action_to_take: NodeType
-            current_task_type_value = node.task_type.value if isinstance(node.task_type, TaskType) else node.task_type
-            
-            atomizer_input_model = resolve_context_for_agent(
-                current_task_id=node.task_id,
-                current_goal=node.goal, 
-                current_task_type=current_task_type_value,
-                agent_name="default_atomizer", 
-                knowledge_store=knowledge_store,
-                overall_project_goal=task_graph.overall_project_goal
-            )
-            
-            atomizer_adapter = get_agent_adapter(node, action_verb="atomize")
+            # 1. Atomize node if applicable
+            # The _atomize_node_if_needed method updates node.node_type and node.goal.
+            # It returns the NodeType to proceed with, or None if HITL aborted.
+            action_to_take_after_atomizer = await self._atomize_node_if_needed(node, task_graph, knowledge_store)
 
-            if atomizer_adapter:
-                logger.info(f"    NodeProcessor: Calling Atomizer for node {node.task_id}")
-                # try/except for atomizer_adapter.process removed here, will be caught by main try/except if it fails
-                atomizer_output: AtomizerOutput = await atomizer_adapter.process(node, atomizer_input_model)
-                
-                if atomizer_output.updated_goal != node.goal:
-                    logger.info(f"    Atomizer updated goal for {node.task_id}: '{node.goal[:50]}...' -> '{atomizer_output.updated_goal[:50]}...'")
-                    node.goal = atomizer_output.updated_goal
-                
-                action_to_take = NodeType.EXECUTE if atomizer_output.is_atomic else NodeType.PLAN
-                node.node_type = action_to_take 
-                
-                logger.info(f"    Atomizer determined {node.task_id} as {action_to_take.name}. NodeType set to {node.node_type.name}.")
-                # knowledge_store.add_or_update_record_from_node(node) # Moved to finally
+            if action_to_take_after_atomizer is None: # HITL intervention stopped processing
+                logger.info(f"Node {node.task_id} processing halted after atomizer/HITL.")
+                return # Node status already updated by _call_hitl or _atomize_node_if_needed
 
-                if self.config.enable_hitl_after_atomizer:
-                    hitl_context_msg = f"Review Atomizer output for task '{node.task_id}'."
-                    hitl_data = {
-                        "original_goal": atomizer_input_model.current_goal,
-                        "updated_goal": node.goal,
-                        "atomizer_decision_is_atomic": atomizer_output.is_atomic,
-                        "proposed_next_action": action_to_take.value,
-                        "current_context_summary": get_context_summary(atomizer_input_model.context_items)
-                    }
-                    hitl_outcome_atomizer = await self._call_hitl("PostAtomizerCheck", hitl_context_msg, hitl_data, node)
-                    if hitl_outcome_atomizer["status"] != "approved": # Aborted or error
-                        # Node status already updated by _call_hitl
-                        return 
-            else: # No atomizer adapter
-                logger.warning(f"    NodeProcessor: No AtomizerAdapter found for node {node.task_id}. Proceeding with original node_type: {node.node_type}")
-                action_to_take = node.node_type if isinstance(node.node_type, NodeType) else NodeType(node.node_type)
+            # Override node.node_type if it wasn't set by atomizer (e.g. no atomizer found)
+            # This ensures node.node_type is the one decided by atomization or original if no atomizer.
+            if node.node_type is None: # Should be set by atomizer or fallback in _atomize_node_if_needed
+                 node.node_type = action_to_take_after_atomizer
 
-            if action_to_take == NodeType.PLAN and node.layer >= self.config.max_planning_layer:
+
+            # 2. Check max planning depth if the action is PLAN
+            if node.node_type == NodeType.PLAN and node.layer >= self.config.max_planning_layer:
                 logger.warning(f"    NodeProcessor: Max planning depth ({self.config.max_planning_layer}) reached for {node.task_id}. Forcing EXECUTE.")
-                node.node_type = NodeType.EXECUTE 
-                action_to_take = NodeType.EXECUTE
-                # knowledge_store.add_or_update_record_from_node(node) # Moved to finally
+                node.node_type = NodeType.EXECUTE # Update node's type
+                # knowledge_store.add_or_update_record_from_node(node) # Done in finally
             
-            general_agent_task_input_model: Optional[AgentTaskInput] = None
-            if action_to_take == NodeType.EXECUTE:
-                general_agent_task_input_model = resolve_context_for_agent(
-                    current_task_id=node.task_id,
-                    current_goal=node.goal, 
-                    current_task_type=current_task_type_value,
-                    agent_name=f"agent_for_{current_task_type_value}", 
-                    knowledge_store=knowledge_store,
-                    overall_project_goal=task_graph.overall_project_goal
-                )
-                node.input_payload_dict = general_agent_task_input_model.model_dump()
-                logger.debug(f"Node {node.task_id} input payload (for EXECUTE): {node.input_payload_dict}")
+            # 3. Dispatch to specific handler based on the (potentially updated) node.node_type
+            current_action_type = node.node_type # This is the definitive type after atomization and depth check
 
-            if action_to_take == NodeType.PLAN:
-                logger.info(f"    NodeProcessor: Preparing initial PlannerInput for {node.task_id} (Goal: '{node.goal[:50]}...')")
-                current_overall_objective = node.overall_objective or getattr(task_graph, 'overall_project_goal', "Undefined overall project goal")
-                
-                initial_planner_adapter = get_agent_adapter(node, action_verb="plan") # Assuming 'node.node_type' is PLAN here
-                if not initial_planner_adapter:
-                    raise ValueError(f"No initial PLAN adapter found for node {node.task_id} (TaskType: {node.task_type}, NodeType: {node.node_type})")
-
-                current_planner_input_model = resolve_input_for_planner_agent(
-                    current_task_id=node.task_id, knowledge_store=knowledge_store,
-                    overall_objective=current_overall_objective, planning_depth=node.layer,
-                    replan_details=None, global_constraints=getattr(task_graph, 'global_constraints', [])
-                )
-                node.input_payload_dict = current_planner_input_model.model_dump() # Log initial input
-                current_plan_output: Optional[PlanOutput] = await initial_planner_adapter.process(node, current_planner_input_model)
-
-                # Check if HITL for plan generation is enabled AND if the current node is the root node (layer 0)
-                if self.config.enable_hitl_after_plan_generation and node.layer == 0:
-                    max_modification_attempts = 3
-                    modification_attempts = 0
-                    plan_approved = False
-                    # Key for retrieving the PlanModifierAdapter from AGENT_REGISTRY
-                    PLAN_MODIFIER_ADAPTER_KEY = "PlanModifier" # Must match registration in agents/__init__.py
-
-                    while modification_attempts < max_modification_attempts:
-                        modification_attempts += 1
-                        
-                        current_plan_display_data = []
-                        if current_plan_output and current_plan_output.sub_tasks:
-                            current_plan_display_data = current_plan_output.model_dump().get("sub_tasks", [])
-                        
-                        hitl_context_msg_key = "Review generated plan"
-                        if not (current_plan_output and current_plan_output.sub_tasks):
-                             hitl_context_msg_key = "Planner returned no sub-tasks. Review options"
-                        
-                        hitl_context_msg = f"{hitl_context_msg_key} for task '{node.task_id}' (Review attempt {modification_attempts})."
-                        hitl_data = {
-                            "parent_task_goal": node.goal,
-                            "planned_sub_tasks": current_plan_display_data
-                        }
-                        
-                        hitl_outcome = await self._call_hitl(
-                            "PlanReview", hitl_context_msg, hitl_data, node,
-                            current_hitl_attempt=modification_attempts
-                        )
-
-                        if hitl_outcome["status"] == "aborted": return
-                        elif hitl_outcome["status"] == "approved":
-                            plan_approved = True
-                            logger.info(f"Node {node.task_id}: Plan approved by user after {modification_attempts} review attempt(s).")
-                            break 
-                        elif hitl_outcome["status"] == "request_modification":
-                            user_instructions = hitl_outcome.get('modification_instructions', '').strip()
-                            logger.info(f"Node {node.task_id}: User requested plan modification (Attempt {modification_attempts}). Instructions: '{user_instructions}'")
-                            
-                            if not user_instructions: # Should be caught by hook, but double check
-                                logger.warning(f"Node {node.task_id}: Empty modification instructions received. Re-presenting current plan.")
-                                if modification_attempts >= max_modification_attempts: break # Avoid infinite loop if hook somehow allows empty
-                                continue
-
-                            if modification_attempts >= max_modification_attempts:
-                                logger.warning(f"Node {node.task_id}: Max plan modification attempts ({max_modification_attempts}) reached. Proceeding with the current plan or failing.")
-                                break 
-
-                            # --- PHASE 2: Actual Re-planning using PlanModifierAgent ---
-                            if not current_plan_output: # Should not happen if instructions were given for a plan
-                                logger.error(f"Node {node.task_id}: Cannot modify plan as current_plan_output is None. This state should be handled better.")
-                                # Potentially break or try to re-run initial planner if this makes sense
-                                break # For safety, exit HITL loop
-
-                            try:
-                                plan_modifier_adapter = NAMED_AGENTS.get(PLAN_MODIFIER_ADAPTER_KEY) # Get directly by key
-                                if not plan_modifier_adapter:
-                                    logger.error(f"Node {node.task_id}: PlanModifierAdapter ('{PLAN_MODIFIER_ADAPTER_KEY}') not found in NAMED_AGENTS. Cannot re-plan.")
-                                    # Fallback: re-present current plan or break
-                                    break # Break HITL loop if modifier not available
-
-                                plan_modifier_input = PlanModifierInput(
-                                    original_plan=current_plan_output,
-                                    user_modification_instructions=user_instructions,
-                                    overall_objective=current_overall_objective, # Pass parent's objective
-                                    parent_task_id=node.task_id,
-                                    planning_depth=node.layer
-                                )
-                                
-                                logger.info(f"Node {node.task_id}: Calling PlanModifierAdapter with user instructions.")
-                                # Update input_payload_dict for logging/transparency if desired
-                                node.input_payload_dict = {"plan_modifier_input": plan_modifier_input.model_dump(exclude_none=True)}
-                                
-                                revised_plan_output: Optional[PlanOutput] = await plan_modifier_adapter.process(node, plan_modifier_input)
-                                
-                                if revised_plan_output:
-                                    logger.success(f"Node {node.task_id}: PlanModifierAdapter returned a revised plan.")
-                                    current_plan_output = revised_plan_output # Update current plan with the revision
-                                else:
-                                    logger.warning(f"Node {node.task_id}: PlanModifierAdapter returned no plan. Retaining previous plan for next review.")
-                                    # current_plan_output remains the same, user will see it again.
-                            
-                            except Exception as replan_ex:
-                                logger.exception(f"Node {node.task_id}: Error during plan modification call: {replan_ex}. Retaining previous plan.")
-                                # current_plan_output remains the same.
-
-                            # Loop continues to present the (potentially) new current_plan_output
-                        
-                        elif hitl_outcome["status"] == "error": return
-                        else: 
-                            logger.error(f"Node {node.task_id}: Unexpected HITL outcome status: {hitl_outcome.get('status')}. Aborting.")
-                            node.update_status(TaskStatus.FAILED, error_msg="Internal error in HITL plan review loop.")
-                            return
-                    # --- End of HITL while loop ---
-
-                    if not plan_approved and modification_attempts >= max_modification_attempts:
-                        logger.warning(f"Node {node.task_id}: Plan not explicitly approved after max HITL attempts. Proceeding with current plan if available.")
-                
-                # --- After HITL Loop or if HITL is disabled / not applicable ---
-                if current_plan_output and current_plan_output.sub_tasks: # Check if a valid plan exists
-                    self._create_sub_nodes_from_plan(node, current_plan_output, task_graph, knowledge_store)
-                    node.update_status(TaskStatus.PLAN_DONE, result=current_plan_output.model_dump())
-                else: 
-                    logger.warning(f"    NodeProcessor: No valid plan for {node.task_id} after planning/HITL. Converting to EXECUTE.")
-                    node.node_type = NodeType.EXECUTE
-                    if general_agent_task_input_model is None: 
-                        general_agent_task_input_model = resolve_context_for_agent( # ... (args as before) ... )
-                            current_task_id=node.task_id, current_goal=node.goal,
-                            current_task_type=current_task_type_value, agent_name=f"agent_for_{current_task_type_value}",
-                            knowledge_store=knowledge_store, overall_project_goal=task_graph.overall_project_goal
-                        )
-                        node.input_payload_dict = general_agent_task_input_model.model_dump()
-
-                    if self.config.enable_hitl_before_execute:
-                        hitl_outcome_exec = await self._call_hitl("PreExecuteCheckFromPlan", # ... (args as before) ... )
-                           f"Review execution for task '{node.task_id}' (converted from PLAN due to no plan).",
-                           { "task_goal": node.goal, "task_type": current_task_type_value,
-                             "input_context_summary": get_context_summary(general_agent_task_input_model.context_items if general_agent_task_input_model else [])},
-                           node
-                        )
-                        if hitl_outcome_exec["status"] != "approved": return
-                    await self._execute_node_action(node, general_agent_task_input_model, task_graph, knowledge_store)
+            if current_action_type == NodeType.PLAN:
+                await self._handle_ready_plan_node(node, task_graph, knowledge_store)
+            elif current_action_type == NodeType.EXECUTE:
+                # Execute node might need an AgentTaskInput model.
+                # The original logic prepared this before the PLAN/EXECUTE split.
+                # _handle_ready_execute_node will resolve its own context.
+                await self._handle_ready_execute_node(node, task_graph, knowledge_store)
             
-            elif action_to_take == NodeType.EXECUTE:
-                 if general_agent_task_input_model is None: 
-                     logger.error(f"NodeProcessor CRITICAL: general_agent_task_input_model is None for EXECUTE node {node.task_id}")
-                     raise ValueError(f"Input model not prepared for EXECUTE node {node.task_id}")
+            # AGGREGATE and other types are typically not handled from a READY state directly.
+            # They transition to these states after their prerequisites are met.
+            # The main process_node will route them if they are in READY state but are AGGREGATE type initially.
+            elif current_action_type == NodeType.AGGREGATE:
+                 # This case implies an AGGREGATE node was somehow set to READY and not handled by atomizer to be PLAN/EXECUTE
+                 # This should typically go to _handle_aggregating_node if status was AGGREGATING
+                 logger.warning(f"Node {node.task_id} is of type AGGREGATE but in READY status. Attempting to process via _handle_aggregating_node.")
+                 # This might need status check or adjustment if _handle_aggregating_node expects AGGREGATING status
+                 # For now, let's assume it's an anomaly and log it.
+                 # If it's truly ready to aggregate, it should have a different status.
+                 # We might need to transition its status or this indicates a logic flaw elsewhere.
+                 # For safety, let's mark as error for now if an AGGREGATE node is in READY state here.
+                 node.update_status(TaskStatus.FAILED, error_msg=f"Node {node.task_id} is AGGREGATE type but was handled in READY state pathway inappropriately.")
 
-                 if self.config.enable_hitl_before_execute:
-                    hitl_outcome_direct_exec = await self._call_hitl("PreExecuteCheckDirect", # ... (args as before) ... )
-                        f"Review execution for task '{node.task_id}'.",
-                        { "task_goal": node.goal, "task_type": current_task_type_value,
-                          "input_context_summary": get_context_summary(general_agent_task_input_model.context_items if general_agent_task_input_model else []) },
-                        node
-                    )
-                    if hitl_outcome_direct_exec["status"] != "approved": return
-                 await self._execute_node_action(node, general_agent_task_input_model, task_graph, knowledge_store)
-            else: 
-                error_msg = f"Unexpected node action type: {action_to_take} for node {node.task_id}"
-                logger.error(f"  NodeProcessor Error: {error_msg}")
-                # node.update_status(TaskStatus.FAILED, error_msg=error_msg) # Status update in finally
-                raise ValueError(error_msg)
+            else:
+                # This case should ideally not be reached if NodeType is well-defined
+                # and atomizer correctly sets PLAN/EXECUTE.
+                logger.error(f"Node {node.task_id}: Unhandled NodeType '{node.node_type}' in _handle_ready_node after atomization. Setting to FAILED.")
+                node.update_status(TaskStatus.FAILED, error_msg=f"Unhandled NodeType '{node.node_type}' for READY node.")
 
-        except StopAgentRun as e: 
-            if node.status not in [TaskStatus.CANCELLED, TaskStatus.FAILED]: 
-                logger.warning(f"  NodeProcessor: StopAgentRun caught for node {node.task_id}. Marking as CANCELLED. Message: {e.agent_message if hasattr(e, 'agent_message') else e}")
-                node.update_status(TaskStatus.CANCELLED, result_summary=f"Operation cancelled via StopAgentRun: {e.agent_message if hasattr(e, 'agent_message') else str(e)}")
         except Exception as e:
-            logger.exception(f"  NodeProcessor Error: Failed to process READY node {node.task_id}")
-            if node.status not in [TaskStatus.CANCELLED, TaskStatus.FAILED]: 
-                 node.update_status(TaskStatus.FAILED, error_msg=str(e))
+            logger.exception(f"Node {node.task_id}: Unhandled exception in _handle_ready_node: {e}")
+            # Ensure status reflects error if not already FAILED or CANCELLED
+            if node.status not in [TaskStatus.FAILED, TaskStatus.CANCELLED]:
+                 node.update_status(TaskStatus.FAILED, error_msg=f"Unhandled error: {str(e)}")
         finally:
+            logger.info(f"  NodeProcessor: Finished handling for node {node.task_id}. Final status: {node.status.name if node.status else 'Unknown'}")
             knowledge_store.add_or_update_record_from_node(node)
-            logger.debug(f"  NodeProcessor: Final status for node {node.task_id} after handling: {node.status.value if node.status else 'Unknown'}")
 
-    async def _execute_node_action(self, node: TaskNode, agent_task_input: AgentTaskInput, task_graph: TaskGraph, knowledge_store: KnowledgeStore):
-        # Ensure node.node_type is an Enum for get_agent_adapter if it expects one
-        if not isinstance(node.node_type, NodeType):
-             node.node_type = NodeType(node.node_type) # Convert if necessary
-        
-        executor_adapter = get_agent_adapter(node, action_verb="execute")
-        if not executor_adapter:
-             # Ensure TaskType is handled correctly in error message if it could be string
-             task_type_display = node.task_type.name if isinstance(node.task_type, TaskType) else node.task_type
-             # Removed agent_name from error message
-             raise ValueError(f"No EXECUTE adapter found for node {node.task_id} (TaskType: {task_type_display})")
 
-        logger.info(f"    NodeProcessor: Invoking EXECUTE adapter '{type(executor_adapter).__name__}' for {node.task_id}")
-        execution_result = await executor_adapter.process(node, agent_task_input)
-        
-        node.output_type_description = f"{type(execution_result).__name__}_result"
-        
-        if execution_result is not None:
-            # TODO: Implement robust summarization.
-            # For Pydantic models, check if they have a summary method/attribute.
-            if hasattr(execution_result, 'get_summary_for_context') and callable(execution_result.get_summary_for_context):
-                node.output_summary = execution_result.get_summary_for_context()
-                logger.debug(f"NodeProcessor: Used 'get_summary_for_context()' for {node.task_id}'s output_summary.")
-            elif hasattr(execution_result, 'summary') and isinstance(getattr(execution_result, 'summary'), str):
-                 node.output_summary = str(execution_result.summary)
-                 logger.debug(f"NodeProcessor: Used '.summary' attribute for {node.task_id}'s output_summary.")
-            elif isinstance(execution_result, str):
-                # If the result itself is a string, summarize it if it's too long
-                if len(execution_result.split()) > TARGET_WORD_COUNT_FOR_CTX_SUMMARIES * 0.8: # Heuristic: if it's already a decent length string
-                    logger.debug(f"NodeProcessor: Result for {node.task_id} is a string, attempting summarization.")
-                    node.output_summary = get_context_summary(execution_result, target_word_count=TARGET_WORD_COUNT_FOR_CTX_SUMMARIES)
-                else: # If it's a short string, use as is
-                    node.output_summary = execution_result
-                logger.debug(f"NodeProcessor: String result for {node.task_id} processed for output_summary (len: {len(node.output_summary)}). First 50: '{node.output_summary[:50]}'")
-            elif isinstance(execution_result, CustomSearcherOutput):
-                logger.debug(f"NodeProcessor: Result for {node.task_id} is CustomSearcherOutput. Summarizing 'output_text_with_citations' and appending annotations.")
-                text_to_summarize = execution_result.output_text_with_citations
-                summary_text = get_context_summary(text_to_summarize, target_word_count=TARGET_WORD_COUNT_FOR_CTX_SUMMARIES)
-                
-                citations_str = ""
-                if execution_result.annotations:
-                    citation_parts = ["\n\nCitations:"]
-                    for idx, ann in enumerate(execution_result.annotations):
-                        title = ann.title or "Source"
-                        citation_parts.append(f"- [{title}]({ann.url})")
-                    citations_str = "\n".join(citation_parts)
-                
-                node.output_summary = summary_text + citations_str
-                # Store the full CustomSearcherOutput in result, so original annotations list is preserved
-                node.result = execution_result 
-                node.output_type_description = "CustomSearcherOutput_with_summary_and_citations"
-            elif isinstance(execution_result, BaseModel): # For other Pydantic models
-                logger.debug(f"NodeProcessor: Result for {node.task_id} is a generic BaseModel {type(execution_result).__name__}. Summarizing its JSON representation.")
-                # Fallback to summarizing the JSON representation if no better text part found
-                node.output_summary = get_context_summary(execution_result, target_word_count=TARGET_WORD_COUNT_FOR_CTX_SUMMARIES) 
-            else:
-                logger.debug(f"NodeProcessor: Result for {node.task_id} is of unknown type {type(execution_result).__name__} for summarization. Using str().")
-                node.output_summary = str(execution_result)[:500] + "..." if len(str(execution_result)) > 500 else str(execution_result)
-            
-            if node.output_summary:
-                logger.success(f"    NodeProcessor: Set output_summary for {node.task_id} (len {len(node.output_summary)}): '{node.output_summary[:100]}...'")
-            else:
-                logger.warning(f"    NodeProcessor: output_summary for {node.task_id} ended up empty.")
-
-        if isinstance(execution_result, str) and execution_result.startswith("<<NEEDS_REPLAN>>"):
-            replan_reason = execution_result.replace("<<NEEDS_REPLAN>>", "").strip()
-            logger.warning(f"    NodeProcessor: Node {node.task_id} requested REPLAN. Reason: {replan_reason}")
-            # Ensure status update uses the Enum member
-            node.update_status(TaskStatus.NEEDS_REPLAN, result=replan_reason)
-        else:
-            # Ensure status update uses the Enum member
-            node.update_status(TaskStatus.DONE, result=execution_result)
+    # Removed _execute_node_action as its logic is now primarily within _handle_ready_execute_node
+    # If there are parts of _execute_node_action that were generic and reusable, they should be utility functions
+    # or part of the adapter itself.
 
     async def _handle_aggregating_node(self, node: TaskNode, task_graph: TaskGraph, knowledge_store: KnowledgeStore):
         logger.info(f"  NodeProcessor: Handling AGGREGATING node {node.task_id} (Goal: '{node.goal[:30]}...')")
@@ -532,134 +518,6 @@ class NodeProcessor:
             node.update_status(TaskStatus.FAILED, error_msg=str(e))
         
         knowledge_store.add_or_update_record_from_node(node) # Final update
-
-    async def _handle_needs_replan_node(self, node: TaskNode, task_graph: TaskGraph, knowledge_store: KnowledgeStore):
-        logger.info(f"  NodeProcessor: Handling NEEDS_REPLAN node {node.task_id} (Goal: '{node.goal[:50]}...')")
-        
-        # Simple mechanism to prevent infinite re-planning loops for a single node.
-        # This would ideally be a field on the TaskNode itself.
-        if not hasattr(node, '_replan_attempts'):
-            node._replan_attempts = 0
-        
-        if node._replan_attempts >= MAX_REPLAN_ATTEMPTS:
-            logger.error(f"  NodeProcessor: Max re-plan attempts ({MAX_REPLAN_ATTEMPTS}) reached for node {node.task_id}. Marking as FAILED.")
-            node.update_status(TaskStatus.FAILED, error_msg=f"Max re-plan attempts ({MAX_REPLAN_ATTEMPTS}) reached.")
-            knowledge_store.add_or_update_record_from_node(node)
-            return
-
-        node._replan_attempts += 1
-        node.update_status(TaskStatus.RUNNING, result=f"Re-planning attempt {node._replan_attempts}") # Mark as RUNNING during re-plan
-        knowledge_store.add_or_update_record_from_node(node)
-
-        failed_sub_goals_info = []
-        successful_sibling_outputs = [] # For context to the new plan
-
-        if node.sub_graph_id:
-            previous_sub_nodes = task_graph.get_nodes_in_graph(node.sub_graph_id)
-            for sub_node in previous_sub_nodes:
-                if sub_node.status == TaskStatus.FAILED:
-                    failed_sub_goals_info.append(
-                        f"Sub-task '{sub_node.goal[:100]}' (ID: {sub_node.task_id}) failed with error: {sub_node.error or 'Unknown error'}"
-                    )
-                elif sub_node.status == TaskStatus.DONE:
-                    # These could be passed as context to the new planning attempt
-                    # This reuses the ExecutionHistoryItem structure from PlannerInput's context part
-                    successful_sibling_outputs.append(
-                        ExecutionHistoryItem(
-                            task_goal=sub_node.goal,
-                            outcome_summary=sub_node.output_summary or str(sub_node.result)[:200], # Provide a summary
-                            full_output_reference_id=sub_node.task_id 
-                        )
-                    )
-        
-        if not failed_sub_goals_info:
-            logger.warning(f"  NodeProcessor: Node {node.task_id} is NEEDS_REPLAN, but no failed sub-tasks found in subgraph {node.sub_graph_id}. Defaulting to general replan.")
-            reason_for_replan = "General re-plan requested, but no specific sub-task failures were identified in the previous attempt. Review the overall goal and previous plan structure."
-            failed_sub_goal_summary = node.goal # Re-plan the main goal
-        else:
-            reason_for_replan = "One or more sub-tasks failed in the previous execution. New plan must address these failures. Failures:\n- " + "\n- ".join(failed_sub_goals_info)
-            # For simplicity, we'll just use the parent node's goal as the "failed_sub_goal" for the replan request,
-            # as the planner is re-planning for this parent node. The detailed reasons contain the specifics.
-            failed_sub_goal_summary = node.goal 
-
-
-        replan_details = ReplanRequestDetails(
-            failed_sub_goal=failed_sub_goal_summary, # The goal of the current PLAN node that needs re-planning
-            reason_for_failure_or_replan=reason_for_replan,
-            previous_attempt_output_summary=f"Previous plan for '{node.goal[:50]}' resulted in failures. Successful sibling outputs from that attempt are provided in context if any.",
-            specific_guidance_for_replan="Review the failed sub-task goals and their errors. Propose a new set of sub-tasks that either breaks down the failed parts more effectively, tries a different approach, or correctly utilizes results from previously successful sibling tasks."
-        )
-
-        try:
-            current_overall_objective = node.overall_objective or getattr(task_graph, 'overall_project_goal', "Undefined overall project goal")
-            
-            # The planner_input now includes `successful_sibling_outputs` in its context part
-            # This assumes `resolve_input_for_planner_agent` can accept and integrate this.
-            # We might need to adjust `resolve_input_for_planner_agent` or construct the input more manually here.
-            # For now, let's prepare it and pass it. `resolve_input_for_planner_agent` might need prior_sibling_task_outputs
-            
-            # We need to ensure `resolve_input_for_planner_agent` correctly uses these.
-            # The `execution_history_and_context` field in PlannerInput is the place.
-            # `prior_sibling_task_outputs` usually refers to siblings of the *current node being planned*.
-            # In a re-plan, these successful_sibling_outputs are from the *previous attempt* of this node's sub-graph.
-            # This fits the spirit if not the exact prior definition.
-
-            planner_input_model = resolve_input_for_planner_agent(
-                current_task_id=node.task_id,
-                knowledge_store=knowledge_store,
-                overall_objective=current_overall_objective,
-                planning_depth=node.layer, # Keep same layer, it's a re-plan
-                replan_details=replan_details,
-                # Pass successful parts of the previous plan as context
-                # This field might need adjustment in `resolve_input_for_planner_agent`
-                # or we inject it directly into the context model.
-                # For now, let's assume `resolve_input_for_planner_agent` handles `replan_details` primarily
-                # and we rely on KS for other context. We can refine context for replanning later.
-                # Let's manually create the execution_history_and_context for now for clarity
-                # to include outputs from the *failed plan's successful siblings*.
-                execution_history_override=ExecutionHistoryAndContext(
-                    prior_sibling_task_outputs=successful_sibling_outputs, # These are children from the last failed plan
-                    relevant_ancestor_outputs=[], # Ancestor context should be resolved normally by `resolve_input_for_planner_agent`
-                    global_knowledge_base_summary=None # Let resolver handle this
-                )
-            )
-            # Override what `resolve_input_for_planner_agent` might put in prior_sibling_task_outputs
-            # if we pass execution_history_override.
-            # The `resolve_input_for_planner_agent` may need a new parameter to accept this cleanly.
-            # For now, this demonstrates the intent. The `PlannerInput` schema has `execution_history_and_context`.
-
-            logger.info(f"    NodeProcessor: Preparing PlannerInput for REPLAN of {node.task_id} (Goal: '{node.goal[:50]}...')")
-            node.input_payload_dict = planner_input_model.model_dump() # Log the input
-
-            planner_adapter = get_agent_adapter(node, action_verb="plan")
-            if not planner_adapter:
-                raise ValueError(f"No PLAN adapter found for re-planning node {node.task_id}")
-
-            new_plan_output: PlanOutput = await planner_adapter.process(node, planner_input_model)
-
-            if not new_plan_output or not new_plan_output.sub_tasks:
-                logger.warning(f"    NodeProcessor: Re-Planner for {node.task_id} returned no sub-tasks. Marking node as FAILED.")
-                node.update_status(TaskStatus.FAILED, error_msg="Re-planning attempt by planner resulted in an empty plan.")
-            else:
-                logger.success(f"    NodeProcessor: Re-Planner for {node.task_id} returned a new plan with {len(new_plan_output.sub_tasks)} sub-tasks.")
-                # Archive or mark old sub-graph nodes? For now, they remain as FAILED/DONE.
-                # A new sub_graph_id will be used for the new plan.
-                
-                # Important: Create a new sub_graph_id for the new plan
-                new_sub_graph_id = f"subgraph_{node.task_id}_replan_{node._replan_attempts}"
-                node.sub_graph_id = new_sub_graph_id # Update node to point to the new sub-graph
-                # task_graph.add_graph(new_sub_graph_id) # _create_sub_nodes_from_plan will do this if it doesn't exist
-
-                node.planned_sub_task_ids.clear() # Clear out old sub-task IDs
-
-                self._create_sub_nodes_from_plan(node, new_plan_output, task_graph, knowledge_store)
-                node.update_status(TaskStatus.PLAN_DONE, result=f"Re-plan attempt {node._replan_attempts} successful. New plan created.")
-        
-        except Exception as e:
-            logger.exception(f"  NodeProcessor Error: Failed to re-plan node {node.task_id}")
-            node.update_status(TaskStatus.FAILED, error_msg=f"Re-planning failed: {str(e)}")
-        
-        knowledge_store.add_or_update_record_from_node(node) # Final update for status, result, etc.
 
     async def process_node(self, node: TaskNode, task_graph: TaskGraph, knowledge_store: KnowledgeStore):
         """
