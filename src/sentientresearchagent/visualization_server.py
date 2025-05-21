@@ -16,6 +16,8 @@ from sentientresearchagent.hierarchical_agent_framework.node.node_processor impo
 from sentientresearchagent.hierarchical_agent_framework.graph.state_manager import StateManager
 from sentientresearchagent.hierarchical_agent_framework.context.knowledge_store import KnowledgeStore
 from sentientresearchagent.hierarchical_agent_framework.graph.execution_engine import ExecutionEngine
+# Import NodeProcessorConfig from its new location
+from sentientresearchagent.hierarchical_agent_framework.node.node_configs import NodeProcessorConfig
 
 # --- Create a Flask App ---
 app = Flask(__name__)
@@ -27,7 +29,14 @@ CORS(app, origins=["http://127.0.0.1:8080"], methods=["GET", "POST", "PUT", "DEL
 live_task_graph = TaskGraph()
 live_knowledge_store = KnowledgeStore()
 live_state_manager = StateManager(live_task_graph) # StateManager needs the TaskGraph
-live_node_processor = NodeProcessor() # Assuming NodeProcessor is stateless or configured globally
+
+# Instantiate NodeProcessor with required dependencies
+node_processor_config = NodeProcessorConfig() # Example: using default config
+live_node_processor = NodeProcessor(
+    task_graph=live_task_graph,
+    knowledge_store=live_knowledge_store,
+    config=node_processor_config 
+)
 
 live_execution_engine = ExecutionEngine(
     task_graph=live_task_graph,
