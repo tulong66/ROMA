@@ -364,8 +364,10 @@ class NodeProcessor:
                         node.output_summary = str(execution_result.summary)
                     elif hasattr(execution_result, 'content_summary') and execution_result.content_summary: # For WebSearchResultsOutput
                         node.output_summary = str(execution_result.content_summary)
-                    elif isinstance(execution_result, CustomSearcherOutput) and execution_result.results:
-                         node.output_summary = f"Found {len(execution_result.results)} search results."
+                    elif isinstance(execution_result, CustomSearcherOutput):
+                        summary_text = str(execution_result)[:100] + "..." if len(str(execution_result)) > 100 else str(execution_result)
+                        annotation_count = len(execution_result.annotations) if execution_result.annotations else 0
+                        node.output_summary = f"Search result: \"{summary_text}\" ({annotation_count} annotations)"
                     elif isinstance(execution_result, PlanModifierInput): # This seems unlikely as output for EXECUTE
                         node.output_summary = f"Plan modification result." # Placeholder
                     else:
