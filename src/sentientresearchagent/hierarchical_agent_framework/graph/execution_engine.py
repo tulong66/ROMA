@@ -19,6 +19,9 @@ from .project_initializer import ProjectInitializer
 # Import HITLCoordinator
 from sentientresearchagent.hierarchical_agent_framework.node.hitl_coordinator import HITLCoordinator
 
+# Import CycleManager
+from .cycle_manager import CycleManager
+
 
 class ExecutionEngine:
     """Orchestrates the overall execution flow of tasks in the graph."""
@@ -35,6 +38,7 @@ class ExecutionEngine:
         self.knowledge_store = knowledge_store # Store KS
         self.hitl_coordinator = hitl_coordinator # Store HITLCoordinator
         self.project_initializer = ProjectInitializer() # Instantiate ProjectInitializer
+        self.cycle_manager = CycleManager() # Instantiate CycleManager
         # self.node_processor.set_viz_handler(viz_handler) # If you re-add visualization
 
     def initialize_project(self, 
@@ -111,7 +115,7 @@ class ExecutionEngine:
         Complete project flow: Initializes project, performs HITL on root node, then runs execution cycle.
         This is intended to be the primary entry point for running a project.
         """
-        # Use ProjectInitializer
+        logger.info(f"ExecutionEngine: Starting project flow with root goal: '{root_goal}'")
         root_node = self.project_initializer.initialize_project(
             root_goal=root_goal,
             task_graph=self.task_graph,
@@ -123,19 +127,19 @@ class ExecutionEngine:
             logger.error("ExecutionEngine: Root node not created by initializer. Cannot proceed.")
             return None
 
-        # Perform HITL for the root node using HITLCoordinator
-        # review_initial_project_goal will update root_node status if aborted/failed
         await self.hitl_coordinator.review_initial_project_goal(
-            root_node=root_node,
+            root_node=root_node, # type: ignore
             task_graph=self.task_graph,
             knowledge_store=self.knowledge_store
         )
         
-        if root_node.status in [TaskStatus.CANCELLED, TaskStatus.FAILED]:
-            logger.warning(f"ExecutionEngine: Root node processing halted due to status {root_node.status.name} after initial HITL review. Full execution cycle will not run.")
+        current_root_node_status = self.task_graph.get_node("root").status # Re-fetch status after HITL
+        if current_root_node_status in [TaskStatus.CANCELLED, TaskStatus.FAILED]: # type: ignore
+            logger.warning(f"ExecutionEngine: Root node processing halted (status: {current_root_node_status.name}) after initial HITL review. Full execution cycle will not run.") # type: ignore
             self._log_final_statuses() 
-            return root_node.result 
+            return self.task_graph.get_node("root").result # type: ignore
 
+        logger.info("ExecutionEngine: Root goal review complete. Proceeding to execution cycle.")
         return await self.run_cycle(max_steps)
 
     async def run_cycle(self, max_steps: int = 250):
@@ -146,139 +150,65 @@ class ExecutionEngine:
         if not self.task_graph.root_graph_id or not root_node_initial_check:
             logger.error("ExecutionEngine: Project not initialized properly or root node missing before cycle start.")
             return None
-        
         if root_node_initial_check.status in [TaskStatus.CANCELLED, TaskStatus.FAILED]:
-            logger.warning(f"ExecutionEngine: Root node is already {root_node_initial_check.status.name}. Cycle will not run effectively.")
+            logger.warning(f"ExecutionEngine: Root node is already {root_node_initial_check.status.name}. Cycle may not run effectively.")
             self._log_final_statuses()
             return root_node_initial_check.result
 
         for step in range(max_steps):
-            logger.info(f"\n--- Step {step + 1} of {max_steps} ---")
-            processed_in_step = False
+            logger.info(f"\n--- Execution Step {step + 1} of {max_steps} ---")
             
-            all_nodes = self.task_graph.get_all_nodes()
-            if not all_nodes:
-                logger.warning("ExecutionEngine: No nodes in the graph to process.")
-                break # No nodes, cycle ends
-
-            # --- 1. Update PENDING -> READY transitions ---
-            for node in all_nodes:
-                if node.status == TaskStatus.PENDING:
-                    if self.state_manager.can_become_ready(node):
-                        node.update_status(TaskStatus.READY)
-                        self.knowledge_store.add_or_update_record_from_node(node)
-                        processed_in_step = True
-                        logger.info(f"  Transition: Node {node.task_id} PENDING -> READY")
-
-            # --- 2. Process AGGREGATING and/or READY nodes ---
-            # Re-fetch nodes as statuses might have changed
-            current_nodes_for_processing = self.task_graph.get_all_nodes()
+            # Delegate step execution to CycleManager
+            processed_in_step = await self.cycle_manager.execute_step(
+                task_graph=self.task_graph,
+                state_manager=self.state_manager,
+                node_processor=self.node_processor, # type: ignore
+                knowledge_store=self.knowledge_store
+            )
             
-            # Prioritize AGGREGATING nodes (typically only one active at a time per layer)
-            aggregating_node_to_process = next((n for n in current_nodes_for_processing if n.status == TaskStatus.AGGREGATING), None)
-
-            if aggregating_node_to_process:
-                logger.info(f"  Processing AGGREGATING Node: {aggregating_node_to_process.task_id} (Status: {aggregating_node_to_process.status.name}, Layer: {aggregating_node_to_process.layer})")
-                await self.node_processor.process_node(aggregating_node_to_process, self.task_graph, self.knowledge_store) # type: ignore
-                processed_in_step = True
-                # After an AGGREGATING node, re-evaluate from the start of the step logic in the next iteration
-                # This allows its children (if any became ready) or parent (if it completed) to be processed.
-                continue 
-
-            # Process READY nodes in parallel
-            ready_nodes = [n for n in current_nodes_for_processing if n.status == TaskStatus.READY]
-            if ready_nodes:
-                logger.info(f"  Found {len(ready_nodes)} READY nodes to process in parallel.")
-                tasks_to_run = []
-                for ready_node in ready_nodes:
-                    logger.info(f"    Queueing READY Node for parallel processing: {ready_node.task_id} (Layer: {ready_node.layer})")
-                    tasks_to_run.append(
-                        self.node_processor.process_node(ready_node, self.task_graph, self.knowledge_store)
-                    )
-
-                if tasks_to_run:
-                    await asyncio.gather(*tasks_to_run)
-                    processed_in_step = True
-                    continue
-
-            # --- 3. Update PLAN_DONE -> AGGREGATING / NEEDS_REPLAN transitions ---
-            logger.debug(f"ExecutionEngine (Step {step + 1}): Entering PLAN_DONE/NEEDS_REPLAN check. processed_in_step = {processed_in_step}")
-            all_nodes = self.task_graph.get_all_nodes() 
-            
-            for node in all_nodes:
-                if node.status == TaskStatus.PLAN_DONE: 
-                    logger.debug(f"ExecutionEngine: Checking PLAN_DONE node {node.task_id} (Type: {node.node_type}) for aggregation or replan.")
-                    if self.state_manager.can_aggregate(node):
-                        children_failed = False
-                        if node.sub_graph_id:
-                            sub_graph_nodes = self.task_graph.get_nodes_in_graph(node.sub_graph_id)
-                            if any(sn.status == TaskStatus.FAILED for sn in sub_graph_nodes):
-                                children_failed = True
-                        
-                        if children_failed:
-                            node.update_status(TaskStatus.NEEDS_REPLAN)
-                            self.knowledge_store.add_or_update_record_from_node(node)
-                            processed_in_step = True
-                            logger.info(f"  Transition: Node {node.task_id} PLAN_DONE -> NEEDS_REPLAN (due to failed children)")
-                        else:
-                            node.update_status(TaskStatus.AGGREGATING)
-                            self.knowledge_store.add_or_update_record_from_node(node)
-                            processed_in_step = True
-                            logger.info(f"  Transition: Node {node.task_id} PLAN_DONE -> AGGREGATING")
-            
-            # --- 4. Process NEEDS_REPLAN nodes ---
-            all_nodes = self.task_graph.get_all_nodes() 
-            needs_replan_nodes = [n for n in all_nodes if n.status == TaskStatus.NEEDS_REPLAN]
-            if needs_replan_nodes:
-                node_to_replan = needs_replan_nodes[0] 
-                logger.info(f"  Processing NEEDS_REPLAN Node: {node_to_replan.task_id}")
-                await self.node_processor._handle_needs_replan_node(node_to_replan, self.task_graph, self.knowledge_store)
-                processed_in_step = True
-                continue
-
-            # --- Check for completion or deadlock ---
+            # --- Check for completion or deadlock for this step ---
             active_statuses = {TaskStatus.PENDING, TaskStatus.READY, TaskStatus.RUNNING, TaskStatus.PLAN_DONE, TaskStatus.AGGREGATING, TaskStatus.NEEDS_REPLAN}
-            all_nodes = self.task_graph.get_all_nodes() 
-            if not any(n.status in active_statuses for n in all_nodes):
+            all_nodes_after_step = self.task_graph.get_all_nodes() 
+
+            if not any(n.status in active_statuses for n in all_nodes_after_step):
                 logger.success("\n--- Execution Finished: No active nodes left. ---")
                 break
 
-            if not processed_in_step and any(n.status in active_statuses for n in all_nodes):
-                logger.error("\n--- Execution Halted: No progress made in this step. Possible deadlock or incomplete logic. ---")
-                for n in all_nodes:
-                    if n.status in active_statuses:
-                        logger.error(f"    - Active: {n.task_id}, Status: {n.status.name}, Goal: '{n.goal[:50]}...'")
-                break
+            if not processed_in_step and any(n.status in active_statuses for n in all_nodes_after_step):
+                logger.error("\n--- Execution Halted: No progress made in this step by CycleManager. Possible deadlock or logic error. ---")
+                for n_active in all_nodes_after_step:
+                    if n_active.status in active_statuses:
+                        logger.error(f"    - Active: {n_active.task_id}, Status: {n_active.status.name}, Goal: '{n_active.goal[:50]}...'")
+                break 
         
-        if step == max_steps -1 and any(n.status in active_statuses for n in self.task_graph.get_all_nodes()):
-            logger.warning("\n--- Execution Finished: Reached max steps. ---")
+        if step == max_steps - 1: # type: ignore # Check if loop completed due to max_steps
+             # Check active nodes one last time if loop finished due to max_steps
+            if any(n.status in active_statuses for n in self.task_graph.get_all_nodes()): # type: ignore
+                 logger.warning("\n--- Execution Finished: Reached max steps with active nodes remaining. ---")
 
         self._log_final_statuses()
         
         root_node_final = self.task_graph.get_node("root")
-        if root_node_final:
-            logger.success(f"\nRoot Task ('{root_node_final.goal}') Final Result:")
-            logger.info(f"Root Result: {pprint.pformat(root_node_final.result)}")
-            return root_node_final.result
-        return None
+        return root_node_final.result if root_node_final else None
 
     def _log_final_statuses(self):
         logger.info("\n--- Final Node Statuses & Results ---")
-        all_final_nodes = sorted(self.task_graph.get_all_nodes(), key=lambda n: (n.layer, n.task_id))
+        all_final_nodes = sorted(self.task_graph.get_all_nodes(), key=lambda n: (n.layer, n.task_id)) # type: ignore
         for node in all_final_nodes:
-            status_str = node.status.name
+            status_str = node.status.name if isinstance(node.status, TaskStatus) else str(node.status) # type: ignore
+            result_summary = ""
+            if node.result is not None: # type: ignore
+                if isinstance(node.result, (dict, list)):  # type: ignore
+                    try:
+                        result_summary = pprint.pformat(node.result) # type: ignore
+                        if len(result_summary) > 150:
+                             result_summary = result_summary[:150] + "..."
+                    except Exception:
+                        result_summary = str(node.result)[:150] + "..." if len(str(node.result)) > 150 else str(node.result) # type: ignore
+                else:
+                    result_summary = str(node.result)[:150] + "..." if len(str(node.result)) > 150 else str(node.result) # type: ignore
             
-            message = f"- Node {node.task_id} (L{node.layer}, Goal: '{node.goal[:30]}...'): Status={status_str}"
-            if node.status == TaskStatus.FAILED and node.error:
-                 message += f" (Error: {node.error})"
-            
-            result_display = str(node.result)
-            if len(result_display) > 70: result_display = result_display[:70] + "..."
-            message += f", Result='{result_display}'"
+            error_info = f", Error: {node.error}" if node.error else "" # type: ignore
+            output_s = f", OutputSummary: {node.output_summary}" if node.output_summary else "" # type: ignore
 
-            if node.status == TaskStatus.DONE:
-                logger.success(message)
-            elif node.status == TaskStatus.FAILED:
-                logger.error(message)
-            else: # PENDING, READY, RUNNING, PLAN_DONE, AGGREGATING, etc.
-                logger.warning(message) # Or logger.info if warning is too strong for intermediate states
+            logger.info(f"  Node: {node.task_id:<15} Layer: {node.layer} Status: {status_str:<12} Goal: '{node.goal[:40]:<40}...' Result: {result_summary:<50}{output_s}{error_info}") # type: ignore
