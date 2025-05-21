@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Union, List
+from typing import Dict, Any, Union, List, TypeVar, Generic
 from loguru import logger # Add this
 from agno.agent import Agent as AgnoAgent # Renaming to avoid conflict if we define our own Agent interface
 # It's good practice to also import the async version if available and distinct
@@ -8,11 +8,15 @@ import asyncio # Add this import
 
 from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode # For type hinting
 from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models import (
-    ContextItem, PlanOutput, AtomizerOutput, AgentTaskInput, PlannerInput, ExecutionHistoryItem
+    ContextItem, PlanOutput, AtomizerOutput, AgentTaskInput, PlannerInput, ExecutionHistoryItem,
+    PlanModifierInput # Added PlanModifierInput
 )
 
 # Import prompt templates
 from .prompts import INPUT_PROMPT, AGGREGATOR_PROMPT
+
+InputType = TypeVar('InputType')
+OutputType = TypeVar('OutputType')
 
 class BaseAdapter(ABC):
     """
@@ -36,7 +40,7 @@ class BaseAdapter(ABC):
         """
         pass
 
-class LlmApiAdapter(BaseAdapter):
+class LlmApiAdapter(BaseAdapter, Generic[InputType, OutputType]):
     """
     Base adapter for agents implemented using the Agno library.
     This adapter simplifies interaction by leveraging Agno's native
@@ -79,7 +83,7 @@ class LlmApiAdapter(BaseAdapter):
         
         return "\n\n".join(context_parts)
 
-    def _prepare_agno_run_arguments(self, agent_task_input: Union[AgentTaskInput, PlannerInput]) -> str:
+    def _prepare_agno_run_arguments(self, agent_task_input: InputType) -> str:
         """
         Prepares the user message string for self.agno_agent.arun()
         based on AgentTaskInput or PlannerInput.
@@ -150,10 +154,32 @@ class LlmApiAdapter(BaseAdapter):
             # logger.debug(f"    Adapter '{self.agent_name}': FINAL PROMPT being sent to Agno Agent:\n{main_user_message_content}") # Keep logging minimal here
             return main_user_message_content
         
-        else:
-            raise TypeError(f"Unsupported agent_task_input type: {type(agent_task_input)}")
+        elif isinstance(agent_task_input, PlanModifierInput):
+            try:
+                original_plan_json_str = agent_task_input.original_plan.model_dump_json(indent=2)
+            except Exception as e:
+                logger.error(f"Error serializing original_plan to JSON for PlanModifierInput: {e}")
+                original_plan_json_str = str(agent_task_input.original_plan.model_dump())
 
-    async def process(self, node: TaskNode, agent_task_input: Union[AgentTaskInput, PlannerInput]) -> Any: # Changed to async def
+            prompt_content = f"""Overall Objective:
+{agent_task_input.overall_objective}
+
+Original Plan JSON:
+{original_plan_json_str}
+
+User Modification Instructions:
+{agent_task_input.user_modification_instructions}
+
+Based on the 'User Modification Instructions', revise the 'Original Plan JSON' to better achieve the 'Overall Objective'.
+Ensure your output is a valid JSON conforming to the PlanOutput schema, containing a list of sub-tasks.
+"""
+            logger.debug(f"    Adapter '{self.agent_name}': PlanModifierInput prompt prepared.")
+            return prompt_content
+        
+        else:
+            raise TypeError(f"Unsupported agent_task_input type: {type(agent_task_input)} for _prepare_agno_run_arguments")
+
+    async def process(self, node: TaskNode, agent_task_input: InputType) -> OutputType: # Changed to async def
         """
         Processes a TaskNode using the configured AgnoAgent.
         Includes a simple retry mechanism for the Agno agent call.
@@ -193,6 +219,25 @@ class LlmApiAdapter(BaseAdapter):
                 else:
                     logger.warning(f"    Adapter Warning: Agno agent '{self.agent_name}' RunResponse object has no 'content' attribute for node {node.task_id} (Attempt {attempt + 1}).")
                 
+                # NEW: Check if response_model was set and if content is None
+                if self.agno_agent.response_model is not None and actual_content_data is None:
+                    logger.error(
+                        f"  Adapter Error (Attempt {attempt + 1}/{max_retries}): Agno agent '{self.agent_name}' "
+                        f"for node {node.task_id} was configured with response_model="
+                        f"'{self.agno_agent.response_model.__name__}' but returned None content. "
+                        "This likely indicates an LLM failure to adhere to the expected output format, "
+                        "and Agno could not parse the response."
+                    )
+                    # We will still raise an exception to trigger retry or failure,
+                    # but this specific log helps diagnose the root cause (LLM format vs. Agno parsing).
+                    # The specific adapters (PlannerAdapter, etc.) are responsible for raising
+                    # a ValueError or TypeError if None content is unacceptable for their specific OutputType.
+                    # This exception here is more about the general Agno interaction failing.
+                    raise ValueError(
+                        f"Agno agent '{self.agent_name}' with response_model "
+                        f"'{self.agno_agent.response_model.__name__}' returned None."
+                    )
+
                 # Specific adapters (like PlannerAdapter) are responsible for checking if actual_content_data is None
                 # and raising an error if None is not acceptable for them.
                 # This retry loop is primarily for exceptions during arun() or if arun() itself indicates
