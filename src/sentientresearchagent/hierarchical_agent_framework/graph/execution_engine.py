@@ -8,6 +8,7 @@ from sentientresearchagent.hierarchical_agent_framework.graph.state_manager impo
 from sentientresearchagent.hierarchical_agent_framework.context.knowledge_store import KnowledgeStore # For logging to KS
 from sentientresearchagent.hierarchical_agent_framework.utils.hitl_utils import request_human_review
 
+from agno.exceptions import StopAgentRun # Added import
 from typing import Optional, Callable
 import pprint # For logging results
 import asyncio # Import asyncio
