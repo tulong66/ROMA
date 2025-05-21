@@ -393,3 +393,20 @@ class NodeProcessor:
             else:
                 logger.error("NodeProcessor: KnowledgeStore not available in process_node.final_update. State may not be saved.")
             logger.info(f"NodeProcessor: Finished processing node {node.task_id}. Final status: {node.status.name if node.status else 'Unknown'}")
+
+
+# Define ProcessorContext for passing dependencies to handlers
+class ProcessorContext:
+    def __init__(self,
+                 task_graph: TaskGraph,
+                 knowledge_store: KnowledgeStore,
+                 config: NodeProcessorConfig,
+                 hitl_coordinator: HITLCoordinator,
+                 sub_node_creator: SubNodeCreator,
+                 node_atomizer: NodeAtomizer):
+        self.task_graph = task_graph
+        self.knowledge_store = knowledge_store
+        self.config = config
+        self.hitl_coordinator = hitl_coordinator
+        self.sub_node_creator = sub_node_creator
+        self.node_atomizer = node_atomizer
