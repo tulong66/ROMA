@@ -4,6 +4,7 @@ from sentientresearchagent.hierarchical_agent_framework.node.task_node import Ta
 from enum import Enum # Added for isinstance check
 from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models import CustomSearcherOutput # <--- IMPORT IT
 from pydantic import BaseModel # Make sure this import is present
+from loguru import logger # Add loguru import
 
 class TaskGraph:
     """Manages the hierarchical graph structure of TaskNodes."""
@@ -27,7 +28,7 @@ class TaskGraph:
             if self.root_graph_id is not None and self.root_graph_id != graph_id:
                 raise ValueError(f"Root graph already set to {self.root_graph_id}. Cannot set {graph_id} as root.")
             self.root_graph_id = graph_id
-        print(f"TaskGraph: Added graph '{graph_id}'. Is root: {is_root}")
+        logger.info(f"TaskGraph: Added graph '{graph_id}'. Is root: {is_root}")
         return graph
 
     def get_graph(self, graph_id: str) -> Optional[nx.DiGraph]:
@@ -39,8 +40,9 @@ class TaskGraph:
             raise ValueError(f"Graph ID '{graph_id}' not found. Cannot add node '{node.task_id}'.")
         
         graph = self.get_graph(graph_id)
-        if graph is None: # Should be caught by above, but defensive check
-            raise ValueError(f"Graph object for ID '{graph_id}' is None.")
+        # The following check is redundant due to the check above and get_graph always returning a graph if the ID exists.
+        # if graph is None: # Should be caught by above, but defensive check
+        #     raise ValueError(f"Graph object for ID '{graph_id}' is None.")
 
         if node.task_id in self.nodes:
             # This could happen if a node is part of multiple conceptual graphs,
@@ -52,7 +54,7 @@ class TaskGraph:
         self.nodes[node.task_id] = node
         # Store the TaskNode object itself as a node attribute in the graph
         graph.add_node(node.task_id, task_node_obj=node)
-        print(f"TaskGraph: Added node '{node.task_id}' to graph '{graph_id}'.")
+        logger.info(f"TaskGraph: Added node '{node.task_id}' to graph '{graph_id}'.")
 
 
     def add_edge(self, graph_id: str, u_node_id: str, v_node_id: str):
@@ -63,7 +65,7 @@ class TaskGraph:
         if u_node_id not in graph.nodes or v_node_id not in graph.nodes:
             raise ValueError("Nodes must exist in the specified graph to add an edge.")
         graph.add_edge(u_node_id, v_node_id)
-        print(f"TaskGraph: Added edge {u_node_id} -> {v_node_id} in graph '{graph_id}'.")
+        logger.info(f"TaskGraph: Added edge {u_node_id} -> {v_node_id} in graph '{graph_id}'.")
 
     def get_node(self, node_id: str) -> Optional[TaskNode]:
         """Retrieves a TaskNode by its ID from the global lookup."""

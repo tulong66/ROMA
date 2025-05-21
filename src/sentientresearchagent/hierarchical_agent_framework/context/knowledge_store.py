@@ -2,6 +2,7 @@ from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional, Literal
 from datetime import datetime
 from enum import Enum # Import Enum for the isinstance check
+from loguru import logger # Add loguru import
 
 # Using string literals for status, task_type, node_type to align with TaskNode enums
 # but avoid circular dependency if TaskNode itself isn't fully defined when this is imported.
@@ -72,7 +73,7 @@ class KnowledgeStore(BaseModel):
             error_message=node.error
         )
         self.records[record.task_id] = record
-        print(f"KnowledgeStore: Added/Updated record for {node.task_id}")
+        logger.info(f"KnowledgeStore: Added/Updated record for {node.task_id}")
 
     def get_record(self, task_id: str) -> Optional[TaskRecord]:
         return self.records.get(task_id)

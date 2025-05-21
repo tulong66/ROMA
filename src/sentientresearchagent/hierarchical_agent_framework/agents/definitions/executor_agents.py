@@ -38,9 +38,7 @@ search_executor_agno_agent = AgnoAgent(
     model=OpenAIChat(id="gpt-4.1"),
     system_message=SEARCH_EXECUTOR_SYSTEM_MESSAGE,
     tools=[DuckDuckGoTools()],
-    # response_model=WebSearchResultsOutput,
     name="SearchExecutor_Agno"
-    # show_tool_calls=True # Useful for debugging tool usage
 )
 
 

@@ -2,6 +2,7 @@ from typing import Optional
 from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode, TaskStatus, NodeType
 from sentientresearchagent.hierarchical_agent_framework.graph.task_graph import TaskGraph # Adjusted import
 from collections import deque # Keep deque for graph traversal if needed for finding container graph
+from loguru import logger # Add loguru import
 
 class StateManager:
     """Handles logic for checking if nodes can transition state."""
@@ -22,9 +23,9 @@ class StateManager:
                 return parent_node.sub_graph_id
             else:
                 # This case (parent_node_id exists but parent_node not found) is an inconsistency.
-                print(f"StateManager Warning: Node {node.task_id} has parent_id {node.parent_node_id} but parent not found.")
+                logger.warning(f"StateManager: Node {node.task_id} has parent_id {node.parent_node_id} but parent not found.")
                 return None 
-        elif self.task_graph.root_graph_id and node.task_id in self.task_graph.get_graph(self.task_graph.root_graph_id).nodes:
+        elif self.task_graph.root_graph_id and self.task_graph.get_graph(self.task_graph.root_graph_id) and node.task_id in self.task_graph.get_graph(self.task_graph.root_graph_id).nodes:
             # If it has no parent, it should be in the root graph.
             return self.task_graph.root_graph_id
         else:
@@ -32,11 +33,11 @@ class StateManager:
             # This could also be an error condition or indicate a detached node.
             # For now, let's try searching all graphs if the above heuristics fail.
             # This is less efficient and ideally shouldn't be needed if graph structure is consistent.
-            print(f"StateManager Warning: Node {node.task_id} container graph not found by parent/root heuristic. Searching all graphs.")
+            logger.warning(f"StateManager: Node {node.task_id} container graph not found by parent/root heuristic. Searching all graphs.")
             for graph_id, graph_obj in self.task_graph.graphs.items():
                 if node.task_id in graph_obj.nodes:
                     return graph_id
-            print(f"StateManager Error: Node {node.task_id} could not be located in any graph.")
+            logger.error(f"StateManager: Node {node.task_id} could not be located in any graph.")
             return None
 
 
@@ -64,7 +65,7 @@ class StateManager:
         container_graph_id = self._find_container_graph_id_for_node(node)
         
         if not container_graph_id:
-            print(f"Node {node.task_id} cannot become READY: Cannot determine its container graph.")
+            logger.warning(f"Node {node.task_id} cannot become READY: Cannot determine its container graph.")
             return False
         
         # 3. Check dependencies (predecessors) within its own graph.
@@ -89,24 +90,24 @@ class StateManager:
             try:
                 current_node_type = NodeType(current_node_type)
             except ValueError:
-                print(f"DEBUG: StateManager.can_aggregate: Node {node.task_id} has invalid node_type string '{node.node_type}'. Cannot convert to NodeType enum.") # NEW
+                logger.debug(f"StateManager.can_aggregate: Node {node.task_id} has invalid node_type string '{node.node_type}'. Cannot convert to NodeType enum.")
                 return False # Invalid node_type string
 
         # MODIFIED: use current_node_type for comparison
-        print(f"DEBUG: StateManager.can_aggregate CALLED for node {node.task_id}, status: {node.status} (type: {type(node.status)}), original node_type: {node.node_type} (type: {type(node.node_type)}), effective node_type for check: {current_node_type} (type: {type(current_node_type)})")
+        logger.debug(f"StateManager.can_aggregate CALLED for node {node.task_id}, status: {node.status} (type: {type(node.status)}), original node_type: {node.node_type} (type: {type(node.node_type)}), effective node_type for check: {current_node_type} (type: {type(current_node_type)})")
 
         if node.status != TaskStatus.PLAN_DONE or current_node_type != NodeType.PLAN:
-            print(f"DEBUG: StateManager.can_aggregate: Node {node.task_id} failed initial status/type check. Comparing {node.status} (type: {type(node.status)}) with {TaskStatus.PLAN_DONE} (type: {type(TaskStatus.PLAN_DONE)}) AND {current_node_type} (type: {type(current_node_type)}) with {NodeType.PLAN} (type: {type(NodeType.PLAN)})")
+            logger.debug(f"StateManager.can_aggregate: Node {node.task_id} failed initial status/type check. Comparing {node.status} (type: {type(node.status)}) with {TaskStatus.PLAN_DONE} (type: {type(TaskStatus.PLAN_DONE)}) AND {current_node_type} (type: {type(current_node_type)}) with {NodeType.PLAN} (type: {type(NodeType.PLAN)})")
             return False
         
-        print(f"DEBUG: StateManager.can_aggregate: Node {node.task_id} passed initial status/type check.")
+        logger.debug(f"StateManager.can_aggregate: Node {node.task_id} passed initial status/type check.")
 
         if not node.sub_graph_id:
-            print(f"StateManager Warning: Node {node.task_id} is PLAN_DONE but has no sub_graph_id.")
-            print(f"DEBUG: StateManager.can_aggregate: Node {node.task_id} returning False due to no sub_graph_id.")
+            logger.warning(f"StateManager: Node {node.task_id} is PLAN_DONE but has no sub_graph_id.")
+            logger.debug(f"StateManager.can_aggregate: Node {node.task_id} returning False due to no sub_graph_id.")
             return False
         
-        print(f"DEBUG: StateManager.can_aggregate: Node {node.task_id} has sub_graph_id: {node.sub_graph_id}. Fetching sub-graph nodes.")
+        logger.debug(f"StateManager.can_aggregate: Node {node.task_id} has sub_graph_id: {node.sub_graph_id}. Fetching sub-graph nodes.")
         sub_graph_nodes = self.task_graph.get_nodes_in_graph(node.sub_graph_id)
 
         # All tasks within its sub_graph_id must be in a terminal state (DONE or FAILED).
@@ -117,16 +118,16 @@ class StateManager:
             # If a plan resulted in no sub-tasks, it could be considered ready to "aggregate" nothing.
             # This means the plan was effectively atomic or led to an empty plan.
             # The aggregator agent will have to handle an empty set of child results.
-            print(f"Node {node.task_id} can AGGREGATE: PLAN_DONE and its sub-graph '{node.sub_graph_id}' is empty.")
+            logger.info(f"Node {node.task_id} can AGGREGATE: PLAN_DONE and its sub-graph '{node.sub_graph_id}' is empty.")
             return True
 
         all_sub_finished = all(
             sn.status in (TaskStatus.DONE, TaskStatus.FAILED) for sn in sub_graph_nodes
         )
         if all_sub_finished:
-            print(f"Node {node.task_id} can AGGREGATE: All {len(sub_graph_nodes)} sub-tasks in '{node.sub_graph_id}' are finished.")
+            logger.info(f"Node {node.task_id} can AGGREGATE: All {len(sub_graph_nodes)} sub-tasks in '{node.sub_graph_id}' are finished.")
         else:
-            print(f"Node {node.task_id} cannot AGGREGATE: Not all sub-tasks in '{node.sub_graph_id}' are finished.")
+            logger.info(f"Node {node.task_id} cannot AGGREGATE: Not all sub-tasks in '{node.sub_graph_id}' are finished.")
             # Optional: Print status of each sub_graph_node if not all finished
             # for sn_idx, sn_node in enumerate(sub_graph_nodes):
             #     if sn_node.status not in (TaskStatus.DONE, TaskStatus.FAILED):
