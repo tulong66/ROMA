@@ -18,20 +18,25 @@ from sentientresearchagent.hierarchical_agent_framework.context.knowledge_store 
 from sentientresearchagent.hierarchical_agent_framework.graph.execution_engine import ExecutionEngine
 # Import NodeProcessorConfig from its new location
 from sentientresearchagent.hierarchical_agent_framework.node.node_configs import NodeProcessorConfig
+# Import HITLCoordinator
+from sentientresearchagent.hierarchical_agent_framework.node.hitl_coordinator import HITLCoordinator
+from sentientresearchagent.hierarchical_agent_framework.node.hitl_coordinator import HITLCoordinator
 
 # --- Create a Flask App ---
 app = Flask(__name__)
 CORS(app, origins=["http://127.0.0.1:8080"], methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"], allow_headers=["Content-Type", "Authorization"], supports_credentials=True)
 
 # --- Instantiate Core Backend Components ---
-# These will be shared and live for the duration of the server
-# The TaskGraph instance here will be populated by the ExecutionEngine
 live_task_graph = TaskGraph()
 live_knowledge_store = KnowledgeStore()
-live_state_manager = StateManager(live_task_graph) # StateManager needs the TaskGraph
+live_state_manager = StateManager(live_task_graph) 
 
-# Instantiate NodeProcessor with required dependencies
-node_processor_config = NodeProcessorConfig() # Example: using default config
+# Instantiate NodeProcessorConfig first
+node_processor_config = NodeProcessorConfig() 
+
+# Instantiate HITLCoordinator
+live_hitl_coordinator = HITLCoordinator(config=node_processor_config)
+
 live_node_processor = NodeProcessor(
     task_graph=live_task_graph,
     knowledge_store=live_knowledge_store,
@@ -42,7 +47,8 @@ live_execution_engine = ExecutionEngine(
     task_graph=live_task_graph,
     node_processor=live_node_processor,
     state_manager=live_state_manager,
-    knowledge_store=live_knowledge_store
+    knowledge_store=live_knowledge_store,
+    hitl_coordinator=live_hitl_coordinator # Pass HITLCoordinator
 )
 
 def create_sample_task_graph():

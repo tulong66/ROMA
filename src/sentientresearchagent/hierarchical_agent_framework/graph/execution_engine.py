@@ -13,6 +13,12 @@ from typing import Optional, Callable
 import pprint # For logging results
 import asyncio # Import asyncio
 
+# Import new ProjectInitializer
+from .project_initializer import ProjectInitializer
+
+# Import HITLCoordinator
+from sentientresearchagent.hierarchical_agent_framework.node.hitl_coordinator import HITLCoordinator
+
 
 class ExecutionEngine:
     """Orchestrates the overall execution flow of tasks in the graph."""
@@ -21,11 +27,14 @@ class ExecutionEngine:
                  task_graph: TaskGraph,
                  node_processor: NodeProcessorType, # Actual NodeProcessor instance
                  state_manager: StateManager,
-                 knowledge_store: KnowledgeStore): # Added KnowledgeStore
+                 knowledge_store: KnowledgeStore,
+                 hitl_coordinator: HITLCoordinator): # Added HITLCoordinator
         self.task_graph = task_graph
         self.node_processor = node_processor
         self.state_manager = state_manager
         self.knowledge_store = knowledge_store # Store KS
+        self.hitl_coordinator = hitl_coordinator # Store HITLCoordinator
+        self.project_initializer = ProjectInitializer() # Instantiate ProjectInitializer
         # self.node_processor.set_viz_handler(viz_handler) # If you re-add visualization
 
     def initialize_project(self, 
@@ -102,41 +111,46 @@ class ExecutionEngine:
         Complete project flow: Initializes project, performs HITL on root node, then runs execution cycle.
         This is intended to be the primary entry point for running a project.
         """
-        self.initialize_project(root_goal, root_task_type) # Creates root_node in PENDING status
+        # Use ProjectInitializer
+        root_node = self.project_initializer.initialize_project(
+            root_goal=root_goal,
+            task_graph=self.task_graph,
+            knowledge_store=self.knowledge_store,
+            root_task_type=root_task_type
+        )
         
-        root_node = self.task_graph.get_node("root")
-        if not root_node:
-            logger.error("Root node not found after initialization. Cannot proceed.")
+        if not root_node: # Should not happen if initialize_project raises on critical failure
+            logger.error("ExecutionEngine: Root node not created by initializer. Cannot proceed.")
             return None
 
-        # Perform HITL for the root node. This might change its goal or status.
-        await self._perform_root_node_hitl(root_node)
+        # Perform HITL for the root node using HITLCoordinator
+        # review_initial_project_goal will update root_node status if aborted/failed
+        await self.hitl_coordinator.review_initial_project_goal(
+            root_node=root_node,
+            task_graph=self.task_graph,
+            knowledge_store=self.knowledge_store
+        )
         
-        # Check if HITL resulted in cancellation or failure of the root node
         if root_node.status in [TaskStatus.CANCELLED, TaskStatus.FAILED]:
-            logger.warning(f"Root node processing halted due to status {root_node.status.name} after initial HITL review. Full execution cycle will not run.")
-            self._log_final_statuses() # Log the final state
-            return root_node.result # Or some other indication of halted execution
+            logger.warning(f"ExecutionEngine: Root node processing halted due to status {root_node.status.name} after initial HITL review. Full execution cycle will not run.")
+            self._log_final_statuses() 
+            return root_node.result 
 
-        # If not cancelled/failed, proceed to the execution cycle.
-        # The root node would typically be PENDING here (unless HITL changed status),
-        # and run_cycle's first step will move it to READY if appropriate.
         return await self.run_cycle(max_steps)
 
     async def run_cycle(self, max_steps: int = 250):
         """Runs the execution loop for a specified number of steps or until completion/deadlock."""
         logger.info("\n--- Starting Execution Cycle ---")
         
-        if not self.task_graph.root_graph_id or not self.task_graph.get_node("root"):
-            logger.error("Project not initialized properly or root node missing.")
+        root_node_initial_check = self.task_graph.get_node("root")
+        if not self.task_graph.root_graph_id or not root_node_initial_check:
+            logger.error("ExecutionEngine: Project not initialized properly or root node missing before cycle start.")
             return None
         
-        # Initial check for root node status before starting the loop
-        root_node_check = self.task_graph.get_node("root")
-        if root_node_check and root_node_check.status in [TaskStatus.CANCELLED, TaskStatus.FAILED]:
-            logger.warning(f"Root node is already {root_node_check.status.name}. Execution cycle will not proceed effectively.")
+        if root_node_initial_check.status in [TaskStatus.CANCELLED, TaskStatus.FAILED]:
+            logger.warning(f"ExecutionEngine: Root node is already {root_node_initial_check.status.name}. Cycle will not run effectively.")
             self._log_final_statuses()
-            return root_node_check.result
+            return root_node_initial_check.result
 
         for step in range(max_steps):
             logger.info(f"\n--- Step {step + 1} of {max_steps} ---")
@@ -144,8 +158,8 @@ class ExecutionEngine:
             
             all_nodes = self.task_graph.get_all_nodes()
             if not all_nodes:
-                logger.warning("No nodes in the graph to process.")
-                break
+                logger.warning("ExecutionEngine: No nodes in the graph to process.")
+                break # No nodes, cycle ends
 
             # --- 1. Update PENDING -> READY transitions ---
             for node in all_nodes:
@@ -157,22 +171,27 @@ class ExecutionEngine:
                         logger.info(f"  Transition: Node {node.task_id} PENDING -> READY")
 
             # --- 2. Process AGGREGATING and/or READY nodes ---
-            all_nodes = self.task_graph.get_all_nodes() # Re-fetch after status updates
-            aggregating_node_to_process = next((n for n in all_nodes if n.status == TaskStatus.AGGREGATING), None)
+            # Re-fetch nodes as statuses might have changed
+            current_nodes_for_processing = self.task_graph.get_all_nodes()
+            
+            # Prioritize AGGREGATING nodes (typically only one active at a time per layer)
+            aggregating_node_to_process = next((n for n in current_nodes_for_processing if n.status == TaskStatus.AGGREGATING), None)
 
             if aggregating_node_to_process:
                 logger.info(f"  Processing AGGREGATING Node: {aggregating_node_to_process.task_id} (Status: {aggregating_node_to_process.status.name}, Layer: {aggregating_node_to_process.layer})")
-                await self.node_processor.process_node(aggregating_node_to_process, self.task_graph, self.knowledge_store)
+                await self.node_processor.process_node(aggregating_node_to_process, self.task_graph, self.knowledge_store) # type: ignore
                 processed_in_step = True
-                continue
+                # After an AGGREGATING node, re-evaluate from the start of the step logic in the next iteration
+                # This allows its children (if any became ready) or parent (if it completed) to be processed.
+                continue 
 
-            ready_nodes = [n for n in all_nodes if n.status == TaskStatus.READY]
-
+            # Process READY nodes in parallel
+            ready_nodes = [n for n in current_nodes_for_processing if n.status == TaskStatus.READY]
             if ready_nodes:
                 logger.info(f"  Found {len(ready_nodes)} READY nodes to process in parallel.")
                 tasks_to_run = []
                 for ready_node in ready_nodes:
-                    logger.info(f"    Queueing READY Node for parallel processing: {ready_node.task_id} (Status: {ready_node.status.name}, Layer: {ready_node.layer})")
+                    logger.info(f"    Queueing READY Node for parallel processing: {ready_node.task_id} (Layer: {ready_node.layer})")
                     tasks_to_run.append(
                         self.node_processor.process_node(ready_node, self.task_graph, self.knowledge_store)
                     )

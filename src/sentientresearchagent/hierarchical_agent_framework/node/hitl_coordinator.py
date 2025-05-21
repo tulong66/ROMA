@@ -8,6 +8,9 @@ from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models 
 from .node_configs import NodeProcessorConfig # For HITL feature flags
 from sentientresearchagent.hierarchical_agent_framework.utils.hitl_utils import request_human_review
 from sentientresearchagent.hierarchical_agent_framework.agents.utils import get_context_summary, TARGET_WORD_COUNT_FOR_CTX_SUMMARIES
+from sentientresearchagent.hierarchical_agent_framework.graph.task_graph import TaskGraph
+from sentientresearchagent.hierarchical_agent_framework.context.knowledge_store import KnowledgeStore
+from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskType # For type hinting
 
 from agno.exceptions import StopAgentRun
 
@@ -133,3 +136,58 @@ class HITLCoordinator:
             "input_context_summary": get_context_summary(agent_task_input.relevant_context_items, TARGET_WORD_COUNT_FOR_CTX_SUMMARIES)
         }
         return await self._call_hitl_interface("PreExecutionCheck", hitl_context_msg, hitl_data, node)
+
+    async def review_initial_project_goal(
+        self, 
+        root_node: TaskNode, 
+        task_graph: TaskGraph, # Needed to update overall_project_goal
+        knowledge_store: KnowledgeStore # Needed to log node updates
+    ) -> None:
+        """
+        Performs HITL review for the root node's initial goal.
+        Updates root_node.goal, task_graph.overall_project_goal, and knowledge_store.
+        This method assumes the root_node is valid and corresponds to the project root.
+        """
+        if not root_node or root_node.task_id != "root": # Basic validation
+            logger.error("HITLCoordinator: review_initial_project_goal called with invalid node.")
+            return
+
+        logger.info(f"HITLCoordinator: Triggering initial HITL review for root node {root_node.task_id} goal: '{root_node.goal}'.")
+        
+        # Data for review now includes the node's model_dump
+        # context_message is more specific
+        context_message = (
+            f"Review the initial root task goal for the project: '{root_node.goal}'. "
+            "You can approve it as is, or provide a modified goal in the 'modification instructions' field. "
+            "If you abort, the project will be cancelled."
+        )
+        data_for_review = root_node.model_dump(mode='json') # Provide full node data for context
+
+        # Call the internal HITL interface.
+        # Note: _call_hitl_interface itself handles node status updates for FAILED/CANCELLED.
+        hitl_outcome = await self._call_hitl_interface(
+            checkpoint_name="RootNodeGoalReview",
+            context_message=context_message,
+            data_for_review=data_for_review,
+            node=root_node
+        )
+
+        if hitl_outcome.get("status") == "approved":
+            logger.info(f"HITLCoordinator: Root node {root_node.task_id} goal approved by user without changes.")
+            # No changes to node.goal or task_graph.overall_project_goal needed.
+            # Node status remains PENDING (or as set by _call_hitl_interface if error/abort).
+            # Knowledge store already updated by _call_hitl_interface if status changed.
+
+        elif hitl_outcome.get("status") == "request_modification":
+            modified_goal = hitl_outcome.get("modification_instructions", "").strip()
+            if modified_goal:
+                logger.info(f"HITLCoordinator: Root node {root_node.task_id} goal modified by user from '{root_node.goal}' to '{modified_goal}'.")
+                root_node.goal = modified_goal
+                task_graph.overall_project_goal = modified_goal # Update task_graph as well
+                knowledge_store.add_or_update_record_from_node(root_node) # Log the goal change
+            else:
+                logger.info(f"HITLCoordinator: Root node {root_node.task_id} goal approved (modification requested but no instructions given, using original).")
+        
+        # If "aborted" or "error", _call_hitl_interface has already updated node status and logged.
+        # No further action needed here for those cases.
+        # The calling function (e.g., in ExecutionEngine) will check root_node.status.
