@@ -21,7 +21,7 @@ from sentientresearchagent.hierarchical_agent_framework.agents.utils import get_
 # import copy
 
 # Configuration
-MAX_PLANNING_LAYER = 2 # Max depth for recursive planning
+MAX_PLANNING_LAYER = 1 # Max depth for recursive planning
 MAX_REPLAN_ATTEMPTS = 1 # Max number of times a single PLAN node can attempt to re-plan.
 
 # Import the new HITL utility
@@ -350,7 +350,8 @@ class NodeProcessor:
             node.update_status(TaskStatus.FAILED, error_msg=error_msg)
             return
 
-        logger.info(f"    NodeProcessor: Calling executor adapter '{executor_adapter.config.name}' for node {node.task_id}")
+        adapter_display_name = getattr(executor_adapter, 'agent_name', type(executor_adapter).__name__)
+        logger.info(f"    NodeProcessor: Calling executor adapter '{adapter_display_name}' for node {node.task_id}")
         execution_result: Optional[Any] = await executor_adapter.process(node, agent_task_input_model)
 
         if execution_result is not None:
@@ -377,7 +378,7 @@ class NodeProcessor:
             else:
                 node.output_summary = f"Execution completed. Data stored in result."
             
-            node.update_status(TaskStatus.COMPLETED)
+            node.update_status(TaskStatus.DONE)
             logger.success(f"    NodeProcessor: Node {node.task_id} execution complete. Status: {node.status.name}. Summary: {node.output_summary}")
         else:
             # If adapter.process returns None, it might indicate an issue handled within the adapter (e.g. HITL abort)
