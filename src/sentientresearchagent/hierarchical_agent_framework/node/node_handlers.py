@@ -8,12 +8,11 @@ from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models 
 from sentientresearchagent.hierarchical_agent_framework.agents.registry import get_agent_adapter
 from sentientresearchagent.hierarchical_agent_framework.context.context_builder import (
     resolve_context_for_agent,
-    resolve_input_for_planner_agent
 )
+from sentientresearchagent.hierarchical_agent_framework.context.planner_context_builder import resolve_input_for_planner_agent
 from pydantic import BaseModel # For result type checking
 
-from .inode_handler import INodeHandler
-from .node_processor import ProcessorContext # Import the context
+from .inode_handler import INodeHandler, ProcessorContext # Import ProcessorContext from here
 
 
 class ReadyPlanHandler(INodeHandler):
