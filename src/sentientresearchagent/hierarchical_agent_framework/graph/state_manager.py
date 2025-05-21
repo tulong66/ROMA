@@ -40,47 +40,41 @@ class StateManager:
             logger.error(f"StateManager: Node {node.task_id} could not be located in any graph.")
             return None
 
+    def _check_parent_conditions_for_ready(self, node: TaskNode) -> bool:
+        """Checks if the parent node's status allows the current node to become READY."""
+        if node.parent_node_id:
+            parent_node = self.task_graph.get_node(node.parent_node_id)
+            if not parent_node or parent_node.status not in (TaskStatus.RUNNING, TaskStatus.PLAN_DONE):
+                # logger.debug(f"Node {node.task_id} parent condition failed: Parent {node.parent_node_id} status is {parent_node.status if parent_node else 'Not Found'}")
+                return False
+        # If no parent_node_id, it's a root node, so parent conditions are implicitly met.
+        return True
+
+    def _check_predecessor_conditions_for_ready(self, node: TaskNode, container_graph_id: str) -> bool:
+        """Checks if all predecessors of the node in its container graph are DONE."""
+        predecessors = self.task_graph.get_node_predecessors(container_graph_id, node.task_id)
+        if not predecessors:  # No predecessors, so dependency condition is met
+            return True
+        
+        all_preds_done = all(pred.status == TaskStatus.DONE for pred in predecessors)
+        # if not all_preds_done:
+            # logger.debug(f"Node {node.task_id} predecessor condition failed: Not all predecessors are DONE.")
+        return all_preds_done
 
     def can_become_ready(self, node: TaskNode) -> bool:
         """Checks if a PENDING node can transition to READY."""
         if node.status != TaskStatus.PENDING:
             return False
 
-        # 1. Check parent status (must be RUNNING/PLAN_DONE or it's a root node with no parent)
-        parent_conditions_met = False
-        if node.parent_node_id:
-            parent_node = self.task_graph.get_node(node.parent_node_id)
-            if parent_node and parent_node.status in (TaskStatus.RUNNING, TaskStatus.PLAN_DONE):
-                parent_conditions_met = True
-            # If parent exists but is not in a runnable state, this node cannot become ready
-        else: # Root node case (no parent_node_id)
-            parent_conditions_met = True
-
-        if not parent_conditions_met:
-            # print(f"Node {node.task_id} cannot become READY: Parent conditions not met.")
+        if not self._check_parent_conditions_for_ready(node):
             return False
 
-        # 2. Determine the graph this node belongs to.
-        #    A node belongs to the sub-graph created by its parent, or the root graph if it's a root node.
         container_graph_id = self._find_container_graph_id_for_node(node)
-        
         if not container_graph_id:
             logger.warning(f"Node {node.task_id} cannot become READY: Cannot determine its container graph.")
             return False
-        
-        # 3. Check dependencies (predecessors) within its own graph.
-        #    All direct predecessors in its container graph must be DONE.
-        predecessors = self.task_graph.get_node_predecessors(container_graph_id, node.task_id)
-        if not predecessors: # No predecessors, so dependency condition is met
-            # print(f"Node {node.task_id} can become READY: Parent OK, No predecessors.")
-            return True
-        
-        deps_done = all(pred.status == TaskStatus.DONE for pred in predecessors)
-        # if deps_done:
-        #     print(f"Node {node.task_id} can become READY: Parent OK, Predecessors DONE.")
-        # else:
-        #     print(f"Node {node.task_id} cannot become READY: Not all predecessors are DONE.")
-        return deps_done
+
+        return self._check_predecessor_conditions_for_ready(node, container_graph_id)
 
     def can_aggregate(self, node: TaskNode) -> bool:
         """Checks if a PLAN_DONE node (which is a PLAN type node) can transition to AGGREGATING."""

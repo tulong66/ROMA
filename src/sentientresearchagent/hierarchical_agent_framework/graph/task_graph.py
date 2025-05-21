@@ -5,6 +5,7 @@ from enum import Enum # Added for isinstance check
 from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models import CustomSearcherOutput # <--- IMPORT IT
 from pydantic import BaseModel # Make sure this import is present
 from loguru import logger # Add loguru import
+from sentientresearchagent.hierarchical_agent_framework.graph.graph_serializer import GraphSerializer # Import the new serializer
 
 class TaskGraph:
     """Manages the hierarchical graph structure of TaskNodes."""
@@ -118,98 +119,9 @@ class TaskGraph:
         return nodes
 
     def to_visualization_dict(self) -> Dict[str, Any]:
-        """Serializes the task graph to a dictionary for frontend visualization."""
-        output_graphs = {}
-        for graph_id, graph_obj in self.graphs.items():
-            output_graphs[graph_id] = {
-                "nodes": list(graph_obj.nodes()),
-                "edges": [{"source": u, "target": v} for u, v in graph_obj.edges()]
-            }
-
-        output_nodes = {}
-        for node_id, node_obj in self.nodes.items():
-            input_context_info_list = []
-            # Attempt to extract relevant_context_items
-            if node_obj.input_payload_dict and isinstance(node_obj.input_payload_dict, dict):
-                # Assuming AgentTaskInput structure where 'relevant_context_items' is a key
-                relevant_context = node_obj.input_payload_dict.get('relevant_context_items', [])
-                if isinstance(relevant_context, list):
-                    for item in relevant_context:
-                        if isinstance(item, dict): # Assuming ContextItem structure
-                            source_id = item.get('source_task_id')
-                            source_goal = item.get('source_task_goal', 'Unknown goal')
-                            content_type = item.get('content_type_description', 'Unknown type')
-                            if source_id:
-                                input_context_info_list.append({
-                                    "source_task_id": source_id,
-                                    "source_task_goal_summary": source_goal[:50] + "..." if source_goal and len(source_goal) > 50 else source_goal,
-                                    "content_type": content_type
-                                })
-            
-            # Simplified input_payload_summary
-            input_payload_summary_str = "N/A"
-            if node_obj.input_payload_dict:
-                keys = list(node_obj.input_payload_dict.keys())
-                input_payload_summary_str = f"Input payload with keys: {', '.join(keys)}"
-
-            task_type_val = None
-            if node_obj.task_type:
-                if isinstance(node_obj.task_type, Enum):
-                    task_type_val = node_obj.task_type.value
-                else:
-                    task_type_val = str(node_obj.task_type)
-
-            node_type_val = None
-            if node_obj.node_type:
-                if isinstance(node_obj.node_type, Enum):
-                    node_type_val = node_obj.node_type.value
-                else:
-                    node_type_val = str(node_obj.node_type)
-
-            status_val = None
-            if node_obj.status:
-                if isinstance(node_obj.status, Enum):
-                    status_val = node_obj.status.value
-                else:
-                    status_val = str(node_obj.status)
-
-            processed_result = None
-            if node_obj.result is not None:
-                if isinstance(node_obj.result, BaseModel):
-                    try:
-                        processed_result = node_obj.result.model_dump(mode='json')
-                    except AttributeError:
-                        processed_result = node_obj.result.dict()
-                elif isinstance(node_obj.result, (dict, list, str, int, float, bool)):
-                    processed_result = node_obj.result
-                else:
-                    processed_result = str(node_obj.result)
-
-            output_nodes[node_id] = {
-                "task_id": node_obj.task_id,
-                "goal": node_obj.goal,
-                "task_type": task_type_val,
-                "node_type": node_type_val,
-                "agent_name": node_obj.agent_name,
-                "status": status_val,
-                "layer": node_obj.layer,
-                "parent_node_id": node_obj.parent_node_id,
-                "overall_objective": node_obj.overall_objective,
-                "output_summary": node_obj.output_summary,
-                "full_result": processed_result,
-                "error": node_obj.error,
-                "sub_graph_id": node_obj.sub_graph_id,
-                "planned_sub_task_ids": node_obj.planned_sub_task_ids,
-                "input_payload_summary": input_payload_summary_str,
-                "input_context_sources": input_context_info_list,
-                "timestamp_created": node_obj.timestamp_created.isoformat() if node_obj.timestamp_created else None,
-                "timestamp_updated": node_obj.timestamp_updated.isoformat() if node_obj.timestamp_updated else None,
-                "timestamp_completed": node_obj.timestamp_completed.isoformat() if node_obj.timestamp_completed else None,
-            }
-
-        return {
-            "overall_project_goal": self.overall_project_goal,
-            "root_graph_id": self.root_graph_id,
-            "graphs": output_graphs,
-            "all_nodes": output_nodes
-        }
+        """
+        Serializes the task graph to a dictionary for frontend visualization
+        using the GraphSerializer.
+        """
+        serializer = GraphSerializer(self)
+        return serializer.to_visualization_dict()
