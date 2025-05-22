@@ -137,6 +137,52 @@ class HITLCoordinator:
         }
         return await self._call_hitl_interface("PreExecutionCheck", hitl_context_msg, hitl_data, node)
 
+    async def review_modified_plan(
+        self, node: TaskNode, modified_plan: PlanOutput, replan_attempt_count: int
+    ) -> Dict[str, Any]:
+        if not self.config.enable_hitl_after_modified_plan:
+            return {"status": "approved", "message": "HITL for modified plan skipped by configuration."}
+
+        checkpoint_name = f"PostModifiedPlanReview_Attempt_{replan_attempt_count}"
+        hitl_context_msg = (
+            f"Review modified plan for task '{node.task_id}' (Replan Attempt {replan_attempt_count}). "
+            f"Goal: {node.goal}"
+        )
+        
+        plan_for_review = modified_plan.model_dump(mode='json') if modified_plan else {}
+        
+        # You might want to include a summary of the original modification request or previous plan details
+        # For now, we'll keep it concise with the newly proposed plan.
+        original_modification_request = node.aux_data.get('user_modification_instructions', 'N/A')
+        if isinstance(original_modification_request, PlanOutput): # Safety check if aux_data stores the model
+            original_modification_request = "User provided new plan directly (details in original plan)."
+
+
+        hitl_data = {
+            "task_id": node.task_id,
+            "task_goal": node.goal,
+            "replan_attempt_count": replan_attempt_count,
+            "reason_for_current_replan": node.replan_reason, # The reason that triggered this current replan
+            "original_user_modification_request_for_this_cycle": original_modification_request,
+            "proposed_modified_plan": plan_for_review,
+        }
+        
+        # Adding a more specific instruction for the user during this review
+        context_message_for_user = (
+            f"{hitl_context_msg}\n\n"
+            "The plan has been modified based on previous feedback (if any). Please review the new 'proposed_modified_plan'.\n"
+            "You can 'approve' it, or 'request_modification' again with new instructions in the 'modification instructions' field. "
+            "If you 'request_modification', the system will attempt to revise this proposed plan."
+        )
+
+        return await self._call_hitl_interface(
+            checkpoint_name=checkpoint_name,
+            context_message=context_message_for_user, # Use the more detailed message for the user
+            data_for_review=hitl_data,
+            node=node,
+            current_hitl_attempt=replan_attempt_count # Pass the replan attempt as current_hitl_attempt
+        )
+
     async def review_initial_project_goal(
         self, 
         root_node: TaskNode, 
