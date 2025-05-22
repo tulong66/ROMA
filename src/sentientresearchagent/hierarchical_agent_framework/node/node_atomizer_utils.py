@@ -4,12 +4,12 @@ from loguru import logger
 from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode, TaskType, NodeType, TaskStatus
 from sentientresearchagent.hierarchical_agent_framework.graph.task_graph import TaskGraph
 from sentientresearchagent.hierarchical_agent_framework.context.knowledge_store import KnowledgeStore
-from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models import AtomizerOutput
+from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models import AtomizerOutput, AgentTaskInput
 from sentientresearchagent.hierarchical_agent_framework.agents.registry import get_agent_adapter
 from sentientresearchagent.hierarchical_agent_framework.context.context_builder import resolve_context_for_agent
 from sentientresearchagent.hierarchical_agent_framework.agents.utils import get_context_summary
-# Import HITLCoordinator instead of NodeProcessorConfig and Callable
 from .hitl_coordinator import HITLCoordinator
+from .inode_handler import ProcessorContext
 
 
 class NodeAtomizer:
@@ -18,11 +18,11 @@ class NodeAtomizer:
     and handling associated HITL interactions.
     """
     def __init__(self, 
-                 hitl_coordinator: HITLCoordinator): # Changed from config and hitl_callback
-        self.hitl_coordinator = hitl_coordinator # Store the HITLCoordinator instance
+                 hitl_coordinator: HITLCoordinator): 
+        self.hitl_coordinator = hitl_coordinator 
 
     async def atomize_node(
-        self, node: TaskNode, task_graph: TaskGraph, knowledge_store: KnowledgeStore
+        self, node: TaskNode, context: ProcessorContext 
     ) -> Optional[NodeType]:
         """
         Calls the Atomizer agent to determine if the node's goal is atomic.
@@ -30,66 +30,94 @@ class NodeAtomizer:
         Handles HITL after atomization if enabled.
         Returns the NodeType to proceed with (PLAN or EXECUTE), or None if HITL caused an abort/error.
         """
-        current_task_type_value = node.task_type.value if isinstance(node.task_type, TaskType) else str(node.task_type)
+        knowledge_store = context.knowledge_store 
+        task_graph = context.task_graph       
+        blueprint_name_log = context.current_agent_blueprint.name if context.current_agent_blueprint else "N/A"
         
-        atomizer_input_model = resolve_context_for_agent(
-            current_task_id=node.task_id,
-            current_goal=node.goal,
-            current_task_type=current_task_type_value,
-            agent_name="default_atomizer",
-            knowledge_store=knowledge_store,
-            overall_project_goal=task_graph.overall_project_goal
-        )
-        
-        atomizer_adapter = get_agent_adapter(node, action_verb="atomize") 
-        action_to_take: NodeType
+        # Preserve the node's agent_name as it was upon entering this atomizer step
+        agent_name_at_atomizer_entry = node.agent_name
+        logger.info(f"    NodeAtomizer: Atomizing for node {node.task_id} (Blueprint: {blueprint_name_log}, Goal: '{node.goal[:30]}...', Original Agent Name at Entry: {agent_name_at_atomizer_entry})")
 
-        if atomizer_adapter:
-            logger.info(f"    NodeAtomizer: Calling Atomizer for node {node.task_id} ('{node.goal[:30]}...')")
-            atomizer_output: Optional[AtomizerOutput] = await atomizer_adapter.process(node, atomizer_input_model)
+        try:
+            current_task_type_value = node.task_type.value if isinstance(node.task_type, TaskType) else str(node.task_type)
             
-            if atomizer_output is None:
-                logger.warning(f"    NodeAtomizer: Atomizer for {node.task_id} returned None.")
-                if node.status not in [TaskStatus.FAILED, TaskStatus.CANCELLED]: # type: ignore
-                     node.update_status(TaskStatus.FAILED, error_msg="Atomizer returned None, cannot determine next step.") # type: ignore
-                return None
+            # Determine agent_name for context resolution (less critical, uses a default)
+            context_builder_agent_name = agent_name_at_atomizer_entry or "default_atomizer"
+            if context.current_agent_blueprint:
+                if context.current_agent_blueprint.atomizer_adapter_name:
+                    context_builder_agent_name = context.current_agent_blueprint.atomizer_adapter_name
+                elif not agent_name_at_atomizer_entry and context.current_agent_blueprint.default_node_agent_name_prefix:
+                    context_builder_agent_name = f"{context.current_agent_blueprint.default_node_agent_name_prefix}Atomizer"
+            context_builder_agent_name = context_builder_agent_name or "default_atomizer"
 
-            original_goal_for_hitl = atomizer_input_model.current_goal # Save before node.goal is updated
-            if atomizer_output.updated_goal != node.goal:
-                logger.info(f"    Atomizer updated goal for {node.task_id}: '{node.goal[:50]}...' -> '{atomizer_output.updated_goal[:50]}...'")
-                node.goal = atomizer_output.updated_goal
-            
-            action_to_take = NodeType.EXECUTE if atomizer_output.is_atomic else NodeType.PLAN
-            node.node_type = action_to_take
-            
-            logger.info(f"    Atomizer determined {node.task_id} as {action_to_take.name}. Node's NodeType set to {node.node_type.name}.")
-
-            # Use HITLCoordinator's specific method
-            hitl_outcome_atomizer = await self.hitl_coordinator.review_atomizer_output(
-                node=node,
-                original_goal=original_goal_for_hitl,
-                updated_goal=node.goal,
-                is_atomic=atomizer_output.is_atomic,
-                proposed_next_action=action_to_take.value, # Use action_to_take.value for string representation
-                context_summary=get_context_summary(atomizer_input_model.relevant_context_items)
+            atomizer_input_model = resolve_context_for_agent(
+                current_task_id=node.task_id, current_goal=node.goal,
+                current_task_type=current_task_type_value, agent_name=context_builder_agent_name, 
+                knowledge_store=knowledge_store, overall_project_goal=task_graph.overall_project_goal
             )
-            if hitl_outcome_atomizer.get("status") != "approved": 
-                return None 
-            return action_to_take
-        else: 
-            logger.warning(f"    NodeAtomizer: No AtomizerAdapter found for node {node.task_id}. Defaulting its NodeType.")
-            if isinstance(node.node_type, str):
-                try:
-                    resolved_node_type = NodeType(node.node_type)
-                    node.node_type = resolved_node_type
-                    return resolved_node_type
-                except ValueError:
-                    logger.error(f"Invalid NodeType string '{node.node_type}' for node {node.task_id} when atomizer is absent. Defaulting to EXECUTE.")
-                    node.node_type = NodeType.EXECUTE
-                    return NodeType.EXECUTE
-            elif isinstance(node.node_type, NodeType):
-                return node.node_type 
-            else: 
-                logger.info(f"Node {node.task_id} has no specific NodeType and no atomizer found. Defaulting to EXECUTE.")
-                node.node_type = NodeType.EXECUTE
-                return NodeType.EXECUTE
+            
+            # Determine the name to use for looking up the atomizer adapter
+            lookup_name_for_atomizer = agent_name_at_atomizer_entry # Start with pre-existing name
+            if context.current_agent_blueprint:
+                if context.current_agent_blueprint.atomizer_adapter_name:
+                    lookup_name_for_atomizer = context.current_agent_blueprint.atomizer_adapter_name
+                    logger.debug(f"        NodeAtomizer: Blueprint specifies atomizer: {lookup_name_for_atomizer}")
+                elif not lookup_name_for_atomizer and context.current_agent_blueprint.default_node_agent_name_prefix:
+                    lookup_name_for_atomizer = f"{context.current_agent_blueprint.default_node_agent_name_prefix}Atomizer"
+                    logger.debug(f"        NodeAtomizer: Blueprint suggests prefix for atomizer: {lookup_name_for_atomizer}")
+            
+            node.agent_name = lookup_name_for_atomizer # Temporarily set for get_agent_adapter
+            atomizer_adapter = get_agent_adapter(node, action_verb="atomize") 
+
+            if not atomizer_adapter and agent_name_at_atomizer_entry and node.agent_name != agent_name_at_atomizer_entry:
+                logger.debug(f"        NodeAtomizer: Blueprint atomizer lookup failed. Trying original entry agent_name for atomize: {agent_name_at_atomizer_entry}")
+                node.agent_name = agent_name_at_atomizer_entry # Restore and try original
+                atomizer_adapter = get_agent_adapter(node, action_verb="atomize")
+
+            action_to_take: NodeType
+            if atomizer_adapter:
+                adapter_used_name = getattr(atomizer_adapter, 'agent_name', type(atomizer_adapter).__name__)
+                logger.info(f"    NodeAtomizer: Calling Atomizer adapter '{adapter_used_name}' for node {node.task_id} ('{node.goal[:30]}...')")
+                atomizer_output: Optional[AtomizerOutput] = await atomizer_adapter.process(node, atomizer_input_model)
+                
+                if atomizer_output is None:
+                    logger.warning(f"    NodeAtomizer: Atomizer for {node.task_id} returned None.")
+                    if node.status not in [TaskStatus.FAILED, TaskStatus.CANCELLED]: 
+                         node.update_status(TaskStatus.FAILED, error_msg="Atomizer returned None, cannot determine next step.") 
+                    return None
+
+                original_goal_for_hitl = atomizer_input_model.current_goal 
+                if atomizer_output.updated_goal != node.goal:
+                    logger.info(f"    Atomizer updated goal for {node.task_id}: '{node.goal[:50]}...' -> '{atomizer_output.updated_goal[:50]}...'")
+                    node.goal = atomizer_output.updated_goal
+                
+                action_to_take = NodeType.EXECUTE if atomizer_output.is_atomic else NodeType.PLAN
+                logger.info(f"    Atomizer proposed {node.task_id} as {action_to_take.name}.")
+
+                hitl_outcome_atomizer = await self.hitl_coordinator.review_atomizer_output(
+                    node=node, original_goal=original_goal_for_hitl,
+                    updated_goal=node.goal, is_atomic=atomizer_output.is_atomic, 
+                    proposed_next_action=action_to_take.value, 
+                    context_summary=get_context_summary(atomizer_input_model.relevant_context_items)
+                )
+                
+                if hitl_outcome_atomizer.get("status") != "approved": 
+                    logger.info(f"NodeAtomizer: HITL review for atomizer output of {node.task_id} was not 'approved'. Status is {node.status}. HITL outcome: {hitl_outcome_atomizer}")
+                    return None 
+                return action_to_take 
+            
+            else: # No atomizer_adapter found
+                final_tried_name = node.agent_name or lookup_name_for_atomizer or agent_name_at_atomizer_entry
+                logger.warning(f"    NodeAtomizer: No AtomizerAdapter found for node {node.task_id} (tried: {final_tried_name or 'None'}). Defaulting its NodeType based on current value or to EXECUTE.")
+                
+                if isinstance(node.node_type, str):
+                    try: return NodeType(node.node_type)
+                    except ValueError: return NodeType.EXECUTE
+                elif isinstance(node.node_type, NodeType): return node.node_type 
+                else: return NodeType.EXECUTE
+        finally:
+            # Restore node.agent_name to what it was when this function was entered.
+            # The atomizer's specific name should not persist on the node object for subsequent unrelated steps.
+            if node.agent_name != agent_name_at_atomizer_entry:
+                logger.debug(f"        NodeAtomizer: Restoring node.agent_name from '{node.agent_name}' to entry value '{agent_name_at_atomizer_entry}' for node {node.task_id}")
+                node.agent_name = agent_name_at_atomizer_entry

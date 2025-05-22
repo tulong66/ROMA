@@ -2,6 +2,9 @@ from typing import List, Optional, Any, Dict
 from pydantic import BaseModel
 from loguru import logger
 
+from sentientresearchagent.hierarchical_agent_framework.node.hitl_coordinator import HITLCoordinator
+from sentientresearchagent.hierarchical_agent_framework.node.inode_handler import INodeHandler
+from sentientresearchagent.hierarchical_agent_framework.node.node_handlers import AggregatingNodeHandler, NeedsReplanNodeHandler, ReadyExecuteHandler, ReadyNodeHandler, ReadyPlanHandler
 from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode, TaskStatus, NodeType, TaskType
 from sentientresearchagent.hierarchical_agent_framework.graph.task_graph import TaskGraph
 from sentientresearchagent.hierarchical_agent_framework.context.knowledge_store import KnowledgeStore
@@ -18,24 +21,18 @@ from sentientresearchagent.hierarchical_agent_framework.context.context_builder 
 )
 from sentientresearchagent.hierarchical_agent_framework.context.planner_context_builder import resolve_input_for_planner_agent
 from sentientresearchagent.hierarchical_agent_framework.agents.utils import get_context_summary, TARGET_WORD_COUNT_FOR_CTX_SUMMARIES
+# Import blueprint-related items
+from sentientresearchagent.hierarchical_agent_framework.agent_blueprints import AgentBlueprint, get_blueprint_by_name
 from .node_creation_utils import SubNodeCreator
 from .node_atomizer_utils import NodeAtomizer
 from .node_configs import NodeProcessorConfig
-from .hitl_coordinator import HITLCoordinator
-from .inode_handler import INodeHandler
-from .node_handlers import (
-    ReadyPlanHandler,
-    ReadyExecuteHandler,
-    ReadyNodeHandler,
-    AggregatingNodeHandler,
-    NeedsReplanNodeHandler
-)
 
 
-MAX_PLANNING_LAYER = 2 # This seems to be a global constant, consider moving to config
-MAX_REPLAN_ATTEMPTS = 1 # This seems to be a global constant, consider moving to config
+
+MAX_REPLAN_ATTEMPTS = 1
 
 
+# This local definition of ProcessorContext should mirror the one in inode_handler.py
 class ProcessorContext:
     """Holds shared resources and configurations for node handlers."""
     def __init__(self,
@@ -44,13 +41,15 @@ class ProcessorContext:
                  config: NodeProcessorConfig,
                  hitl_coordinator: HITLCoordinator,
                  sub_node_creator: SubNodeCreator,
-                 node_atomizer: NodeAtomizer):
+                 node_atomizer: NodeAtomizer,
+                 current_agent_blueprint: Optional[AgentBlueprint] = None): # MODIFIED: Added current_agent_blueprint
         self.task_graph = task_graph
         self.knowledge_store = knowledge_store
         self.config = config
         self.hitl_coordinator = hitl_coordinator
         self.sub_node_creator = sub_node_creator
         self.node_atomizer = node_atomizer
+        self.current_agent_blueprint = current_agent_blueprint # MODIFIED: Added current_agent_blueprint
 
 
 class NodeProcessor:
@@ -62,12 +61,23 @@ class NodeProcessor:
     def __init__(self,
                  task_graph: TaskGraph,
                  knowledge_store: KnowledgeStore,
-                 config: Optional[NodeProcessorConfig] = None):
+                 config: Optional[NodeProcessorConfig] = None,
+                 agent_blueprint_name: Optional[str] = None): # MODIFIED: Added agent_blueprint_name
         logger.info("NodeProcessor initialized.")
         self.config = config if config else NodeProcessorConfig()
         self.task_graph = task_graph
         self.knowledge_store = knowledge_store
         
+        active_blueprint: Optional[AgentBlueprint] = None
+        if agent_blueprint_name:
+            active_blueprint = get_blueprint_by_name(agent_blueprint_name)
+            if active_blueprint:
+                logger.info(f"NodeProcessor will use Agent Blueprint: {active_blueprint.name}")
+            else:
+                logger.warning(f"Agent Blueprint '{agent_blueprint_name}' not found. NodeProcessor will operate without a specific blueprint.")
+        else:
+            logger.info("NodeProcessor initialized without a specific Agent Blueprint.")
+
         self.hitl_coordinator = HITLCoordinator(self.config)
         self.sub_node_creator = SubNodeCreator(task_graph, knowledge_store)
         # Assuming NodeAtomizer's constructor was updated to take hitl_coordinator directly
@@ -80,7 +90,8 @@ class NodeProcessor:
             config=self.config,
             hitl_coordinator=self.hitl_coordinator,
             sub_node_creator=self.sub_node_creator,
-            node_atomizer=self.node_atomizer
+            node_atomizer=self.node_atomizer,
+            current_agent_blueprint=active_blueprint # MODIFIED: Pass blueprint
         )
 
         # Instantiate handlers

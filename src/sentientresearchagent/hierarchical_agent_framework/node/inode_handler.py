@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional # Add Optional
 
 from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode
 
@@ -11,6 +11,8 @@ if TYPE_CHECKING:
     from .hitl_coordinator import HITLCoordinator
     from .node_creation_utils import SubNodeCreator
     from .node_atomizer_utils import NodeAtomizer
+    # Import AgentBlueprint for type hinting
+    from sentientresearchagent.hierarchical_agent_framework.agent_blueprints import AgentBlueprint
 
 
 class ProcessorContext:
@@ -21,13 +23,15 @@ class ProcessorContext:
                  config: 'NodeProcessorConfig',
                  hitl_coordinator: 'HITLCoordinator',
                  sub_node_creator: 'SubNodeCreator',
-                 node_atomizer: 'NodeAtomizer'):
+                 node_atomizer: 'NodeAtomizer',
+                 current_agent_blueprint: Optional['AgentBlueprint'] = None): # MODIFIED LINE
         self.task_graph = task_graph
         self.knowledge_store = knowledge_store
         self.config = config
         self.hitl_coordinator = hitl_coordinator
         self.sub_node_creator = sub_node_creator
         self.node_atomizer = node_atomizer
+        self.current_agent_blueprint = current_agent_blueprint # MODIFIED LINE
 
 
 class INodeHandler(ABC):

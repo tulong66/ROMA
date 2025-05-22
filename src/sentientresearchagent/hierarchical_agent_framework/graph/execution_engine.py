@@ -8,6 +8,10 @@ from sentientresearchagent.hierarchical_agent_framework.graph.state_manager impo
 from sentientresearchagent.hierarchical_agent_framework.context.knowledge_store import KnowledgeStore # For logging to KS
 from sentientresearchagent.hierarchical_agent_framework.utils.hitl_utils import request_human_review
 
+# Ensure NodeProcessor is imported for specific type hinting
+from sentientresearchagent.hierarchical_agent_framework.node.node_processor import NodeProcessor
+
+
 from agno.exceptions import StopAgentRun # Added import
 from typing import Optional, Callable
 import pprint # For logging results
@@ -28,17 +32,32 @@ class ExecutionEngine:
 
     def __init__(self, 
                  task_graph: TaskGraph,
-                 node_processor: NodeProcessorType, # Actual NodeProcessor instance
                  state_manager: StateManager,
                  knowledge_store: KnowledgeStore,
-                 hitl_coordinator: HITLCoordinator): # Added HITLCoordinator
+                 hitl_coordinator: HITLCoordinator,
+                 # Allow NodeProcessor to be passed in for testing or custom setups,
+                 # but create a default one if not provided.
+                 node_processor: Optional[NodeProcessor] = None, 
+                 initial_agent_blueprint_name: Optional[str] = "DeepResearchAgent" # MODIFIED: Added blueprint name with default
+                ):
         self.task_graph = task_graph
-        self.node_processor = node_processor
+        
+        if node_processor:
+            self.node_processor = node_processor
+        else:
+            # MODIFIED: Pass agent_blueprint_name to NodeProcessor constructor
+            self.node_processor = NodeProcessor(
+                task_graph=self.task_graph,
+                knowledge_store=knowledge_store, 
+                # config=... # Pass NodeProcessorConfig if it's available here and NP needs it
+                agent_blueprint_name=initial_agent_blueprint_name
+            )
+            
         self.state_manager = state_manager
-        self.knowledge_store = knowledge_store # Store KS
-        self.hitl_coordinator = hitl_coordinator # Store HITLCoordinator
-        self.project_initializer = ProjectInitializer() # Instantiate ProjectInitializer
-        self.cycle_manager = CycleManager() # Instantiate CycleManager
+        self.knowledge_store = knowledge_store 
+        self.hitl_coordinator = hitl_coordinator 
+        self.project_initializer = ProjectInitializer() 
+        self.cycle_manager = CycleManager() 
         # self.node_processor.set_viz_handler(viz_handler) # If you re-add visualization
 
     def initialize_project(self, 
