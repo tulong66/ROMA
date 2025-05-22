@@ -5,6 +5,8 @@ from pydantic import BaseModel, Field
 from datetime import datetime
 from loguru import logger
 
+from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models import ReplanRequestDetails
+
 class TaskStatus(Enum):
     PENDING = "PENDING"
     READY = "READY"
@@ -62,6 +64,15 @@ class TaskNode(BaseModel):
     # For PLAN nodes to know their direct children
     # This helps in dependency management and aggregation
     planned_sub_task_ids: List[str] = Field(default_factory=list)
+
+    # NEW: For replanning context
+    replan_details: Optional[ReplanRequestDetails] = None 
+    replan_reason: Optional[str] = None 
+    replan_attempts: int = 0
+    
+    # NEW: To store arbitrary auxiliary data that might be useful for certain handlers or agents
+    # For example, storing the original plan and user modification instructions during HITL replan
+    aux_data: Dict[str, Any] = Field(default_factory=dict)
 
     class Config:
         use_enum_values = True # Important for serialization if you pass enums around

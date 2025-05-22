@@ -60,14 +60,23 @@ class ReadyPlanHandler(INodeHandler):
 
         if hitl_outcome_plan["status"] == "request_modification":
             logger.info(f"Node {node.task_id}: Plan modification requested by user. Setting to NEEDS_REPLAN.")
+            
+            modification_instructions = hitl_outcome_plan.get('modification_instructions', 'User requested modification of the plan via HITL.')
+            
             node.replan_details = ReplanRequestDetails(
-                original_plan=plan_output,
-                modification_instructions=hitl_outcome_plan.get('modification_instructions', 'No specific instructions.')
-            ).model_dump()
-            node.replan_reason = f"User requested modification: {hitl_outcome_plan.get('modification_instructions', 'No specific instructions.')}"
+                failed_sub_goal=node.goal,
+                reason_for_failure_or_replan=modification_instructions,
+                specific_guidance_for_replan=modification_instructions
+            )
+            
+            # Crucial: Populate aux_data for PlanModifierAgent
+            node.aux_data['original_plan_for_modification'] = plan_output # plan_output is the PlanOutput model instance
+            node.aux_data['user_modification_instructions'] = modification_instructions # This is the string from HITL
+
+            node.replan_reason = f"User requested modification: {modification_instructions[:100]}..." if len(modification_instructions) > 100 else modification_instructions
             node.update_status(TaskStatus.NEEDS_REPLAN)
-            node.result = plan_output
-            node.output_summary = "Initial plan requires user modification."
+            # node.result = plan_output # Storing the plan to be modified in result is also an option, but aux_data is cleaner for specific agent inputs
+            node.output_summary = "Initial plan requires user modification. Awaiting replan."
             return
         elif hitl_outcome_plan["status"] != "approved":
             return
@@ -239,75 +248,101 @@ class NeedsReplanNodeHandler(INodeHandler):
 
         node.replan_attempts += 1
         node.update_status(TaskStatus.RUNNING)
+        node.node_type = NodeType.PLAN # Replanning is always a PLAN operation for this handler
 
-        node.node_type = NodeType.PLAN # Replanning is a form of planning
+        current_overall_objective = node.overall_objective or getattr(context.task_graph, 'overall_project_goal', "Undefined overall project goal")
+        new_plan_output: Optional[PlanOutput] = None
         
-        plan_modifier_adapter = get_agent_adapter(node, action_verb="modify_plan")
-        if not plan_modifier_adapter:
-            logger.warning(f"No 'modify_plan' adapter found for {node.task_id}. Falling back to default 'plan' adapter.")
-            plan_modifier_adapter = get_agent_adapter(node, action_verb="plan")
+        # Attempt to get a specialized 'modify_plan' adapter
+        active_adapter = get_agent_adapter(node, action_verb="modify_plan")
+        is_modifier_agent = True
 
-        if not plan_modifier_adapter:
-            error_msg = f"No suitable adapter (modify_plan or plan) found for NEEDS_REPLAN node {node.task_id}."
+        if not active_adapter:
+            logger.warning(f"No 'modify_plan' adapter found for {node.task_id}. Falling back to default 'plan' adapter for replan.")
+            active_adapter = get_agent_adapter(node, action_verb="plan")
+            is_modifier_agent = False
+
+        if not active_adapter:
+            error_msg = f"No suitable PLAN or MODIFY_PLAN adapter found for node {node.task_id} for replanning."
             logger.error(error_msg)
             node.update_status(TaskStatus.FAILED, error_msg=error_msg)
             return
-        
-        original_plan_data: Optional[PlanOutput] = None
-        modification_instructions: Optional[str] = node.replan_reason
-        
-        if node.replan_details:
-            try:
-                details = ReplanRequestDetails.model_validate(node.replan_details)
-                original_plan_data = details.original_plan
-                modification_instructions = details.modification_instructions
-            except Exception as val_err:
-                logger.warning(f"Could not parse ReplanRequestDetails for {node.task_id}: {val_err}.")
-                if isinstance(node.replan_details, dict):
-                    original_plan_data_dict = node.replan_details.get('original_plan')
-                    if isinstance(original_plan_data_dict, dict):
-                        original_plan_data = PlanOutput.model_validate(original_plan_data_dict)
-                    modification_instructions = node.replan_details.get('modification_instructions', node.replan_reason) # type: ignore
-        
-        if not original_plan_data and isinstance(node.result, PlanOutput):
-             original_plan_data = node.result # type: ignore
-        elif not original_plan_data and isinstance(node.result, dict):
-            try:
-                original_plan_data = PlanOutput.model_validate(node.result)
-            except Exception:
-                logger.warning(f"Could not parse node.result into PlanOutput for {node.task_id} during replan.")
-        
-        replan_input_details = None
-        if original_plan_data or modification_instructions:
-             replan_input_details = ReplanRequestDetails(
-                original_plan=original_plan_data,
-                modification_instructions=modification_instructions
-             )
-        current_overall_objective = node.overall_objective or getattr(context.task_graph, 'overall_project_goal', "Undefined overall project goal")
-        planner_input_model = resolve_input_for_planner_agent(
-            current_task_id=node.task_id,
-            knowledge_store=context.knowledge_store,
-            overall_objective=current_overall_objective,
-            planning_depth=node.layer,
-            replan_details=replan_input_details,
-            global_constraints=getattr(context.task_graph, 'global_constraints', [])
-        )
-        node.input_payload_dict = planner_input_model.model_dump()
 
-        logger.info(f"    NeedsReplanNodeHandler: Calling adapter '{getattr(plan_modifier_adapter, 'agent_name', type(plan_modifier_adapter).__name__)}' for replanning node {node.task_id}.")
-        new_plan_output: Optional[PlanOutput] = await plan_modifier_adapter.process(node, planner_input_model)
+        if is_modifier_agent:
+            # Use PlanModifierInput
+            original_plan = node.aux_data.get('original_plan_for_modification')
+            user_instructions = node.aux_data.get('user_modification_instructions')
 
-        if new_plan_output and new_plan_output.sub_tasks:
-            logger.info(f"    Node {node.task_id}: Replanning successful. New plan has {len(new_plan_output.sub_tasks)} sub-tasks.")
-            if node.sub_graph_id:
-                logger.info(f"    Node {node.task_id}: Previous sub_graph_id was {node.sub_graph_id}. New plan will replace its tasks.")
-            
-            context.sub_node_creator.create_sub_nodes(node, new_plan_output)
-            node.result = new_plan_output
-            node.output_summary = f"Replanned with {len(new_plan_output.sub_tasks)} sub-tasks after {node.replan_attempts} attempt(s)."
-            node.update_status(TaskStatus.PLAN_DONE)
-            node.replan_reason = None
-            node.replan_details = None
+            if not isinstance(original_plan, PlanOutput) or not user_instructions:
+                err_msg = f"Node {node.task_id}: Missing original_plan or user_instructions in aux_data for PlanModifierAgent."
+                logger.error(err_msg)
+                node.update_status(TaskStatus.FAILED, error_msg=err_msg)
+                return
+
+            modifier_input = PlanModifierInput(
+                original_plan=original_plan,
+                user_modification_instructions=user_instructions,
+                overall_objective=current_overall_objective,
+                parent_task_id=node.parent_node_id,
+                planning_depth=node.layer
+            )
+            node.input_payload_dict = modifier_input.model_dump()
+            logger.info(f"    NeedsReplanNodeHandler: Using PlanModifierAgent for {node.task_id}")
+            new_plan_output = await active_adapter.process(node, modifier_input)
         else:
-            logger.warning(f"    Node {node.task_id}: Replanning adapter returned no new sub-tasks. Marking as FAILED.")
-            node.update_status(TaskStatus.FAILED, error_msg="Replanning failed to produce new sub-tasks.")
+            # Fallback to standard Planner: Use PlannerInput with node.replan_details
+            logger.info(f"    NeedsReplanNodeHandler: Using standard PlannerAgent for replan of {node.task_id}")
+            
+            # node.replan_details should be an instance of ReplanRequestDetails or None.
+            # It was set in ReadyPlanHandler during HITL modification request.
+            if not isinstance(node.replan_details, ReplanRequestDetails) and node.replan_details is not None:
+                err_msg = (f"Node {node.task_id}: replan_details is malformed. "
+                           f"Expected ReplanRequestDetails instance or None, got {type(node.replan_details)}. "
+                           f"Value: {str(node.replan_details)[:200]}")
+                logger.error(err_msg)
+                # This indicates a deeper issue if node.replan_details is not what ReadyPlanHandler set.
+                # Forcing a FAILED state.
+                node.update_status(TaskStatus.FAILED, error_msg="Internal error: Malformed replan_details for standard replan.")
+                return
+            
+            planner_input_for_replan = resolve_input_for_planner_agent(
+                current_task_id=node.task_id,
+                knowledge_store=context.knowledge_store,
+                overall_objective=current_overall_objective,
+                planning_depth=node.layer,
+                replan_details=node.replan_details, # This is the critical line: pass the instance directly
+                global_constraints=getattr(context.task_graph, 'global_constraints', [])
+            )
+            node.input_payload_dict = planner_input_for_replan.model_dump()
+            new_plan_output = await active_adapter.process(node, planner_input_for_replan)
+
+        # Process the new_plan_output from either adapter
+        if new_plan_output is None or not new_plan_output.sub_tasks:
+            if node.status not in [TaskStatus.CANCELLED, TaskStatus.FAILED]: # Avoid overriding terminal status
+                logger.warning(f"    Node {node.task_id} (REPLAN): Adapter returned no sub-tasks or None. Replan attempt {node.replan_attempts} failed to produce a new plan.")
+                # Decide if this should be a FAILED state or allow more replan attempts if under limit
+                # For now, let's consider it a failed replan attempt but not necessarily a final FAILED status for the node unless max attempts are hit.
+                # We keep it RUNNING, and the loop in execution_engine will pick it up again if it's still NEEDS_REPLAN or handle if max attempts reached.
+                # However, if the adapter explicitly failed and set status, respect that.
+                # To signify this attempt failed, we might want a more specific error or keep node.result as None.
+                node.output_summary = f"Replan attempt {node.replan_attempts} did not produce a new valid plan."
+                # If it's still under max_replan_attempts, it will cycle again. If not, the check at the start of the handler will fail it.
+                # No status change here to allow retry logic to take effect.
+            return # Exit handler for this step
+
+        # Successful replan, create new sub-nodes
+        # First, clean up any old sub-nodes if necessary (depends on graph logic, assuming for now new plan replaces old)
+        # This might involve archiving or deleting nodes in node.sub_graph_id if it exists.
+        # For simplicity, we assume sub_node_creator handles replacing/creating new graph.
+        if node.sub_graph_id:
+            logger.info(f"Node {node.task_id}: Existing sub-graph {node.sub_graph_id} might be replaced due to replan.")
+            # Potentially: context.task_graph.archive_graph(node.sub_graph_id) or similar cleanup
+
+        context.sub_node_creator.create_sub_nodes(node, new_plan_output)
+        node.result = new_plan_output # Store the new plan
+        node.replan_details = None # Clear replan details as replan is now done
+        node.replan_reason = None   # Clear the reason as well
+        # node.output_summary should be updated by create_sub_nodes or here
+        node.output_summary = f"Successfully replanned with {len(new_plan_output.sub_tasks)} sub-tasks after {node.replan_attempts} attempt(s)."
+        node.update_status(TaskStatus.PLAN_DONE) # Replanning complete, new plan established
+        logger.success(f"    NeedsReplanNodeHandler: Node {node.task_id} replanning complete. New plan generated. Status: {node.status.name}")

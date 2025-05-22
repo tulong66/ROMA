@@ -168,11 +168,19 @@ def register_special_cases():
     # It's expected that AGENT_CONFIGURATIONS would ideally handle this.
     PLAN_MODIFIER_ADAPTER_REG_NAME = "PlanModifier" 
     if plan_modifier_agno_agent:
-        if NAMED_AGENTS.get(PLAN_MODIFIER_ADAPTER_REG_NAME) is None or \
-           not isinstance(NAMED_AGENTS.get(PLAN_MODIFIER_ADAPTER_REG_NAME), PlanModifierAdapter):
+        # Check if it's already registered by name and is the correct type
+        existing_named_adapter = NAMED_AGENTS.get(PLAN_MODIFIER_ADAPTER_REG_NAME)
+        
+        plan_modifier_adapter_instance: Optional[PlanModifierAdapter] = None
+
+        if isinstance(existing_named_adapter, PlanModifierAdapter):
+            plan_modifier_adapter_instance = existing_named_adapter
+            logger.info(f"PlanModifierAdapter already registered as '{PLAN_MODIFIER_ADAPTER_REG_NAME}'. Using existing instance for action verb registration.")
+        else:
+            if existing_named_adapter is not None: # It exists but is wrong type
+                 logger.warning(f"Found an object named '{PLAN_MODIFIER_ADAPTER_REG_NAME}' in NAMED_AGENTS, but it's not a PlanModifierAdapter (type: {type(existing_named_adapter)}). Will create and register a new PlanModifierAdapter instance.")
             try:
-                logger.info(f"Attempting to register PlanModifierAdapter as '{PLAN_MODIFIER_ADAPTER_REG_NAME}' in special_cases "
-                            f"(either not found or not correct type in NAMED_AGENTS).")
+                logger.info(f"Attempting to create and register PlanModifierAdapter as '{PLAN_MODIFIER_ADAPTER_REG_NAME}' in special_cases.")
                 plan_modifier_adapter_instance = PlanModifierAdapter(
                     agno_agent_instance=plan_modifier_agno_agent,
                     agent_name=PLAN_MODIFIER_ADAPTER_REG_NAME 
@@ -182,11 +190,21 @@ def register_special_cases():
                     name=PLAN_MODIFIER_ADAPTER_REG_NAME
                 )
             except Exception as e:
-                logger.error(f"Failed to initialize or register PlanModifierAdapter ('{PLAN_MODIFIER_ADAPTER_REG_NAME}') in special cases: {e}", exc_info=True)
+                logger.error(f"Failed to initialize or register PlanModifierAdapter by name ('{PLAN_MODIFIER_ADAPTER_REG_NAME}') in special cases: {e}", exc_info=True)
+        
+        # Now, register the instance (either existing or newly created) with the action_verb
+        if plan_modifier_adapter_instance:
+            register_agent_adapter(
+                adapter=plan_modifier_adapter_instance,
+                action_verb="modify_plan",
+                task_type=None  # PlanModifier is generic for any task type that produces a plan
+            )
+            logger.info(f"Successfully ensured PlanModifierAdapter is also registered for action 'modify_plan'.")
         else:
-            logger.info(f"PlanModifierAdapter already registered as '{PLAN_MODIFIER_ADAPTER_REG_NAME}'. Skipping re-registration in special_cases.")
+            logger.error(f"Could not obtain a PlanModifierAdapter instance to register for action 'modify_plan'.")
+
     else:
-        logger.warning(f"Cannot instantiate PlanModifierAdapter ('{PLAN_MODIFIER_ADAPTER_REG_NAME}') in special_cases: "
+        logger.warning(f"Cannot instantiate or register PlanModifierAdapter ('{PLAN_MODIFIER_ADAPTER_REG_NAME}') in special_cases: "
                        f"plan_modifier_agno_agent ('{PLAN_MODIFIER_AGENT_NAME}') is not available.")
     
     # OpenAICustomSearchAdapter is now configured via AGENT_CONFIGURATIONS.
