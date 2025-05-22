@@ -1,9 +1,9 @@
-from typing import Optional, Any, Dict
+from typing import Optional, Any, Dict, Union
 from loguru import logger
 
 from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode, TaskStatus
 from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models import (
-    PlannerInput, PlanOutput, AgentTaskInput
+    PlannerInput, PlanOutput, AgentTaskInput, PlanModifierInput
 )
 from .node_configs import NodeProcessorConfig # For HITL feature flags
 from sentientresearchagent.hierarchical_agent_framework.utils.hitl_utils import request_human_review
@@ -78,29 +78,48 @@ class HITLCoordinator:
 
 
     async def review_plan_generation(
-        self, node: TaskNode, plan_output: PlanOutput, planner_input: PlannerInput
+        self, node: TaskNode, plan_output: PlanOutput, planner_input: Union[PlannerInput, PlanModifierInput], is_replan: bool = False
     ) -> Dict[str, Any]:
-        if not (self.config.enable_hitl_after_plan_generation and node.layer == 0): # Typically only for root/initial plans
+        if not (self.config.enable_hitl_after_plan_generation and node.layer == 0):
             return {"status": "approved", "message": "HITL for plan generation skipped by configuration or node layer."}
 
-        hitl_context_msg = f"Review initial plan for root task '{node.task_id}'. Current Goal: {node.goal}"
+        hitl_context_msg = f"Review {'re-generated plan' if is_replan else 'initial plan'} for task '{node.task_id}'. Goal: {node.goal}"
         plan_for_review = plan_output.model_dump(mode='json') if plan_output else {}
         
         context_items_for_summary = []
-        if hasattr(planner_input, 'execution_history_and_context') and planner_input.execution_history_and_context:
-             context_items_for_summary.extend(planner_input.execution_history_and_context.relevant_ancestor_outputs)
-             context_items_for_summary.extend(planner_input.execution_history_and_context.prior_sibling_task_outputs)
+        overall_objective_for_hitl = ""
+        current_task_goal_for_hitl = ""
+
+        if isinstance(planner_input, PlannerInput):
+            overall_objective_for_hitl = planner_input.overall_objective
+            current_task_goal_for_hitl = planner_input.current_task_goal
+            if hasattr(planner_input, 'execution_history_and_context') and planner_input.execution_history_and_context:
+                 context_items_for_summary.extend(planner_input.execution_history_and_context.relevant_ancestor_outputs)
+                 context_items_for_summary.extend(planner_input.execution_history_and_context.prior_sibling_task_outputs)
+        elif isinstance(planner_input, PlanModifierInput):
+            overall_objective_for_hitl = planner_input.overall_objective
+            current_task_goal_for_hitl = node.goal 
 
         hitl_data = {
             "task_goal": node.goal,
             "proposed_plan": plan_for_review,
             "planner_input_summary": {
-                "overall_objective": planner_input.overall_objective,
-                "current_task_summary": planner_input.current_task_goal, 
+                "overall_objective": overall_objective_for_hitl,
+                "current_task_summary": current_task_goal_for_hitl, 
                 "context_summary": get_context_summary(context_items_for_summary, TARGET_WORD_COUNT_FOR_CTX_SUMMARIES)
             }
         }
-        return await self._call_hitl_interface("PostInitialPlanGeneration", hitl_context_msg, hitl_data, node)
+        if is_replan and isinstance(planner_input, PlanModifierInput):
+            hitl_data["user_modification_instructions"] = planner_input.user_modification_instructions
+            if node.replan_details:
+                 hitl_data["reason_for_current_replan"] = node.replan_details.reason_for_failure_or_replan
+
+        return await self._call_hitl_interface(
+            checkpoint_name=f"{'PostRePlanGeneration' if is_replan else 'PostInitialPlanGeneration'}",
+            context_message=hitl_context_msg, 
+            data_for_review=hitl_data, 
+            node=node
+        )
 
     async def review_atomizer_output(
         self, node: TaskNode, original_goal: str, updated_goal: str, 
