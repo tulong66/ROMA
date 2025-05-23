@@ -9,6 +9,8 @@ import {
 } from 'lucide-react'
 import { useTaskGraphStore } from '@/stores/taskGraphStore'
 import ThemeToggle from '@/components/theme/ThemeToggle'
+import FilterPanel from '@/components/panels/FilterPanel'
+import ExportPanel from '@/components/panels/ExportPanel'
 
 const Header: React.FC = () => {
   const { 
@@ -58,6 +60,12 @@ const Header: React.FC = () => {
         <div className="flex items-center space-x-2">
           {hasNodes && (
             <>
+              {/* Filter Panel */}
+              <FilterPanel />
+
+              {/* Export Panel */}
+              <ExportPanel />
+
               {/* Context Flow Toggle */}
               <Button
                 variant="outline"

@@ -15,6 +15,7 @@ import ReactFlow, {
   useReactFlow,
 } from 'reactflow'
 import 'reactflow/dist/style.css'
+import { Button } from '@/components/ui/button'
 
 import { useTaskGraphStore } from '@/stores/taskGraphStore'
 import TaskNodeComponent from './nodes/TaskNode'
@@ -36,7 +37,9 @@ const FlowContent: React.FC = () => {
     graphs, 
     selectedNodeId, 
     selectNode,
-    showContextFlow 
+    showContextFlow,
+    getFilteredNodes,
+    resetFilters
   } = useTaskGraphStore()
 
   const [nodes, setNodes, onNodesChange] = useNodesState([])
@@ -49,15 +52,19 @@ const FlowContent: React.FC = () => {
   const isUpdatingRef = useRef(false)
   const updateTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
+  // Get filtered nodes
+  const filteredNodes = getFilteredNodes()
+
   console.log('🔄 FlowContent render:', {
-    graphNodesCount: Object.keys(graphNodes).length,
+    totalNodesCount: Object.keys(graphNodes).length,
+    filteredNodesCount: Object.keys(filteredNodes).length,
     graphsCount: Object.keys(graphs).length,
     selectedNodeId
   })
 
   // Create a stable signature that changes less frequently
   const stableGraphSignature = useMemo(() => {
-    const nodeEntries = Object.entries(graphNodes)
+    const nodeEntries = Object.entries(filteredNodes)
     // Only update signature for significant changes
     return {
       nodeCount: nodeEntries.length,
@@ -66,29 +73,31 @@ const FlowContent: React.FC = () => {
       showContextFlow,
     }
   }, [
-    Object.keys(graphNodes).length,
+    Object.keys(filteredNodes).length,
     // Only update when status actually changes, not on every render
-    Object.values(graphNodes).map(n => n.status).sort().join('|'),
+    Object.values(filteredNodes).map(n => n.status).sort().join('|'),
     selectedNodeId,
     showContextFlow
   ])
 
-  // Convert backend data to React Flow format - with very stable memoization
+  // Convert backend data to React Flow format - with filtering support
   const flowData = useMemo(() => {
-    console.log('🔄 Converting flow data...')
+    console.log('🔄 Converting flow data with filters...')
     try {
-      const flowNodes = convertToFlowNodes(graphNodes, selectedNodeId)
-      const flowEdges = convertToFlowEdges(graphNodes, graphs, showContextFlow)
-      console.log('✅ Flow data converted:', { 
+      const flowNodes = convertToFlowNodes(graphNodes, selectedNodeId, filteredNodes)
+      const flowEdges = convertToFlowEdges(graphNodes, graphs, showContextFlow, filteredNodes)
+      console.log('✅ Flow data converted with filters:', { 
         nodes: flowNodes.length, 
-        edges: flowEdges.length
+        edges: flowEdges.length,
+        totalAvailable: Object.keys(graphNodes).length,
+        filtered: Object.keys(filteredNodes).length
       })
       return { nodes: flowNodes, edges: flowEdges }
     } catch (error) {
       console.error('❌ Error converting flow data:', error)
       return { nodes: [], edges: [] }
     }
-  }, [stableGraphSignature])
+  }, [stableGraphSignature, graphNodes])
 
   // Much slower update function - only every 2 seconds
   const throttledUpdate = useCallback(() => {
@@ -106,7 +115,7 @@ const FlowContent: React.FC = () => {
         return
       }
 
-      const currentNodeCount = Object.keys(graphNodes).length
+      const currentNodeCount = Object.keys(filteredNodes).length
       const hasNewNodes = currentNodeCount > prevNodeCountRef.current
       const hasSignificantChange = currentNodeCount !== prevNodeCountRef.current
 
@@ -162,7 +171,7 @@ const FlowContent: React.FC = () => {
       console.log(`⏳ Throttling update, will update in ${delay}ms`)
       updateTimeoutRef.current = setTimeout(scheduleUpdate, delay)
     }
-  }, [flowData.nodes, flowData.edges, graphNodes, setNodes, setEdges, fitView])
+  }, [flowData.nodes, flowData.edges, filteredNodes, setNodes, setEdges, fitView])
 
   // Use throttled update with longer intervals
   useEffect(() => {
@@ -208,6 +217,26 @@ const FlowContent: React.FC = () => {
     },
     [setEdges]
   )
+
+  // Show filtered empty state
+  if (Object.keys(graphNodes).length > 0 && Object.keys(filteredNodes).length === 0) {
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-muted/20">
+        <div className="text-center max-w-md">
+          <h3 className="text-lg font-medium mb-2">No Nodes Match Filters</h3>
+          <p className="text-muted-foreground mb-4">
+            {Object.keys(graphNodes).length} nodes available, but none match your current filters
+          </p>
+          <Button 
+            variant="outline" 
+            onClick={resetFilters}
+          >
+            Reset Filters
+          </Button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <ReactFlow
