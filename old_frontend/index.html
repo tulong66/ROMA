@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Task Graph Visualization</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Vis.js Network CSS -->
+    <link href="https://unpkg.com/vis-network/styles/vis-network.min.css" rel="stylesheet" type="text/css" />
+</head>
+<body>
+    <h1>Task Graph Visualization</h1>
+
+    <div id="project-starter">
+        <input type="text" id="project-goal-input" placeholder="Enter your project goal here...">
+        <button id="start-project-button">Start Project</button>
+        <p id="project-status-message"></p>
+    </div>
+
+    <div style="margin-bottom: 10px;">
+        <label for="show-context-flow-checkbox">Show Context Flow Lines:</label>
+        <input type="checkbox" id="show-context-flow-checkbox" checked>
+    </div>
+
+    <div id="overall-goal"></div>
+    <div id="main-container">
+        <div id="task-graph"></div>
+        <div id="node-details">
+            <h3>Node Details</h3>
+            <p id="details-content">Click on a node to see its details here.</p>
+        </div>
+    </div>
+
+    <div id="legend-container">
+        <h2>Legend</h2>
+        <div id="legend-content">
+            <!-- Legend items will be populated by JavaScript -->
+        </div>
+    </div>
+
+    <!-- Vis.js Network Library -->
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <!-- Showdown.js Library for Markdown -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/showdown/2.1.0/showdown.min.js"></script>
+    <!-- Your custom script -->
+    <script src="app.js"></script>
+</body>
+</html>

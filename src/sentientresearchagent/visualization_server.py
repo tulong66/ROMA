@@ -1,5 +1,6 @@
 from flask import Flask, jsonify, request, make_response, send_file
 from flask_cors import CORS # Import CORS
+from flask_socketio import SocketIO, emit
 from sentientresearchagent.hierarchical_agent_framework.graph.task_graph import TaskGraph
 from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode, TaskStatus, NodeType, TaskType
 from datetime import datetime
@@ -10,6 +11,8 @@ import asyncio # Import asyncio
 # PDF Generation - you'll need to install this: pip install markdown-pdf
 from markdown_pdf import MarkdownPdf, Section # Using markdown-pdf library
 from agno.exceptions import StopAgentRun # Import StopAgentRun
+import time
+from threading import Timer
 
 # Your project's core components
 from sentientresearchagent.hierarchical_agent_framework.node.node_processor import NodeProcessor
@@ -22,9 +25,13 @@ from sentientresearchagent.hierarchical_agent_framework.node.node_configs import
 from sentientresearchagent.hierarchical_agent_framework.node.hitl_coordinator import HITLCoordinator
 from sentientresearchagent.hierarchical_agent_framework.node.hitl_coordinator import HITLCoordinator
 
-# --- Create a Flask App ---
+# --- Create a Flask App with SocketIO ---
 app = Flask(__name__)
-CORS(app, origins=["http://127.0.0.1:8080"], methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"], allow_headers=["Content-Type", "Authorization"], supports_credentials=True)
+app.config['SECRET_KEY'] = 'your-secret-key-here'
+CORS(app, origins=["http://localhost:3000"], methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"], allow_headers=["Content-Type", "Authorization"], supports_credentials=True)
+
+# Initialize SocketIO
+socketio = SocketIO(app, cors_allowed_origins="http://localhost:3000", async_mode='eventlet')
 
 # --- Instantiate Core Backend Components ---
 live_task_graph = TaskGraph()
@@ -50,6 +57,10 @@ live_execution_engine = ExecutionEngine(
     knowledge_store=live_knowledge_store,
     hitl_coordinator=live_hitl_coordinator # Pass HITLCoordinator
 )
+
+# Add a global variable to track update frequency
+last_update_time = 0
+UPDATE_THROTTLE = 2  # Send updates every 2 seconds maximum
 
 def create_sample_task_graph():
     """Populates the global task_graph_instance with sample data for demonstration."""
@@ -183,32 +194,61 @@ def create_sample_task_graph():
     print("Sample task graph with Markdown results created.")
 
 
-# --- API Endpoint for Task Graph Data ---
-@app.route('/api/task-graph', methods=['GET'])
-def get_task_graph_data():
-    """Endpoint to get the LIVE task graph data for visualization."""
-    if not live_task_graph.overall_project_goal and not live_task_graph.nodes:
-        pass
+# --- WebSocket Event Handlers ---
+@socketio.on('connect')
+def handle_connect():
+    print('Client connected')
+    # Send current graph state to newly connected client
     data = live_task_graph.to_visualization_dict()
+    emit('task_graph_update', data)
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    print('Client disconnected')
+
+@socketio.on('start_project')
+def handle_start_project(data):
+    project_goal = data.get('project_goal')
+    max_steps = data.get('max_steps', 250)
     
-    response = make_response(jsonify(data))
-    response.headers['Access-Control-Allow-Origin'] = 'http://127.0.0.1:8080'
-    response.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
-    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
-    return response
+    if not project_goal:
+        emit('error', {'message': 'project_goal not provided'})
+        return
+    
+    print(f"Received WebSocket request to start project: '{project_goal}'")
+    
+    # Start the project execution in a background thread
+    thread = threading.Thread(target=run_project_in_thread, args=(project_goal, max_steps))
+    thread.daemon = True 
+    thread.start()
+    
+    emit('project_started', {'message': f"Project '{project_goal}' initiated"})
 
-@app.route('/api/task-graph', methods=['OPTIONS']) # Add an OPTIONS handler
-def handle_task_graph_options():
-    response = make_response()
-    response.headers['Access-Control-Allow-Origin'] = 'http://127.0.0.1:8080'
-    response.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
-    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
-    response.status_code = 204 # No Content for OPTIONS
-    return response
+# --- Function to broadcast graph updates ---
+def broadcast_graph_update():
+    """Broadcast current graph state to all connected clients with throttling"""
+    global last_update_time
+    current_time = time.time()
+    
+    # Throttle updates to avoid overwhelming the frontend
+    if current_time - last_update_time < UPDATE_THROTTLE:
+        return
+        
+    last_update_time = current_time
+    data = live_task_graph.to_visualization_dict()
+    print(f"Broadcasting graph update with {len(data.get('all_nodes', {}))} nodes")
+    socketio.emit('task_graph_update', data)
 
-# --- API Endpoint to Start a New Project ---
+# Add a function to force immediate updates
+def force_broadcast_update():
+    """Force an immediate broadcast regardless of throttling"""
+    global last_update_time
+    last_update_time = 0
+    broadcast_graph_update()
+
+# --- Modified async project execution (with broadcasts) ---
 async def run_project_cycle_async(goal, max_steps):
-    """Coroutine to run the project cycle."""
+    """Coroutine to run the project cycle with real-time updates."""
     print(f"Async task: Initializing project with goal: '{goal}'")
     try:
         live_task_graph.nodes.clear()
@@ -217,54 +257,71 @@ async def run_project_cycle_async(goal, max_steps):
         live_task_graph.overall_project_goal = None
         
         live_execution_engine.initialize_project(root_goal=goal)
+        force_broadcast_update()  # Send initial state immediately
+        
         print(f"Async task: Project initialized. Running cycle (max_steps={max_steps})...")
+        
+        # Start a timer to send periodic updates during execution
+        def periodic_update():
+            broadcast_graph_update()
+            # Schedule next update
+            Timer(3.0, periodic_update).start()
+        
+        # Start periodic updates
+        Timer(3.0, periodic_update).start()
+        
         await live_execution_engine.run_cycle(max_steps=max_steps)
+        
+        force_broadcast_update()  # Send final state
         print(f"Async task: run_cycle for goal '{goal}' completed.")
-    except StopAgentRun as sae: # Specifically catch StopAgentRun
-        print(f"Async task: Project execution for goal '{goal}' was intentionally stopped by an agent or HITL: {sae.agent_message if hasattr(sae, 'agent_message') else str(sae)}")
-        # Optionally update graph to reflect this user-driven stop
-        if live_task_graph.root_graph_id and live_task_graph.get_node("root"):
-            root_node = live_task_graph.get_node("root")
-            if root_node.status not in [TaskStatus.DONE, TaskStatus.FAILED, TaskStatus.CANCELLED]:
-                 root_node.update_status(TaskStatus.CANCELLED, result_summary=f"Project stopped by user via HITL: {sae.agent_message if hasattr(sae, 'agent_message') else str(sae)}")
-                 # You might need to manually trigger a knowledge store update if it's not automatic here
-                 live_knowledge_store.add_or_update_record_from_node(root_node)
+        
+    except StopAgentRun as sae:
+        print(f"Async task: Project execution stopped by user: {sae}")
+        force_broadcast_update()
     except Exception as e:
-        print(f"Async task: Error during project execution for goal '{goal}': {e}")
-        # Optionally, update a global status or the graph itself to reflect the error
-        if live_task_graph.root_graph_id and live_task_graph.get_node("root"):
-            root_node = live_task_graph.get_node("root")
-            if root_node.status not in [TaskStatus.DONE, TaskStatus.FAILED, TaskStatus.CANCELLED]:
-                root_node.update_status(TaskStatus.FAILED, error_msg=f"Project execution error: {str(e)}")
-                live_knowledge_store.add_or_update_record_from_node(root_node)
-
+        print(f"Async task: Error during project execution: {e}")
+        force_broadcast_update()
 
 def run_project_in_thread(goal, max_steps):
-    """Target function for the thread, runs the asyncio event loop for the async task."""
+    """Target function for the thread, runs the asyncio event loop."""
     print(f"Thread: Starting asyncio event loop for project goal: '{goal}'")
-    # The try-except block is now inside run_project_cycle_async for better context
     asyncio.run(run_project_cycle_async(goal, max_steps))
     print(f"Thread: Asyncio event loop for project goal: '{goal}' finished.")
 
+# --- API Endpoint for Task Graph Data ---
+@app.route('/api/task-graph', methods=['GET'])
+def get_task_graph_data():
+    """HTTP endpoint for task graph data (for compatibility)."""
+    data = live_task_graph.to_visualization_dict()
+    response = make_response(jsonify(data))
+    response.headers['Access-Control-Allow-Origin'] = 'http://localhost:3000'
+    return response
 
+@app.route('/api/task-graph', methods=['OPTIONS']) # Add an OPTIONS handler
+def handle_task_graph_options():
+    response = make_response()
+    response.headers['Access-Control-Allow-Origin'] = 'http://localhost:3000'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+    response.status_code = 204 # No Content for OPTIONS
+    return response
+
+# --- API Endpoint to Start a New Project ---
 @app.route('/api/start-project', methods=['POST'])
 def start_project():
+    """HTTP endpoint to start project (for compatibility)."""
     data = request.get_json()
     if not data or 'project_goal' not in data:
         return jsonify({"error": "project_goal not provided"}), 400
     
     project_goal = data['project_goal']
-    max_steps = data.get('max_steps', 250) 
-
-    print(f"Received request to start project with goal: '{project_goal}', max_steps: {max_steps}")
-
-    # Start the project execution in a background thread
-    # The thread will run an asyncio event loop for our async function.
-    thread = threading.Thread(target=run_project_in_thread, args=(project_goal, max_steps)) # Target the new sync wrapper
+    max_steps = data.get('max_steps', 250)
+    
+    thread = threading.Thread(target=run_project_in_thread, args=(project_goal, max_steps))
     thread.daemon = True 
     thread.start()
-
-    return jsonify({"message": f"Project '{project_goal}' initiated. Graph will update in real-time."}), 202
+    
+    return jsonify({"message": f"Project '{project_goal}' initiated"}), 202
 
 @app.route('/api/download-report', methods=['GET'])
 def download_report():
@@ -318,7 +375,9 @@ def download_report():
 
 # --- Main entry point to run the Flask app ---
 if __name__ == '__main__':
-    print("Flask server starting with live ExecutionEngine integration...")
-    print("API available at http://127.0.0.1:5000/api/task-graph")
-    print("Submit new projects via POST to http://127.0.0.1:5000/api/start-project")
-    app.run(debug=True, use_reloader=False) # use_reloader=False is important when using threads with Flask's dev server 
+    print("Flask-SocketIO server starting with live ExecutionEngine integration...")
+    print("WebSocket available at http://localhost:5000")
+    print("Frontend should connect at http://localhost:3000")
+    
+    # Run with SocketIO instead of regular Flask
+    socketio.run(app, debug=True, host='0.0.0.0', port=5000, use_reloader=False) 
