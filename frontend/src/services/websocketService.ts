@@ -6,11 +6,12 @@ class WebSocketService {
   private socket: Socket | null = null
   private reconnectAttempts = 0
   private maxReconnectAttempts = 5
-  private reconnectTimer: NodeJS.Timeout | null = null
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private isConnecting = false
+  private lastUpdateTime = 0
+  private updateCount = 0
 
   connect() {
-    // Prevent multiple connection attempts
     if (this.isConnecting || this.socket?.connected) {
       console.log('⚠️ Already connecting or connected')
       return
@@ -19,7 +20,6 @@ class WebSocketService {
     this.isConnecting = true
     console.log('🔌 Attempting to connect to WebSocket at http://localhost:5000')
     
-    // Clear any existing timer
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer)
       this.reconnectTimer = null
@@ -28,12 +28,12 @@ class WebSocketService {
     this.socket = io('http://localhost:5000', {
       transports: ['websocket', 'polling'],
       autoConnect: true,
-      forceNew: false, // Changed from true to false
-      timeout: 10000, // Increased timeout
+      forceNew: false,
+      timeout: 10000,
       reconnection: true,
-      reconnectionAttempts: 3,
+      reconnectionAttempts: 5,
       reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
+      reconnectionDelayMax: 3000,
     })
 
     this.setupEventListeners()
@@ -42,7 +42,6 @@ class WebSocketService {
   private setupEventListeners() {
     if (!this.socket) return
 
-    // Remove any existing listeners to prevent duplicates
     this.socket.removeAllListeners()
 
     this.socket.on('connect', () => {
@@ -51,7 +50,6 @@ class WebSocketService {
       useTaskGraphStore.getState().setConnectionStatus(true)
       this.reconnectAttempts = 0
       
-      // Clear reconnect timer on successful connection
       if (this.reconnectTimer) {
         clearTimeout(this.reconnectTimer)
         this.reconnectTimer = null
@@ -63,7 +61,6 @@ class WebSocketService {
       this.isConnecting = false
       useTaskGraphStore.getState().setConnectionStatus(false)
       
-      // Only attempt reconnection for certain disconnect reasons
       if (reason === 'io server disconnect' || reason === 'transport close') {
         console.log('🔄 Server disconnected, attempting reconnection...')
         this.handleReconnect()
@@ -77,12 +74,24 @@ class WebSocketService {
       this.handleReconnect()
     })
 
+    // CRITICAL: Real-time task graph updates
     this.socket.on('task_graph_update', (data: APIResponse) => {
-      console.log('📊 Received task graph update:', data)
+      const now = Date.now()
+      this.updateCount++
+      
+      console.log(`🚨🚨🚨 [UPDATE ${this.updateCount}] WEBSOCKET RECEIVED REAL UPDATE FROM BACKEND`)
+      console.log('📊 Raw data:', data)
+      console.log('📊 Nodes in data:', Object.keys(data.all_nodes || {}).length)
+      console.log('📊 First few node IDs:', Object.keys(data.all_nodes || {}).slice(0, 3))
+      
+      this.lastUpdateTime = now
+      
       try {
+        console.log('🔄 Calling store.setData with WebSocket data...')
         useTaskGraphStore.getState().setData(data)
+        console.log('✅ Store.setData completed')
       } catch (error) {
-        console.error('❌ Error processing task graph update:', error)
+        console.error('❌ ERROR in WebSocket handler:', error)
       }
     })
 
@@ -97,11 +106,17 @@ class WebSocketService {
 
     this.socket.on('project_started', (data) => {
       console.log('🚀 Project started confirmation:', data)
+      useTaskGraphStore.getState().setLoading(false)
     })
 
     this.socket.on('error', (error) => {
       console.error('❌ Socket error:', error)
       useTaskGraphStore.getState().setLoading(false)
+    })
+
+    // Debug: Log ALL WebSocket events
+    this.socket.onAny((eventName, ...args) => {
+      console.log(`🔊 WebSocket event received: "${eventName}"`, args)
     })
   }
 
@@ -143,6 +158,7 @@ class WebSocketService {
   startProject(projectGoal: string, maxSteps: number = 250) {
     if (this.isConnected()) {
       console.log('📤 Starting project:', projectGoal)
+      useTaskGraphStore.getState().setLoading(true)
       this.socket!.emit('start_project', { project_goal: projectGoal, max_steps: maxSteps })
     } else {
       console.error('❌ Cannot start project: not connected')
@@ -153,13 +169,11 @@ class WebSocketService {
   disconnect() {
     console.log('🔌 Disconnecting WebSocket')
     
-    // Clear reconnect timer
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer)
       this.reconnectTimer = null
     }
     
-    // Disconnect socket
     if (this.socket) {
       this.socket.removeAllListeners()
       this.socket.disconnect()
@@ -169,6 +183,48 @@ class WebSocketService {
     this.isConnecting = false
     this.reconnectAttempts = 0
     useTaskGraphStore.getState().setConnectionStatus(false)
+  }
+
+  getConnectionInfo() {
+    return {
+      connected: this.isConnected(),
+      connecting: this.isConnecting,
+      reconnectAttempts: this.reconnectAttempts,
+      lastUpdate: this.lastUpdateTime,
+      updateCount: this.updateCount
+    }
+  }
+
+  // Test method to manually simulate a backend update
+  simulateBackendUpdate() {
+    console.log('🧪 SIMULATING BACKEND UPDATE...')
+    const nodeId = 'sim-' + Date.now()
+    const testData: APIResponse = {
+      all_nodes: {
+        [nodeId]: {
+          task_id: nodeId,
+          goal: 'Simulated backend node update',
+          task_type: 'SIMULATION',
+          node_type: 'EXECUTE',
+          layer: 0,
+          status: 'DONE',
+        }
+      },
+      graphs: {},
+      overall_project_goal: 'Simulated project'
+    }
+    
+    console.log('🧪 Manually triggering task_graph_update handler with:', testData)
+    
+    // Manually call the handler as if the backend sent this
+    const handler = this.socket?.listeners('task_graph_update')[0]
+    if (handler) {
+      console.log('🧪 Calling handler directly...')
+      handler(testData)
+    } else {
+      console.log('🧪 No handler found, calling setData directly...')
+      useTaskGraphStore.getState().setData(testData)
+    }
   }
 }
 

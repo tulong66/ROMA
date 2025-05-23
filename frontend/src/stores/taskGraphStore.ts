@@ -140,21 +140,56 @@ export const useTaskGraphStore = create<TaskGraphState>()(
     
     // Actions
     setData: (data: APIResponse) => {
-      console.log('📊 Store: Received data update:', data)
-      console.log('📊 Nodes count:', Object.keys(data.all_nodes || {}).length)
-      console.log('📊 Graphs count:', Object.keys(data.graphs || {}).length)
+      console.log('🏪 STORE: setData called with:', data)
       
-      const hasNewData = Object.keys(data.all_nodes || {}).length > 0
+      const prevState = get()
+      const prevNodes = prevState.nodes
+      const prevNodeCount = Object.keys(prevNodes).length
+      const prevNodeIds = Object.keys(prevNodes).sort()
       
-      set({
-        nodes: data.all_nodes || {},
-        graphs: data.graphs || {},
+      const newNodes = data.all_nodes || {}
+      const newNodeCount = Object.keys(newNodes).length
+      const newNodeIds = Object.keys(newNodes).sort()
+      
+      const actuallyDifferent = JSON.stringify(prevNodeIds) !== JSON.stringify(newNodeIds)
+      
+      console.log('🏪 STORE: Detailed comparison:')
+      console.log('  Previous nodes:', prevNodeCount, prevNodeIds.slice(0, 3))
+      console.log('  New nodes:', newNodeCount, newNodeIds.slice(0, 3))
+      console.log('  Actually different:', actuallyDifferent)
+      console.log('  Node count changed:', prevNodeCount !== newNodeCount)
+      
+      // Force update by creating completely new objects
+      const newState = {
+        nodes: { ...newNodes }, // Shallow copy to ensure new reference
+        graphs: { ...(data.graphs || {}) },
         overallProjectGoal: data.overall_project_goal,
-        // Clear loading state when we receive data
-        isLoading: hasNewData ? false : get().isLoading,
+        isLoading: newNodeCount === 0 ? prevState.isLoading : false,
+      }
+      
+      console.log('🏪 STORE: Setting new state:', {
+        nodeCount: Object.keys(newState.nodes).length,
+        nodeIds: Object.keys(newState.nodes).slice(0, 3),
+        isLoading: newState.isLoading
       })
       
-      console.log('📊 Store updated, isLoading now:', hasNewData ? false : get().isLoading)
+      // Update store
+      set(newState)
+      
+      // Verify update worked
+      const verifyState = get()
+      const verifyNodeCount = Object.keys(verifyState.nodes).length
+      
+      console.log('🏪 STORE: Update verification:')
+      console.log('  Expected node count:', newNodeCount)
+      console.log('  Actual node count:', verifyNodeCount)
+      console.log('  Update successful:', verifyNodeCount === newNodeCount)
+      
+      if (verifyNodeCount !== newNodeCount) {
+        console.error('🚨 STORE: Update failed! Expected', newNodeCount, 'got', verifyNodeCount)
+      } else {
+        console.log('✅ STORE: Update successful!')
+      }
     },
     
     setConnectionStatus: (status: boolean) => {
