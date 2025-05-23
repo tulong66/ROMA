@@ -32,10 +32,11 @@ interface FullResultModalProps {
 }
 
 interface FormattedData {
-  type: 'json' | 'text' | 'html' | 'url' | 'image' | 'unknown'
+  type: 'markdown' | 'json' | 'text' | 'html' | 'url' | 'image' | 'unknown'
   content: string
   size: string
   isLarge: boolean
+  source: string // Which field the content came from
 }
 
 const formatDataSize = (str: string): string => {
@@ -45,51 +46,84 @@ const formatDataSize = (str: string): string => {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-const detectDataType = (data: any): FormattedData => {
-  let content: string
-  let type: FormattedData['type'] = 'unknown'
+const detectDataType = (node: TaskNode): FormattedData => {
+  // Priority order: look for markdown versions first, then other formats
+  const candidates = [
+    // Check for common markdown field names
+    { field: 'output_summary_markdown', data: (node as any).output_summary_markdown, type: 'markdown' as const },
+    { field: 'result_markdown', data: (node as any).result_markdown, type: 'markdown' as const },
+    { field: 'markdown_result', data: (node as any).markdown_result, type: 'markdown' as const },
+    { field: 'output_markdown', data: (node as any).output_markdown, type: 'markdown' as const },
+    
+    // Then check for formatted text versions
+    { field: 'output_summary', data: node.output_summary, type: 'text' as const },
+    
+    // Finally fall back to full_result
+    { field: 'full_result', data: node.full_result, type: 'unknown' as const }
+  ]
 
-  // Convert data to string if it's not already
-  if (typeof data === 'string') {
-    content = data
-  } else if (data === null || data === undefined) {
-    content = String(data)
-    type = 'text'
-  } else {
-    content = JSON.stringify(data, null, 2)
-    type = 'json'
-  }
+  // Find the first available candidate with actual content
+  for (const candidate of candidates) {
+    if (candidate.data && 
+        candidate.data !== null && 
+        candidate.data !== undefined && 
+        String(candidate.data).trim().length > 0) {
+      
+      let content: string
+      let type = candidate.type
 
-  // Detect type based on content
-  if (type === 'unknown') {
-    if (content.trim().startsWith('{') || content.trim().startsWith('[')) {
-      try {
-        JSON.parse(content)
+      if (typeof candidate.data === 'string') {
+        content = candidate.data
+      } else {
+        content = JSON.stringify(candidate.data, null, 2)
         type = 'json'
-      } catch {
-        type = 'text'
       }
-    } else if (content.includes('<html') || content.includes('<!DOCTYPE')) {
-      type = 'html'
-    } else if (content.match(/^https?:\/\//)) {
-      type = 'url'
-    } else if (content.match(/\.(jpg|jpeg|png|gif|svg|webp)$/i)) {
-      type = 'image'
-    } else {
-      type = 'text'
+
+      // Auto-detect markdown if not already specified
+      if (type === 'unknown' || type === 'text') {
+        if (content.includes('# ') || content.includes('## ') || content.includes('**') || content.includes('- ')) {
+          type = 'markdown'
+        } else if (content.trim().startsWith('{') || content.trim().startsWith('[')) {
+          try {
+            JSON.parse(content)
+            type = 'json'
+          } catch {
+            type = 'text'
+          }
+        } else if (content.includes('<html') || content.includes('<!DOCTYPE')) {
+          type = 'html'
+        } else if (content.match(/^https?:\/\//)) {
+          type = 'url'
+        } else if (content.match(/\.(jpg|jpeg|png|gif|svg|webp)$/i)) {
+          type = 'image'
+        } else {
+          type = 'text'
+        }
+      }
+
+      const size = formatDataSize(content)
+      const isLarge = content.length > 10000
+
+      return { type, content, size, isLarge, source: candidate.field }
     }
   }
 
-  const size = formatDataSize(content)
-  const isLarge = content.length > 10000
-
-  return { type, content, size, isLarge }
+  // Fallback if no content found
+  return { 
+    type: 'text', 
+    content: 'No result data available', 
+    size: '0 B', 
+    isLarge: false, 
+    source: 'none' 
+  }
 }
 
 const getTypeIcon = (type: FormattedData['type']) => {
   const iconProps = { className: "w-4 h-4" }
   
   switch (type) {
+    case 'markdown':
+      return <FileText {...iconProps} />
     case 'json':
       return <Code {...iconProps} />
     case 'html':
@@ -107,6 +141,8 @@ const getTypeIcon = (type: FormattedData['type']) => {
 
 const getTypeColor = (type: FormattedData['type']) => {
   switch (type) {
+    case 'markdown':
+      return 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300'
     case 'json':
       return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
     case 'html':
@@ -120,6 +156,19 @@ const getTypeColor = (type: FormattedData['type']) => {
     default:
       return 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300'
   }
+}
+
+const MarkdownViewer: React.FC<{ content: string }> = ({ content }) => {
+  return (
+    <div className="space-y-2">
+      <span className="text-sm text-muted-foreground">Markdown Content</span>
+      <div className="prose prose-sm dark:prose-invert max-w-none bg-muted/30 p-4 rounded-lg overflow-auto max-h-96 border">
+        <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed">
+          {content}
+        </pre>
+      </div>
+    </div>
+  )
 }
 
 const JsonViewer: React.FC<{ content: string }> = ({ content }) => {
@@ -247,8 +296,8 @@ const FullResultModal: React.FC<FullResultModalProps> = ({ isOpen, onClose, node
   const [copiedField, setCopiedField] = useState<string | null>(null)
 
   const formattedData = useMemo(() => {
-    return detectDataType(node.full_result)
-  }, [node.full_result])
+    return detectDataType(node)
+  }, [node])
 
   const copyToClipboard = async (text: string, field: string) => {
     try {
@@ -261,13 +310,14 @@ const FullResultModal: React.FC<FullResultModalProps> = ({ isOpen, onClose, node
   }
 
   const downloadResult = () => {
-    const filename = `task-result-${node.task_id}-${new Date().toISOString().split('T')[0]}.${
-      formattedData.type === 'json' ? 'json' : 'txt'
-    }`
+    const extension = formattedData.type === 'json' ? 'json' : 
+                     formattedData.type === 'markdown' ? 'md' : 'txt'
+    const filename = `task-result-${node.task_id}-${new Date().toISOString().split('T')[0]}.${extension}`
     
-    const blob = new Blob([formattedData.content], { 
-      type: formattedData.type === 'json' ? 'application/json' : 'text/plain' 
-    })
+    const mimeType = formattedData.type === 'json' ? 'application/json' : 
+                     formattedData.type === 'markdown' ? 'text/markdown' : 'text/plain'
+    
+    const blob = new Blob([formattedData.content], { type: mimeType })
     
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -281,6 +331,8 @@ const FullResultModal: React.FC<FullResultModalProps> = ({ isOpen, onClose, node
 
   const renderContent = () => {
     switch (formattedData.type) {
+      case 'markdown':
+        return <MarkdownViewer content={formattedData.content} />
       case 'json':
         return <JsonViewer content={formattedData.content} />
       case 'url':
@@ -311,6 +363,7 @@ const FullResultModal: React.FC<FullResultModalProps> = ({ isOpen, onClose, node
               <div><strong>Task:</strong> {node.goal}</div>
               <div><strong>Task ID:</strong> <code className="text-xs bg-muted px-1 rounded">{node.task_id}</code></div>
               <div><strong>Status:</strong> <Badge variant="outline" className="text-xs">{node.status}</Badge></div>
+              <div><strong>Source:</strong> <code className="text-xs bg-muted px-1 rounded">{formattedData.source}</code></div>
             </div>
           </DialogDescription>
         </DialogHeader>

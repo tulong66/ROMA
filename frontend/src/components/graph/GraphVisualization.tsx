@@ -46,6 +46,7 @@ const FlowContent: React.FC = () => {
   // Use refs to track previous state for better change detection
   const prevNodeCountRef = useRef(0)
   const isUpdatingRef = useRef(false)
+  const updateTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   console.log('🔄 FlowContent render:', {
     graphNodesCount: Object.keys(graphNodes).length,
@@ -53,7 +54,36 @@ const FlowContent: React.FC = () => {
     selectedNodeId
   })
 
-  // Convert backend data to React Flow format - optimized with better memoization
+  // Stable memoization with deeper comparison
+  const stableGraphData = useMemo(() => {
+    // Create a stable representation of the graph data
+    const nodeEntries = Object.entries(graphNodes)
+    const graphEntries = Object.entries(graphs)
+    
+    return {
+      nodes: nodeEntries.map(([id, node]) => ({
+        id,
+        status: node.status,
+        goal: node.goal,
+        layer: node.layer,
+        node_type: node.node_type,
+        task_type: node.task_type,
+        // Only include fields that affect visualization
+      })),
+      graphs: graphEntries,
+      selectedNodeId,
+      showContextFlow,
+      timestamp: Date.now() // Add timestamp to force updates when needed
+    }
+  }, [
+    Object.keys(graphNodes).length, 
+    Object.values(graphNodes).map(n => `${n.status}-${n.layer}`).join('|'),
+    Object.keys(graphs).length,
+    selectedNodeId, 
+    showContextFlow
+  ])
+
+  // Convert backend data to React Flow format - with stable memoization
   const flowData = useMemo(() => {
     console.log('🔄 Converting flow data...')
     try {
@@ -68,57 +98,76 @@ const FlowContent: React.FC = () => {
       console.error('❌ Error converting flow data:', error)
       return { nodes: [], edges: [] }
     }
-  }, [graphNodes, graphs, selectedNodeId, showContextFlow])
+  }, [stableGraphData]) // Use stable data for memoization
 
-  // Update React Flow nodes and edges when data changes - optimized
-  useEffect(() => {
-    if (isUpdatingRef.current) {
-      console.log('⚠️ Update already in progress, skipping')
-      return
+  // Debounced update function
+  const debouncedUpdate = useCallback(() => {
+    if (updateTimeoutRef.current) {
+      clearTimeout(updateTimeoutRef.current)
     }
 
-    const currentNodeCount = Object.keys(graphNodes).length
-    const hasNewNodes = currentNodeCount > prevNodeCountRef.current
-    
-    // Only update if there are actual changes
-    if (currentNodeCount !== prevNodeCountRef.current || hasNewNodes) {
-      isUpdatingRef.current = true
+    updateTimeoutRef.current = setTimeout(() => {
+      if (isUpdatingRef.current) {
+        console.log('⚠️ Update already in progress, skipping')
+        return
+      }
+
+      const currentNodeCount = Object.keys(graphNodes).length
+      const hasNewNodes = currentNodeCount > prevNodeCountRef.current
       
-      console.log('🔄 Updating React Flow:', {
-        previousNodes: prevNodeCountRef.current,
-        currentNodes: currentNodeCount,
-        hasNewNodes
-      })
+      // Only update if there are significant changes
+      if (currentNodeCount !== prevNodeCountRef.current || hasNewNodes) {
+        isUpdatingRef.current = true
+        
+        console.log('🔄 Updating React Flow:', {
+          previousNodes: prevNodeCountRef.current,
+          currentNodes: currentNodeCount,
+          hasNewNodes
+        })
 
-      try {
-        setNodes(flowData.nodes)
-        setEdges(flowData.edges)
+        try {
+          setNodes(flowData.nodes)
+          setEdges(flowData.edges)
 
-        // Auto-fit view when new nodes are added
-        if (hasNewNodes && flowData.nodes.length > 0) {
-          console.log('🎯 Auto-fitting view for new nodes')
+          // Auto-fit view when new nodes are added (debounced)
+          if (hasNewNodes && flowData.nodes.length > 0) {
+            console.log('🎯 Auto-fitting view for new nodes')
+            setTimeout(() => {
+              try {
+                fitView({ 
+                  padding: 0.2, 
+                  duration: 600, // Reduced duration for smoother animation
+                  includeHiddenNodes: false
+                })
+              } catch (error) {
+                console.error('❌ Error fitting view:', error)
+              }
+            }, 300) // Increased delay to reduce conflicts
+          }
+
+          prevNodeCountRef.current = currentNodeCount
+        } catch (error) {
+          console.error('❌ Error updating React Flow:', error)
+        } finally {
           setTimeout(() => {
-            try {
-              fitView({ 
-                padding: 0.2, 
-                duration: 800,
-                includeHiddenNodes: false
-              })
-            } catch (error) {
-              console.error('❌ Error fitting view:', error)
-            }
-          }, 200)
+            isUpdatingRef.current = false
+          }, 100) // Short delay before allowing next update
         }
+      }
+    }, 150) // 150ms debounce
+  }, [flowData.nodes, flowData.edges, graphNodes, setNodes, setEdges, fitView])
 
-        // Update refs
-        prevNodeCountRef.current = currentNodeCount
-      } catch (error) {
-        console.error('❌ Error updating React Flow:', error)
-      } finally {
-        isUpdatingRef.current = false
+  // Use debounced update
+  useEffect(() => {
+    debouncedUpdate()
+    
+    // Cleanup timeout on unmount
+    return () => {
+      if (updateTimeoutRef.current) {
+        clearTimeout(updateTimeoutRef.current)
       }
     }
-  }, [flowData.nodes, flowData.edges, graphNodes, setNodes, setEdges, fitView])
+  }, [debouncedUpdate])
 
   // Optimized node click handler with error boundary
   const onNodeClick = useCallback(
@@ -165,17 +214,20 @@ const FlowContent: React.FC = () => {
       nodeTypes={nodeTypes}
       edgeTypes={edgeTypes}
       fitView
-      fitViewOptions={{ padding: 0.2, duration: 800 }}
+      fitViewOptions={{ padding: 0.2, duration: 600 }}
       defaultViewport={{ x: 0, y: 0, zoom: 1 }}
       attributionPosition="bottom-left"
       proOptions={{ hideAttribution: true }}
-      // Optimized performance settings
+      // Optimized performance settings to reduce flashing
       onlyRenderVisibleElements={true}
       nodesDraggable={true}
       nodesConnectable={false}
       elementsSelectable={true}
       minZoom={0.1}
       maxZoom={4}
+      // Add these to reduce re-renders
+      deleteKeyCode={null}
+      multiSelectionKeyCode={null}
     >
       <Background 
         variant={BackgroundVariant.Dots} 
