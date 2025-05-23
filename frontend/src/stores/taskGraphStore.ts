@@ -29,13 +29,19 @@ interface TaskGraphState {
   filters: GraphFilters
   isFilterPanelOpen: boolean
   
-  // HITL State
-  currentHITLRequest?: HITLRequest
-  isHITLModalOpen: boolean
-  
   // Context Flow State
   contextFlowMode: 'none' | 'dataFlow' | 'executionPath' | 'subtree'
   focusNodeId?: string
+  
+  // Multi-Selection State
+  selectedNodeIds: Set<string>
+  isMultiSelectMode: boolean
+  comparisonView: 'cards' | 'table' | 'timeline' | 'metrics'
+  isComparisonPanelOpen: boolean
+  
+  // HITL State
+  currentHITLRequest?: HITLRequest
+  isHITLModalOpen: boolean
   
   // Actions
   setData: (data: APIResponse) => void
@@ -49,12 +55,25 @@ interface TaskGraphState {
   resetFilters: () => void
   toggleFilterPanel: () => void
   setSearchTerm: (term: string) => void
-  
-  // Quick Filter Actions
   showActiveNodes: () => void
   showProblematicNodes: () => void
   showCompletedNodes: () => void
   showCurrentLayer: () => void
+  
+  // Context Flow Actions
+  setContextFlowMode: (mode: 'none' | 'dataFlow' | 'executionPath' | 'subtree') => void
+  setFocusNode: (nodeId?: string) => void
+  zoomToSubtree: (nodeId: string) => void
+  
+  // Multi-Selection Actions
+  toggleNodeSelection: (nodeId: string, isMultiSelect?: boolean) => void
+  selectAllNodes: () => void
+  selectFilteredNodes: () => void
+  clearSelection: () => void
+  invertSelection: () => void
+  setMultiSelectMode: (enabled: boolean) => void
+  setComparisonView: (view: 'cards' | 'table' | 'timeline' | 'metrics') => void
+  toggleComparisonPanel: () => void
   
   // Computed Properties
   getFilteredNodes: () => Record<string, TaskNode>
@@ -65,16 +84,20 @@ interface TaskGraphState {
     layers: number[]
     agentNames: string[]
   }
+  getSelectedNodes: () => TaskNode[]
+  getSelectionStats: () => {
+    total: number
+    byStatus: Record<string, number>
+    byTaskType: Record<string, number>
+    byLayer: Record<number, number>
+    avgExecutionTime: number
+    successRate: number
+  }
   
   // HITL Actions
   setHITLRequest: (request?: HITLRequest) => void
   respondToHITL: (response: HITLResponse) => void
   closeHITLModal: () => void
-  
-  // Context Flow Actions
-  setContextFlowMode: (mode: 'none' | 'dataFlow' | 'executionPath' | 'subtree') => void
-  setFocusNode: (nodeId?: string) => void
-  zoomToSubtree: (nodeId: string) => void
 }
 
 const defaultFilters: GraphFilters = {
@@ -102,12 +125,18 @@ export const useTaskGraphStore = create<TaskGraphState>()(
     filters: defaultFilters,
     isFilterPanelOpen: false,
     
-    currentHITLRequest: undefined,
-    isHITLModalOpen: false,
-    
     // Context Flow state
     contextFlowMode: 'none',
     focusNodeId: undefined,
+    
+    // Multi-Selection state
+    selectedNodeIds: new Set<string>(),
+    isMultiSelectMode: false,
+    comparisonView: 'cards',
+    isComparisonPanelOpen: false,
+    
+    currentHITLRequest: undefined,
+    isHITLModalOpen: false,
     
     // Actions
     setData: (data: APIResponse) => {
@@ -194,6 +223,130 @@ export const useTaskGraphStore = create<TaskGraphState>()(
       }
     },
     
+    // Context Flow Actions
+    setContextFlowMode: (mode) => {
+      set({ contextFlowMode: mode })
+      // Auto-set focus to selected node when switching to a highlighting mode
+      if (mode !== 'none' && !get().focusNodeId && get().selectedNodeId) {
+        set({ focusNodeId: get().selectedNodeId })
+      }
+    },
+    
+    setFocusNode: (nodeId) => set({ focusNodeId: nodeId }),
+    
+    zoomToSubtree: (nodeId) => {
+      console.log('Zooming to subtree:', nodeId)
+      set({ focusNodeId: nodeId, contextFlowMode: 'subtree' })
+    },
+    
+    // Multi-Selection Actions
+    toggleNodeSelection: (nodeId: string, isMultiSelect = false) => {
+      set((state) => {
+        const newSelectedIds = new Set(state.selectedNodeIds)
+        
+        if (isMultiSelect) {
+          // Multi-select mode: toggle the clicked node
+          if (newSelectedIds.has(nodeId)) {
+            newSelectedIds.delete(nodeId)
+          } else {
+            newSelectedIds.add(nodeId)
+          }
+          
+          return {
+            selectedNodeIds: newSelectedIds,
+            selectedNodeId: newSelectedIds.size === 1 ? Array.from(newSelectedIds)[0] : undefined,
+            isMultiSelectMode: newSelectedIds.size > 1
+          }
+        } else {
+          // Single select mode: replace selection
+          const wasSelected = newSelectedIds.has(nodeId)
+          newSelectedIds.clear()
+          
+          if (!wasSelected) {
+            newSelectedIds.add(nodeId)
+          }
+          
+          return {
+            selectedNodeIds: newSelectedIds,
+            selectedNodeId: newSelectedIds.size === 1 ? nodeId : undefined,
+            isMultiSelectMode: false
+          }
+        }
+      })
+    },
+    
+    selectAllNodes: () => {
+      const filteredNodes = get().getFilteredNodes()
+      const allNodeIds = new Set(Object.keys(filteredNodes))
+      
+      set({
+        selectedNodeIds: allNodeIds,
+        selectedNodeId: undefined,
+        isMultiSelectMode: allNodeIds.size > 1
+      })
+    },
+    
+    selectFilteredNodes: () => {
+      const filteredNodes = get().getFilteredNodes()
+      const filteredNodeIds = new Set(Object.keys(filteredNodes))
+      
+      set({
+        selectedNodeIds: filteredNodeIds,
+        selectedNodeId: undefined,
+        isMultiSelectMode: filteredNodeIds.size > 1
+      })
+    },
+    
+    clearSelection: () => {
+      set({
+        selectedNodeIds: new Set(),
+        selectedNodeId: undefined,
+        isMultiSelectMode: false,
+        isComparisonPanelOpen: false
+      })
+    },
+    
+    invertSelection: () => {
+      const { selectedNodeIds, getFilteredNodes } = get()
+      const filteredNodes = getFilteredNodes()
+      const allNodeIds = new Set(Object.keys(filteredNodes))
+      const newSelection = new Set<string>()
+      
+      allNodeIds.forEach(id => {
+        if (!selectedNodeIds.has(id)) {
+          newSelection.add(id)
+        }
+      })
+      
+      set({
+        selectedNodeIds: newSelection,
+        selectedNodeId: newSelection.size === 1 ? Array.from(newSelection)[0] : undefined,
+        isMultiSelectMode: newSelection.size > 1
+      })
+    },
+    
+    setMultiSelectMode: (enabled: boolean) => {
+      if (!enabled) {
+        // When disabling multi-select, keep only the first selected node
+        const { selectedNodeIds } = get()
+        const firstSelected = Array.from(selectedNodeIds)[0]
+        
+        set({
+          selectedNodeIds: firstSelected ? new Set([firstSelected]) : new Set(),
+          selectedNodeId: firstSelected,
+          isMultiSelectMode: false
+        })
+      } else {
+        set({ isMultiSelectMode: enabled })
+      }
+    },
+    
+    setComparisonView: (view) => set({ comparisonView: view }),
+    
+    toggleComparisonPanel: () => {
+      set((state) => ({ isComparisonPanelOpen: !state.isComparisonPanelOpen }))
+    },
+    
     // Computed Properties
     getFilteredNodes: () => {
       const { nodes, filters } = get()
@@ -266,6 +419,60 @@ export const useTaskGraphStore = create<TaskGraphState>()(
       }
     },
     
+    getSelectedNodes: () => {
+      const { nodes, selectedNodeIds } = get()
+      return Array.from(selectedNodeIds).map(id => nodes[id]).filter(Boolean)
+    },
+    
+    getSelectionStats: () => {
+      const selectedNodes = get().getSelectedNodes()
+      
+      const stats = {
+        total: selectedNodes.length,
+        byStatus: {} as Record<string, number>,
+        byTaskType: {} as Record<string, number>,
+        byLayer: {} as Record<number, number>,
+        avgExecutionTime: 0,
+        successRate: 0
+      }
+      
+      if (selectedNodes.length === 0) return stats
+      
+      // Calculate statistics
+      let totalExecutionTime = 0
+      let nodesWithExecutionTime = 0
+      let successCount = 0
+      
+      selectedNodes.forEach(node => {
+        // Status counts
+        stats.byStatus[node.status] = (stats.byStatus[node.status] || 0) + 1
+        
+        // Task type counts
+        stats.byTaskType[node.task_type] = (stats.byTaskType[node.task_type] || 0) + 1
+        
+        // Layer counts
+        stats.byLayer[node.layer] = (stats.byLayer[node.layer] || 0) + 1
+        
+        // Execution time calculation
+        if (node.timestamp_created && node.timestamp_completed) {
+          const created = new Date(node.timestamp_created).getTime()
+          const completed = new Date(node.timestamp_completed).getTime()
+          totalExecutionTime += completed - created
+          nodesWithExecutionTime++
+        }
+        
+        // Success rate
+        if (node.status === 'DONE') {
+          successCount++
+        }
+      })
+      
+      stats.avgExecutionTime = nodesWithExecutionTime > 0 ? totalExecutionTime / nodesWithExecutionTime : 0
+      stats.successRate = selectedNodes.length > 0 ? (successCount / selectedNodes.length) * 100 : 0
+      
+      return stats
+    },
+    
     // HITL Actions
     setHITLRequest: (request?: HITLRequest) => set({
       currentHITLRequest: request,
@@ -287,23 +494,5 @@ export const useTaskGraphStore = create<TaskGraphState>()(
       currentHITLRequest: undefined,
       isHITLModalOpen: false,
     }),
-    
-    // Context Flow Actions
-    setContextFlowMode: (mode) => {
-      set({ contextFlowMode: mode })
-      // Auto-set focus to selected node when switching to a highlighting mode
-      if (mode !== 'none' && !get().focusNodeId && get().selectedNodeId) {
-        set({ focusNodeId: get().selectedNodeId })
-      }
-    },
-    
-    setFocusNode: (nodeId) => set({ focusNodeId: nodeId }),
-    
-    zoomToSubtree: (nodeId) => {
-      // This would integrate with React Flow's fitView functionality
-      // Implementation would depend on having access to the React Flow instance
-      console.log('Zooming to subtree:', nodeId)
-      set({ focusNodeId: nodeId, contextFlowMode: 'subtree' })
-    },
   }))
 ) 

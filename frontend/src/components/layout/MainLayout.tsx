@@ -4,6 +4,8 @@ import { webSocketService } from '@/services/websocketService'
 import Header from './Header'
 import GraphVisualization from '@/components/graph/GraphVisualization'
 import NodeDetailsPanel from '@/components/panels/NodeDetailsPanel'
+import ComparisonPanel from '@/components/panels/ComparisonPanel'
+import MultiSelectToolbar from '@/components/panels/MultiSelectToolbar'
 import ProjectInput from '@/components/project/ProjectInput'
 import HITLModal from '@/components/hitl/HITLModal'
 import ConnectionStatus from '@/components/status/ConnectionStatus'
@@ -14,7 +16,9 @@ const MainLayout: React.FC = () => {
     nodes, 
     overallProjectGoal,
     isHITLModalOpen,
-    isLoading
+    isLoading,
+    selectedNodeIds,
+    isComparisonPanelOpen
   } = useTaskGraphStore()
 
   const [loadingMessage, setLoadingMessage] = useState('Initializing project...')
@@ -77,6 +81,7 @@ const MainLayout: React.FC = () => {
   }, [isLoading])
 
   const hasNodes = Object.keys(nodes).length > 0
+  const hasMultipleSelected = selectedNodeIds.size > 1
   
   console.log('MainLayout render:', { 
     hasNodes, 
@@ -88,6 +93,9 @@ const MainLayout: React.FC = () => {
   return (
     <div className="h-screen flex flex-col bg-background">
       <Header />
+      
+      {/* Multi-Selection Toolbar */}
+      {hasNodes && <MultiSelectToolbar />}
       
       <div className="flex-1 flex overflow-hidden">
         {/* Main Content Area */}
@@ -145,8 +153,16 @@ const MainLayout: React.FC = () => {
           </div>
         </div>
         
-        {/* Node Details Panel - only show when we have nodes */}
-        {hasNodes && <NodeDetailsPanel />}
+        {/* Side Panels */}
+        {hasNodes && (
+          <>
+            {/* Comparison Panel (when multiple nodes selected) */}
+            {isComparisonPanelOpen && hasMultipleSelected && <ComparisonPanel />}
+            
+            {/* Node Details Panel (when single node selected) */}
+            {!isComparisonPanelOpen && <NodeDetailsPanel />}
+          </>
+        )}
       </div>
       
       {/* Status Components */}

@@ -35,8 +35,10 @@ const FlowContent: React.FC = () => {
   const { 
     nodes: graphNodes, 
     graphs, 
-    selectedNodeId, 
+    selectedNodeId,
+    selectedNodeIds,
     selectNode,
+    toggleNodeSelection,
     showContextFlow,
     contextFlowMode,
     focusNodeId,
@@ -82,9 +84,43 @@ const FlowContent: React.FC = () => {
     showContextFlow
   ])
 
-  // Convert backend data to React Flow format with enhanced context flow
+  // Enhanced node click handler for multi-selection
+  const onNodeClick = useCallback(
+    (event: React.MouseEvent, node: Node) => {
+      try {
+        console.log('🖱️ Node clicked:', node.id, 'Multi-select:', event.ctrlKey || event.metaKey)
+        
+        const isMultiSelect = event.ctrlKey || event.metaKey
+        toggleNodeSelection(node.id, isMultiSelect)
+      } catch (error) {
+        console.error('❌ Error handling node click:', error)
+      }
+    },
+    [toggleNodeSelection]
+  )
+
+  const onPaneClick = useCallback(() => {
+    try {
+      selectNode(undefined)
+    } catch (error) {
+      console.error('❌ Error handling pane click:', error)
+    }
+  }, [selectNode])
+
+  const onConnect = useCallback(
+    (params: Connection) => {
+      try {
+        setEdges((eds) => addEdge(params, eds))
+      } catch (error) {
+        console.error('❌ Error handling connection:', error)
+      }
+    },
+    [setEdges]
+  )
+
+  // Convert backend data to React Flow format with multi-selection support
   const flowData = useMemo(() => {
-    console.log('🔄 Converting flow data with enhanced context flow...')
+    console.log('🔄 Converting flow data with multi-selection support...')
     try {
       const options = {
         selectedNodeId,
@@ -94,21 +130,27 @@ const FlowContent: React.FC = () => {
         focusNodeId
       }
       
-      const flowNodes = convertToFlowNodes(graphNodes, options)
+      const flowNodes = convertToFlowNodes(graphNodes, options).map(flowNode => ({
+        ...flowNode,
+        data: {
+          ...flowNode.data,
+          isMultiSelected: selectedNodeIds.has(flowNode.id)
+        }
+      }))
+      
       const flowEdges = convertToFlowEdges(graphNodes, graphs, options)
       
-      console.log('✅ Enhanced flow data converted:', { 
+      console.log('✅ Multi-selection flow data converted:', { 
         nodes: flowNodes.length, 
         edges: flowEdges.length,
-        contextMode: contextFlowMode,
-        focusNode: focusNodeId
+        selectedCount: selectedNodeIds.size
       })
       return { nodes: flowNodes, edges: flowEdges }
     } catch (error) {
-      console.error('❌ Error converting enhanced flow data:', error)
+      console.error('❌ Error converting multi-selection flow data:', error)
       return { nodes: [], edges: [] }
     }
-  }, [stableGraphSignature, contextFlowMode, focusNodeId, graphNodes])
+  }, [stableGraphSignature, contextFlowMode, focusNodeId, selectedNodeIds, graphNodes])
 
   // Much slower update function - only every 2 seconds
   const throttledUpdate = useCallback(() => {
@@ -195,39 +237,6 @@ const FlowContent: React.FC = () => {
       }
     }
   }, [throttledUpdate])
-
-  // Optimized node click handler
-  const onNodeClick = useCallback(
-    (_event: React.MouseEvent, node: Node) => {
-      try {
-        console.log('🖱️ Node clicked:', node.id)
-        const newSelection = node.id === selectedNodeId ? undefined : node.id
-        selectNode(newSelection)
-      } catch (error) {
-        console.error('❌ Error handling node click:', error)
-      }
-    },
-    [selectNode, selectedNodeId]
-  )
-
-  const onPaneClick = useCallback(() => {
-    try {
-      selectNode(undefined)
-    } catch (error) {
-      console.error('❌ Error handling pane click:', error)
-    }
-  }, [selectNode])
-
-  const onConnect = useCallback(
-    (params: Connection) => {
-      try {
-        setEdges((eds) => addEdge(params, eds))
-      } catch (error) {
-        console.error('❌ Error handling connection:', error)
-      }
-    },
-    [setEdges]
-  )
 
   // Show filtered empty state
   if (Object.keys(graphNodes).length > 0 && Object.keys(filteredNodes).length === 0) {

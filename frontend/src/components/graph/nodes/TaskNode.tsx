@@ -12,7 +12,8 @@ import {
   AlertTriangle,
   Zap,
   ArrowRight,
-  Hash
+  Hash,
+  Check
 } from 'lucide-react'
 import type { TaskNode as TaskNodeType } from '@/types'
 
@@ -23,6 +24,7 @@ interface TaskNodeData {
   isDimmed?: boolean
   executionRank?: number
   highlightMode?: string
+  isMultiSelected?: boolean
 }
 
 const getStatusIcon = (status: string) => {
@@ -89,15 +91,24 @@ const getNodeBackgroundColor = (status: string, nodeType: string, isHighlighted?
 }
 
 const TaskNodeComponent: React.FC<NodeProps<TaskNodeData>> = ({ data, selected }) => {
-  const { node, isHighlighted, isDimmed, executionRank, highlightMode } = data
+  const { 
+    node, 
+    isHighlighted, 
+    isDimmed, 
+    executionRank, 
+    highlightMode,
+    isMultiSelected
+  } = data
+  
   const isPlanNode = node.node_type === 'PLAN'
   const backgroundColorClass = getNodeBackgroundColor(node.status, node.node_type, isHighlighted, isDimmed)
   
-  // Enhanced styling for context flow
+  // Enhanced styling for multi-selection
   const nodeClassName = `
-    min-w-[280px] max-w-[320px] p-4 rounded-xl border-2 shadow-lg transition-all duration-300
+    min-w-[280px] max-w-[320px] p-4 rounded-xl border-2 shadow-lg transition-all duration-300 relative
     ${backgroundColorClass}
     ${selected ? 'ring-2 ring-primary scale-105 shadow-xl' : 'hover:shadow-md'}
+    ${isMultiSelected ? 'ring-2 ring-blue-500 ring-opacity-70' : ''}
     ${node.status === 'RUNNING' ? 'pulse-glow' : ''}
     ${isHighlighted ? 'transform scale-105 z-10' : ''}
     ${isDimmed ? 'opacity-30' : ''}
@@ -105,15 +116,22 @@ const TaskNodeComponent: React.FC<NodeProps<TaskNodeData>> = ({ data, selected }
 
   return (
     <div className={nodeClassName}>
+      {/* Multi-selection indicator */}
+      {isMultiSelected && (
+        <div className="absolute -top-2 -right-2 w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center shadow-md">
+          <Check className="w-3 h-3" />
+        </div>
+      )}
+
       {/* Input Handle with enhanced styling */}
       <Handle
         type="target"
         position={Position.Top}
         className={`w-3 h-3 border-2 border-white shadow-md transition-all duration-200 ${
-          isHighlighted ? 'scale-125 ring-2 ring-primary' : ''
+          isHighlighted || isMultiSelected ? 'scale-125 ring-2 ring-primary' : ''
         }`}
         style={{ 
-          background: isHighlighted ? 'hsl(var(--primary))' : 'hsl(var(--primary))',
+          background: isHighlighted || isMultiSelected ? 'hsl(var(--primary))' : 'hsl(var(--primary))',
           opacity: isDimmed ? 0.3 : 1
         }}
       />
@@ -194,10 +212,10 @@ const TaskNodeComponent: React.FC<NodeProps<TaskNodeData>> = ({ data, selected }
         type="source"
         position={Position.Bottom}
         className={`w-3 h-3 border-2 border-white shadow-md transition-all duration-200 ${
-          isHighlighted ? 'scale-125 ring-2 ring-primary' : ''
+          isHighlighted || isMultiSelected ? 'scale-125 ring-2 ring-primary' : ''
         }`}
         style={{ 
-          background: isHighlighted ? 'hsl(var(--primary))' : 'hsl(var(--primary))',
+          background: isHighlighted || isMultiSelected ? 'hsl(var(--primary))' : 'hsl(var(--primary))',
           opacity: isDimmed ? 0.3 : 1
         }}
       />
