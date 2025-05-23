@@ -11,6 +11,7 @@ import { useTaskGraphStore } from '@/stores/taskGraphStore'
 import ThemeToggle from '@/components/theme/ThemeToggle'
 import FilterPanel from '@/components/panels/FilterPanel'
 import ExportPanel from '@/components/panels/ExportPanel'
+import ContextFlowPanel from '@/components/panels/ContextFlowPanel'
 
 const Header: React.FC = () => {
   const { 
@@ -65,6 +66,9 @@ const Header: React.FC = () => {
 
               {/* Export Panel */}
               <ExportPanel />
+
+              {/* Context Flow Panel */}
+              <ContextFlowPanel />
 
               {/* Context Flow Toggle */}
               <Button

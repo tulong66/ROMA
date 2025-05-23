@@ -38,6 +38,8 @@ const FlowContent: React.FC = () => {
     selectedNodeId, 
     selectNode,
     showContextFlow,
+    contextFlowMode,
+    focusNodeId,
     getFilteredNodes,
     resetFilters
   } = useTaskGraphStore()
@@ -80,24 +82,33 @@ const FlowContent: React.FC = () => {
     showContextFlow
   ])
 
-  // Convert backend data to React Flow format - with filtering support
+  // Convert backend data to React Flow format with enhanced context flow
   const flowData = useMemo(() => {
-    console.log('🔄 Converting flow data with filters...')
+    console.log('🔄 Converting flow data with enhanced context flow...')
     try {
-      const flowNodes = convertToFlowNodes(graphNodes, selectedNodeId, filteredNodes)
-      const flowEdges = convertToFlowEdges(graphNodes, graphs, showContextFlow, filteredNodes)
-      console.log('✅ Flow data converted with filters:', { 
+      const options = {
+        selectedNodeId,
+        filteredNodes,
+        showContextFlow,
+        highlightMode: contextFlowMode,
+        focusNodeId
+      }
+      
+      const flowNodes = convertToFlowNodes(graphNodes, options)
+      const flowEdges = convertToFlowEdges(graphNodes, graphs, options)
+      
+      console.log('✅ Enhanced flow data converted:', { 
         nodes: flowNodes.length, 
         edges: flowEdges.length,
-        totalAvailable: Object.keys(graphNodes).length,
-        filtered: Object.keys(filteredNodes).length
+        contextMode: contextFlowMode,
+        focusNode: focusNodeId
       })
       return { nodes: flowNodes, edges: flowEdges }
     } catch (error) {
-      console.error('❌ Error converting flow data:', error)
+      console.error('❌ Error converting enhanced flow data:', error)
       return { nodes: [], edges: [] }
     }
-  }, [stableGraphSignature, graphNodes])
+  }, [stableGraphSignature, contextFlowMode, focusNodeId, graphNodes])
 
   // Much slower update function - only every 2 seconds
   const throttledUpdate = useCallback(() => {

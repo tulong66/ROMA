@@ -33,6 +33,10 @@ interface TaskGraphState {
   currentHITLRequest?: HITLRequest
   isHITLModalOpen: boolean
   
+  // Context Flow State
+  contextFlowMode: 'none' | 'dataFlow' | 'executionPath' | 'subtree'
+  focusNodeId?: string
+  
   // Actions
   setData: (data: APIResponse) => void
   setConnectionStatus: (status: boolean) => void
@@ -66,6 +70,11 @@ interface TaskGraphState {
   setHITLRequest: (request?: HITLRequest) => void
   respondToHITL: (response: HITLResponse) => void
   closeHITLModal: () => void
+  
+  // Context Flow Actions
+  setContextFlowMode: (mode: 'none' | 'dataFlow' | 'executionPath' | 'subtree') => void
+  setFocusNode: (nodeId?: string) => void
+  zoomToSubtree: (nodeId: string) => void
 }
 
 const defaultFilters: GraphFilters = {
@@ -95,6 +104,10 @@ export const useTaskGraphStore = create<TaskGraphState>()(
     
     currentHITLRequest: undefined,
     isHITLModalOpen: false,
+    
+    // Context Flow state
+    contextFlowMode: 'none',
+    focusNodeId: undefined,
     
     // Actions
     setData: (data: APIResponse) => {
@@ -274,5 +287,23 @@ export const useTaskGraphStore = create<TaskGraphState>()(
       currentHITLRequest: undefined,
       isHITLModalOpen: false,
     }),
+    
+    // Context Flow Actions
+    setContextFlowMode: (mode) => {
+      set({ contextFlowMode: mode })
+      // Auto-set focus to selected node when switching to a highlighting mode
+      if (mode !== 'none' && !get().focusNodeId && get().selectedNodeId) {
+        set({ focusNodeId: get().selectedNodeId })
+      }
+    },
+    
+    setFocusNode: (nodeId) => set({ focusNodeId: nodeId }),
+    
+    zoomToSubtree: (nodeId) => {
+      // This would integrate with React Flow's fitView functionality
+      // Implementation would depend on having access to the React Flow instance
+      console.log('Zooming to subtree:', nodeId)
+      set({ focusNodeId: nodeId, contextFlowMode: 'subtree' })
+    },
   }))
 ) 

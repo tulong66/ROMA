@@ -10,13 +10,19 @@ import {
   Clock, 
   Loader2,
   AlertTriangle,
-  Zap
+  Zap,
+  ArrowRight,
+  Hash
 } from 'lucide-react'
 import type { TaskNode as TaskNodeType } from '@/types'
 
 interface TaskNodeData {
   node: TaskNodeType
   isSelected?: boolean
+  isHighlighted?: boolean
+  isDimmed?: boolean
+  executionRank?: number
+  highlightMode?: string
 }
 
 const getStatusIcon = (status: string) => {
@@ -40,7 +46,7 @@ const getStatusIcon = (status: string) => {
   }
 }
 
-const getNodeBackgroundColor = (status: string, nodeType: string) => {
+const getNodeBackgroundColor = (status: string, nodeType: string, isHighlighted?: boolean, isDimmed?: boolean) => {
   const baseColors = {
     PENDING: 'bg-gray-50 border-gray-200',
     READY: 'bg-blue-50 border-blue-200',
@@ -68,28 +74,63 @@ const getNodeBackgroundColor = (status: string, nodeType: string) => {
   const light = baseColors[status as keyof typeof baseColors] || baseColors.PENDING
   const dark = darkColors[status as keyof typeof darkColors] || darkColors.PENDING
   
-  return `${light} ${dark}`
+  let result = `${light} ${dark}`
+  
+  // Add highlighting effects
+  if (isHighlighted) {
+    result += ' ring-2 ring-primary ring-opacity-60 shadow-lg'
+  }
+  
+  if (isDimmed) {
+    result += ' opacity-30'
+  }
+  
+  return result
 }
 
 const TaskNodeComponent: React.FC<NodeProps<TaskNodeData>> = ({ data, selected }) => {
-  const { node } = data
+  const { node, isHighlighted, isDimmed, executionRank, highlightMode } = data
   const isPlanNode = node.node_type === 'PLAN'
-  const backgroundColorClass = getNodeBackgroundColor(node.status, node.node_type)
+  const backgroundColorClass = getNodeBackgroundColor(node.status, node.node_type, isHighlighted, isDimmed)
   
+  // Enhanced styling for context flow
+  const nodeClassName = `
+    min-w-[280px] max-w-[320px] p-4 rounded-xl border-2 shadow-lg transition-all duration-300
+    ${backgroundColorClass}
+    ${selected ? 'ring-2 ring-primary scale-105 shadow-xl' : 'hover:shadow-md'}
+    ${node.status === 'RUNNING' ? 'pulse-glow' : ''}
+    ${isHighlighted ? 'transform scale-105 z-10' : ''}
+    ${isDimmed ? 'opacity-30' : ''}
+  `
+
   return (
-    <div className={`
-      min-w-[280px] max-w-[320px] p-4 rounded-xl border-2 shadow-lg transition-all duration-300
-      ${backgroundColorClass}
-      ${selected ? 'ring-2 ring-primary scale-105 shadow-xl' : 'hover:shadow-md'}
-      ${node.status === 'RUNNING' ? 'pulse-glow' : ''}
-    `}>
-      {/* Input Handle */}
+    <div className={nodeClassName}>
+      {/* Input Handle with enhanced styling */}
       <Handle
         type="target"
         position={Position.Top}
-        className="w-3 h-3 border-2 border-white shadow-md transition-all duration-200"
-        style={{ background: 'hsl(var(--primary))' }}
+        className={`w-3 h-3 border-2 border-white shadow-md transition-all duration-200 ${
+          isHighlighted ? 'scale-125 ring-2 ring-primary' : ''
+        }`}
+        style={{ 
+          background: isHighlighted ? 'hsl(var(--primary))' : 'hsl(var(--primary))',
+          opacity: isDimmed ? 0.3 : 1
+        }}
       />
+      
+      {/* Execution Order Indicator */}
+      {executionRank !== undefined && highlightMode === 'executionPath' && (
+        <div className="absolute -top-2 -left-2 w-6 h-6 bg-amber-500 text-white rounded-full flex items-center justify-center text-xs font-bold shadow-md">
+          {executionRank + 1}
+        </div>
+      )}
+
+      {/* Context Flow Indicator */}
+      {isHighlighted && highlightMode === 'dataFlow' && (
+        <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
+          <ArrowRight className="w-2 h-2 text-white" />
+        </div>
+      )}
       
       {/* Node Header */}
       <div className="flex items-center justify-between mb-3">
@@ -102,6 +143,11 @@ const TaskNodeComponent: React.FC<NodeProps<TaskNodeData>> = ({ data, selected }
           <Badge variant="outline" className="text-xs font-medium">
             {node.task_type}
           </Badge>
+          {node.layer > 0 && (
+            <Badge variant="secondary" className="text-xs">
+              L{node.layer}
+            </Badge>
+          )}
         </div>
         <div className="flex items-center space-x-2">
           {getStatusIcon(node.status)}
@@ -120,20 +166,40 @@ const TaskNodeComponent: React.FC<NodeProps<TaskNodeData>> = ({ data, selected }
             🤖 {truncateText(node.agent_name, 25)}
           </div>
         )}
+
+        {/* Context Sources Indicator */}
+        {node.input_context_sources && node.input_context_sources.length > 0 && (
+          <div className="text-xs text-muted-foreground flex items-center space-x-1">
+            <Hash className="w-3 h-3" />
+            <span>{node.input_context_sources.length} context sources</span>
+          </div>
+        )}
         
         {node.output_summary && (
           <div className="text-xs text-muted-foreground border-t border-border/50 pt-2 mt-2">
             📋 {truncateText(node.output_summary, 100)}
           </div>
         )}
+
+        {/* Execution timestamp for highlighted nodes */}
+        {isHighlighted && highlightMode === 'executionPath' && node.timestamp_created && (
+          <div className="text-xs text-muted-foreground border-t border-border/50 pt-1 mt-1">
+            ⏰ {new Date(node.timestamp_created).toLocaleTimeString()}
+          </div>
+        )}
       </div>
       
-      {/* Output Handle */}
+      {/* Output Handle with enhanced styling */}
       <Handle
         type="source"
         position={Position.Bottom}
-        className="w-3 h-3 border-2 border-white shadow-md transition-all duration-200"
-        style={{ background: 'hsl(var(--primary))' }}
+        className={`w-3 h-3 border-2 border-white shadow-md transition-all duration-200 ${
+          isHighlighted ? 'scale-125 ring-2 ring-primary' : ''
+        }`}
+        style={{ 
+          background: isHighlighted ? 'hsl(var(--primary))' : 'hsl(var(--primary))',
+          opacity: isDimmed ? 0.3 : 1
+        }}
       />
     </div>
   )
