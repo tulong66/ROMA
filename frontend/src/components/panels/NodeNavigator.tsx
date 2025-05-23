@@ -8,7 +8,6 @@ import {
   ArrowUp,
   ArrowDown,
   Layers,
-  Target,
   GitBranch,
   Navigation
 } from 'lucide-react'
@@ -107,7 +106,7 @@ const NodeNavigator: React.FC = () => {
   if (!selectedNode) return null
 
   return (
-    <div className="space-y-4 border-t border-border/50 pt-4">
+    <div className="space-y-4">
       {/* Breadcrumb Navigation */}
       <div>
         <div className="flex items-center space-x-2 mb-2">

@@ -45,6 +45,7 @@ const FlowContent: React.FC = () => {
   
   // Use refs to track previous state for better change detection
   const prevNodeCountRef = useRef(0)
+  const lastUpdateRef = useRef(0)
   const isUpdatingRef = useRef(false)
   const updateTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
@@ -54,36 +55,25 @@ const FlowContent: React.FC = () => {
     selectedNodeId
   })
 
-  // Stable memoization with deeper comparison
-  const stableGraphData = useMemo(() => {
-    // Create a stable representation of the graph data
+  // Create a stable signature that changes less frequently
+  const stableGraphSignature = useMemo(() => {
     const nodeEntries = Object.entries(graphNodes)
-    const graphEntries = Object.entries(graphs)
-    
+    // Only update signature for significant changes
     return {
-      nodes: nodeEntries.map(([id, node]) => ({
-        id,
-        status: node.status,
-        goal: node.goal,
-        layer: node.layer,
-        node_type: node.node_type,
-        task_type: node.task_type,
-        // Only include fields that affect visualization
-      })),
-      graphs: graphEntries,
+      nodeCount: nodeEntries.length,
+      statusSignature: nodeEntries.map(([id, node]) => `${id}:${node.status}`).sort().join('|'),
       selectedNodeId,
       showContextFlow,
-      timestamp: Date.now() // Add timestamp to force updates when needed
     }
   }, [
-    Object.keys(graphNodes).length, 
-    Object.values(graphNodes).map(n => `${n.status}-${n.layer}`).join('|'),
-    Object.keys(graphs).length,
-    selectedNodeId, 
+    Object.keys(graphNodes).length,
+    // Only update when status actually changes, not on every render
+    Object.values(graphNodes).map(n => n.status).sort().join('|'),
+    selectedNodeId,
     showContextFlow
   ])
 
-  // Convert backend data to React Flow format - with stable memoization
+  // Convert backend data to React Flow format - with very stable memoization
   const flowData = useMemo(() => {
     console.log('🔄 Converting flow data...')
     try {
@@ -98,15 +88,19 @@ const FlowContent: React.FC = () => {
       console.error('❌ Error converting flow data:', error)
       return { nodes: [], edges: [] }
     }
-  }, [stableGraphData]) // Use stable data for memoization
+  }, [stableGraphSignature])
 
-  // Debounced update function
-  const debouncedUpdate = useCallback(() => {
+  // Much slower update function - only every 2 seconds
+  const throttledUpdate = useCallback(() => {
+    const now = Date.now()
+    const timeSinceLastUpdate = now - lastUpdateRef.current
+    const minUpdateInterval = 2000 // 2 seconds minimum between updates
+
     if (updateTimeoutRef.current) {
       clearTimeout(updateTimeoutRef.current)
     }
 
-    updateTimeoutRef.current = setTimeout(() => {
+    const scheduleUpdate = () => {
       if (isUpdatingRef.current) {
         console.log('⚠️ Update already in progress, skipping')
         return
@@ -114,35 +108,38 @@ const FlowContent: React.FC = () => {
 
       const currentNodeCount = Object.keys(graphNodes).length
       const hasNewNodes = currentNodeCount > prevNodeCountRef.current
-      
-      // Only update if there are significant changes
-      if (currentNodeCount !== prevNodeCountRef.current || hasNewNodes) {
+      const hasSignificantChange = currentNodeCount !== prevNodeCountRef.current
+
+      // Only update for significant changes or new nodes
+      if (hasSignificantChange || hasNewNodes) {
         isUpdatingRef.current = true
+        lastUpdateRef.current = now
         
-        console.log('🔄 Updating React Flow:', {
+        console.log('🔄 Updating React Flow (throttled):', {
           previousNodes: prevNodeCountRef.current,
           currentNodes: currentNodeCount,
-          hasNewNodes
+          hasNewNodes,
+          timeSinceLastUpdate
         })
 
         try {
           setNodes(flowData.nodes)
           setEdges(flowData.edges)
 
-          // Auto-fit view when new nodes are added (debounced)
+          // Auto-fit view when new nodes are added
           if (hasNewNodes && flowData.nodes.length > 0) {
             console.log('🎯 Auto-fitting view for new nodes')
             setTimeout(() => {
               try {
                 fitView({ 
                   padding: 0.2, 
-                  duration: 600, // Reduced duration for smoother animation
+                  duration: 800,
                   includeHiddenNodes: false
                 })
               } catch (error) {
                 console.error('❌ Error fitting view:', error)
               }
-            }, 300) // Increased delay to reduce conflicts
+            }, 400)
           }
 
           prevNodeCountRef.current = currentNodeCount
@@ -151,15 +148,25 @@ const FlowContent: React.FC = () => {
         } finally {
           setTimeout(() => {
             isUpdatingRef.current = false
-          }, 100) // Short delay before allowing next update
+          }, 500) // Longer delay before allowing next update
         }
       }
-    }, 150) // 150ms debounce
+    }
+
+    // If enough time has passed, update immediately
+    if (timeSinceLastUpdate >= minUpdateInterval) {
+      scheduleUpdate()
+    } else {
+      // Otherwise, schedule for later
+      const delay = minUpdateInterval - timeSinceLastUpdate
+      console.log(`⏳ Throttling update, will update in ${delay}ms`)
+      updateTimeoutRef.current = setTimeout(scheduleUpdate, delay)
+    }
   }, [flowData.nodes, flowData.edges, graphNodes, setNodes, setEdges, fitView])
 
-  // Use debounced update
+  // Use throttled update with longer intervals
   useEffect(() => {
-    debouncedUpdate()
+    throttledUpdate()
     
     // Cleanup timeout on unmount
     return () => {
@@ -167,9 +174,9 @@ const FlowContent: React.FC = () => {
         clearTimeout(updateTimeoutRef.current)
       }
     }
-  }, [debouncedUpdate])
+  }, [throttledUpdate])
 
-  // Optimized node click handler with error boundary
+  // Optimized node click handler
   const onNodeClick = useCallback(
     (_event: React.MouseEvent, node: Node) => {
       try {
@@ -214,20 +221,22 @@ const FlowContent: React.FC = () => {
       nodeTypes={nodeTypes}
       edgeTypes={edgeTypes}
       fitView
-      fitViewOptions={{ padding: 0.2, duration: 600 }}
+      fitViewOptions={{ padding: 0.2, duration: 800 }}
       defaultViewport={{ x: 0, y: 0, zoom: 1 }}
       attributionPosition="bottom-left"
       proOptions={{ hideAttribution: true }}
-      // Optimized performance settings to reduce flashing
+      // Optimized performance settings
       onlyRenderVisibleElements={true}
       nodesDraggable={true}
       nodesConnectable={false}
       elementsSelectable={true}
       minZoom={0.1}
       maxZoom={4}
-      // Add these to reduce re-renders
+      // Disable key codes to reduce unnecessary re-renders
       deleteKeyCode={null}
       multiSelectionKeyCode={null}
+      // Disable snap to grid to reduce updates
+      snapToGrid={false}
     >
       <Background 
         variant={BackgroundVariant.Dots} 

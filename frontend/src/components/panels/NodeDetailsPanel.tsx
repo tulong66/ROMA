@@ -70,28 +70,34 @@ const copyToClipboard = async (text: string) => {
 }
 
 interface ExpandableContentProps {
-  title: string
+  title?: string
   content: string
   maxLength?: number
+  className?: string
+  alwaysShowButton?: boolean
 }
 
 const ExpandableContent: React.FC<ExpandableContentProps> = ({ 
   title, 
   content, 
-  maxLength = 200 
+  maxLength = 200,
+  className = "",
+  alwaysShowButton = false
 }) => {
   const [isExpanded, setIsExpanded] = useState(false)
   const shouldTruncate = content.length > maxLength
+  const showButton = shouldTruncate || alwaysShowButton
+  
   const displayContent = shouldTruncate && !isExpanded 
     ? content.substring(0, maxLength) + '...' 
     : content
 
   return (
-    <div>
+    <div className={className}>
       {title && (
         <div className="flex items-center justify-between mb-2">
           <h4 className="text-sm font-medium text-foreground">{title}</h4>
-          {shouldTruncate && (
+          {showButton && (
             <Button
               variant="ghost"
               size="sm"
@@ -113,9 +119,34 @@ const ExpandableContent: React.FC<ExpandableContentProps> = ({
           )}
         </div>
       )}
-      <p className="text-sm text-muted-foreground leading-relaxed">
+      
+      {/* Show expand button even when no title, for inline expansion */}
+      {!title && showButton && (
+        <div className="flex justify-end mb-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="h-6 px-2 text-xs"
+          >
+            {isExpanded ? (
+              <>
+                <ChevronDown className="w-3 h-3 mr-1" />
+                Show Less
+              </>
+            ) : (
+              <>
+                <ChevronRight className="w-3 h-3 mr-1" />
+                Show Full Goal
+              </>
+            )}
+          </Button>
+        </div>
+      )}
+      
+      <div className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap break-words">
         {displayContent}
-      </p>
+      </div>
     </div>
   )
 }
@@ -207,6 +238,7 @@ const SubTasksList: React.FC<{ taskIds: string[], allNodes: Record<string, TaskN
 const NodeDetailsPanel: React.FC = () => {
   const { selectedNodeId, nodes, selectNode } = useTaskGraphStore()
   const [isFullResultModalOpen, setIsFullResultModalOpen] = useState(false)
+  const [isNavigationExpanded, setIsNavigationExpanded] = useState(false)
   
   const selectedNode = selectedNodeId ? nodes[selectedNodeId] : null
 
@@ -220,7 +252,7 @@ const NodeDetailsPanel: React.FC = () => {
           <h3 className="text-lg font-semibold mb-2">Node Details</h3>
           <p className="text-muted-foreground text-sm leading-relaxed">
             Click on any node in the graph to view its detailed information, 
-            relationships, and advanced navigation options.
+            relationships, and navigation options.
           </p>
         </div>
       </div>
@@ -275,16 +307,16 @@ const NodeDetailsPanel: React.FC = () => {
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {/* Goal Section */}
+          {/* Goal Section - Always allow expansion */}
           <div className="space-y-3">
             <div className="flex items-center space-x-2 pb-2 border-b border-border/50">
               <Target className="w-4 h-4 text-blue-600" />
               <h3 className="text-sm font-semibold text-foreground">Task Goal</h3>
             </div>
             <ExpandableContent
-              title=""
               content={selectedNode.goal}
-              maxLength={150}
+              maxLength={120}
+              alwaysShowButton={true}
             />
           </div>
 
@@ -352,15 +384,17 @@ const NodeDetailsPanel: React.FC = () => {
                 <ExpandableContent
                   title="Input Summary"
                   content={selectedNode.input_payload_summary}
+                  className="mb-4"
+                  maxLength={150}
                 />
               )}
               {selectedNode.output_summary && (
-                <div className="mt-4">
-                  <ExpandableContent
-                    title="Output Summary"
-                    content={selectedNode.output_summary}
-                  />
-                </div>
+                <ExpandableContent
+                  title="Output Summary"
+                  content={selectedNode.output_summary}
+                  maxLength={150}
+                  alwaysShowButton={true}
+                />
               )}
             </div>
           )}
@@ -393,15 +427,6 @@ const NodeDetailsPanel: React.FC = () => {
               />
             </div>
           )}
-
-          {/* Enhanced Navigation Section */}
-          <div className="space-y-3">
-            <div className="flex items-center space-x-2 pb-2 border-b border-border/50">
-              <Navigation className="w-4 h-4 text-blue-600" />
-              <h3 className="text-sm font-semibold text-foreground">Enhanced Navigation</h3>
-            </div>
-            <NodeNavigator />
-          </div>
 
           {/* Error Section */}
           {selectedNode.error && (
@@ -457,6 +482,36 @@ const NodeDetailsPanel: React.FC = () => {
                 Copy Raw Data
               </Button>
             </div>
+          </div>
+
+          {/* Enhanced Navigation Section - Completely Collapsible */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between pb-2 border-b border-border/50">
+              <div className="flex items-center space-x-2">
+                <Navigation className="w-4 h-4 text-gray-500" />
+                <h3 className="text-sm font-semibold text-foreground">Enhanced Navigation</h3>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsNavigationExpanded(!isNavigationExpanded)}
+                className="h-6 px-2 text-xs"
+              >
+                {isNavigationExpanded ? (
+                  <>
+                    <ChevronDown className="w-3 h-3 mr-1" />
+                    Hide
+                  </>
+                ) : (
+                  <>
+                    <ChevronRight className="w-3 h-3 mr-1" />
+                    Show
+                  </>
+                )}
+              </Button>
+            </div>
+            
+            {isNavigationExpanded && <NodeNavigator />}
           </div>
         </div>
       </div>
