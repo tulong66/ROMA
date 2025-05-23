@@ -81,7 +81,7 @@ const TaskNodeComponent: React.FC<NodeProps<TaskNodeData>> = ({ data, selected }
       min-w-[280px] max-w-[320px] p-4 rounded-xl border-2 shadow-lg transition-all duration-300
       ${backgroundColorClass}
       ${selected ? 'ring-2 ring-primary scale-105 shadow-xl' : 'hover:shadow-md'}
-      ${node.status === 'RUNNING' ? 'animate-pulse' : ''}
+      ${node.status === 'RUNNING' ? 'pulse-glow' : ''}
     `}>
       {/* Input Handle */}
       <Handle

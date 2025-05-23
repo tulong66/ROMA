@@ -47,22 +47,29 @@ const formatDataSize = (str: string): string => {
 }
 
 const detectDataType = (node: TaskNode): FormattedData => {
-  // Priority order: look for markdown versions first, then other formats
+  // Priority order: look for specific fields with complete content first
   const candidates = [
-    // Check for common markdown field names
+    // Check for the specific field that contains complete search results with citations
+    { field: 'full_result.output_text_with_citations', data: node.full_result?.output_text_with_citations, type: 'markdown' as const },
+    
+    // Check for other potential markdown fields in full_result
+    { field: 'full_result.output_text', data: node.full_result?.output_text, type: 'markdown' as const },
+    { field: 'full_result.result', data: node.full_result?.result, type: 'unknown' as const },
+    
+    // Check for common markdown field names at root level
     { field: 'output_summary_markdown', data: (node as any).output_summary_markdown, type: 'markdown' as const },
     { field: 'result_markdown', data: (node as any).result_markdown, type: 'markdown' as const },
     { field: 'markdown_result', data: (node as any).markdown_result, type: 'markdown' as const },
     { field: 'output_markdown', data: (node as any).output_markdown, type: 'markdown' as const },
     
-    // Then check for formatted text versions
-    { field: 'output_summary', data: node.output_summary, type: 'text' as const },
+    // Then check full_result as a whole (for non-search nodes)
+    { field: 'full_result', data: node.full_result, type: 'unknown' as const },
     
-    // Finally fall back to full_result
-    { field: 'full_result', data: node.full_result, type: 'unknown' as const }
+    // Finally fall back to output_summary (truncated version)
+    { field: 'output_summary', data: node.output_summary, type: 'text' as const }
   ]
 
-  // Find the first available candidate with actual content
+  // Find the first available candidate with substantial content
   for (const candidate of candidates) {
     if (candidate.data && 
         candidate.data !== null && 
@@ -79,9 +86,17 @@ const detectDataType = (node: TaskNode): FormattedData => {
         type = 'json'
       }
 
+      // Skip if this is just a truncated version and we might have better content
+      // Check if content looks truncated (ends with "..." or mentions annotations)
+      if (candidate.field === 'output_summary' && 
+          (content.includes('...') || content.match(/\(\d+\s+annotations?\)/))) {
+        // Continue to next candidate to see if we have better content
+        continue
+      }
+
       // Auto-detect markdown if not already specified
       if (type === 'unknown' || type === 'text') {
-        if (content.includes('# ') || content.includes('## ') || content.includes('**') || content.includes('- ')) {
+        if (content.includes('# ') || content.includes('## ') || content.includes('**') || content.includes('- ') || content.includes('[') || content.includes('*')) {
           type = 'markdown'
         } else if (content.trim().startsWith('{') || content.trim().startsWith('[')) {
           try {
@@ -158,15 +173,78 @@ const getTypeColor = (type: FormattedData['type']) => {
   }
 }
 
+// Add simple markdown-to-HTML converter
+const parseMarkdown = (content: string): string => {
+  return content
+    // Headers
+    .replace(/^### (.*$)/gim, '<h3 class="text-lg font-semibold mb-2 mt-4 text-foreground">$1</h3>')
+    .replace(/^## (.*$)/gim, '<h2 class="text-xl font-semibold mb-3 mt-4 text-foreground">$1</h2>')
+    .replace(/^# (.*$)/gim, '<h1 class="text-2xl font-bold mb-3 mt-4 text-foreground">$1</h1>')
+    
+    // Bold and italic
+    .replace(/\*\*\*(.*?)\*\*\*/g, '<strong><em>$1</em></strong>')
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+    
+    // Code blocks
+    .replace(/```([\s\S]*?)```/g, '<pre class="bg-muted p-3 rounded-md overflow-x-auto my-3 border text-sm"><code>$1</code></pre>')
+    .replace(/`(.*?)`/g, '<code class="bg-muted px-1 py-0.5 rounded text-sm">$1</code>')
+    
+    // Lists
+    .replace(/^\* (.*$)/gim, '<li class="ml-4 mb-1">• $1</li>')
+    .replace(/^- (.*$)/gim, '<li class="ml-4 mb-1">• $1</li>')
+    .replace(/^\d+\. (.*$)/gim, '<li class="ml-4 mb-1 list-decimal">$1</li>')
+    
+    // Links
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="text-blue-600 dark:text-blue-400 hover:underline" target="_blank" rel="noopener noreferrer">$1</a>')
+    
+    // Line breaks
+    .replace(/\n\n/g, '<br><br>')
+    .replace(/\n/g, '<br>')
+}
+
 const MarkdownViewer: React.FC<{ content: string }> = ({ content }) => {
+  const [isRawMode, setIsRawMode] = useState(false)
+  
+  const renderedContent = useMemo(() => {
+    if (isRawMode) return content
+    return parseMarkdown(content)
+  }, [content, isRawMode])
+
   return (
     <div className="space-y-2">
-      <span className="text-sm text-muted-foreground">Markdown Content</span>
-      <div className="prose prose-sm dark:prose-invert max-w-none bg-muted/30 p-4 rounded-lg overflow-auto max-h-96 border">
-        <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed">
+      <div className="flex items-center justify-between">
+        <span className="text-sm text-muted-foreground">Markdown Content</span>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setIsRawMode(!isRawMode)}
+          className="h-6 px-2 text-xs"
+        >
+          {isRawMode ? (
+            <>
+              <Eye className="w-3 h-3 mr-1" />
+              Rendered
+            </>
+          ) : (
+            <>
+              <EyeOff className="w-3 h-3 mr-1" />
+              Raw
+            </>
+          )}
+        </Button>
+      </div>
+      
+      {isRawMode ? (
+        <pre className="text-sm font-mono bg-muted/30 p-4 rounded-lg overflow-auto max-h-96 border whitespace-pre-wrap">
           {content}
         </pre>
-      </div>
+      ) : (
+        <div 
+          className="prose prose-sm dark:prose-invert max-w-none bg-muted/30 p-4 rounded-lg overflow-auto max-h-96 border text-sm leading-relaxed"
+          dangerouslySetInnerHTML={{ __html: renderedContent }}
+        />
+      )}
     </div>
   )
 }
