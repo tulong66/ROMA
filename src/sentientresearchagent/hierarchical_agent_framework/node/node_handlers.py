@@ -3,7 +3,7 @@ from loguru import logger
 
 from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode, TaskStatus, NodeType, TaskType
 from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models import (
-    AgentTaskInput, PlanOutput, ReplanRequestDetails, CustomSearcherOutput, PlanModifierInput
+    AgentTaskInput, PlanOutput, ReplanRequestDetails, CustomSearcherOutput, PlanModifierInput, ContextItem
 )
 from sentientresearchagent.hierarchical_agent_framework.agents.registry import get_agent_adapter
 from sentientresearchagent.hierarchical_agent_framework.context.context_builder import (
@@ -264,7 +264,7 @@ class AggregatingNodeHandler(INodeHandler):
                 for child_node in child_nodes:
                     child_status = child_node.status if isinstance(child_node.status, TaskStatus) else TaskStatus(str(child_node.status))
                     if child_status in [TaskStatus.DONE, TaskStatus.FAILED]:
-                        child_results_for_aggregator.append(AgentTaskInput.ContextItem( 
+                        child_results_for_aggregator.append(ContextItem( 
                             source_task_id=child_node.task_id, source_task_goal=child_node.goal,
                             content=child_node.result if child_status == TaskStatus.DONE else child_node.error,
                             content_type_description=f"child_{child_status.value.lower()}_output"
