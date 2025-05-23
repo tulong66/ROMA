@@ -8,17 +8,22 @@ import { webSocketService } from '@/services/websocketService'
 const ProjectInput: React.FC = () => {
   const [goal, setGoal] = useState('Write me a detailed report about the recent U.S. trade tariffs and their effect on the global economy')
   const [isStarting, setIsStarting] = useState(false)
-  const { isConnected } = useTaskGraphStore()
+  const { isConnected, setLoading } = useTaskGraphStore()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!goal.trim() || !isConnected) return
 
+    console.log('🚀 Starting project from ProjectInput')
     setIsStarting(true)
+    setLoading(true) // Set loading state in store
+    
     try {
       webSocketService.startProject(goal.trim())
+      console.log('✅ Project start request sent')
     } catch (error) {
-      console.error('Failed to start project:', error)
+      console.error('❌ Failed to start project:', error)
+      setLoading(false) // Reset loading on error
     } finally {
       setIsStarting(false)
     }

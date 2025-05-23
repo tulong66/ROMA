@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef } from 'react'
 import ReactFlow, {
   Node,
   Edge,
@@ -41,43 +41,96 @@ const FlowContent: React.FC = () => {
 
   const [nodes, setNodes, onNodesChange] = useNodesState([])
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
-  const { fitView } = useReactFlow() // This now works because we're inside ReactFlowProvider
+  const { fitView } = useReactFlow()
+  
+  // Use refs to track previous state for better change detection
+  const prevNodeCountRef = useRef(0)
+  const prevGraphStateRef = useRef('')
 
-  // Add debugging
-  console.log('GraphVisualization render:', {
+  // Create a state signature for change detection
+  const currentStateSignature = useMemo(() => {
+    const nodeEntries = Object.entries(graphNodes)
+    const signature = nodeEntries.map(([id, node]) => 
+      `${id}:${node.status}:${node.layer}:${node.goal.substring(0, 20)}`
+    ).join('|')
+    return signature
+  }, [graphNodes])
+
+  console.log('🔄 FlowContent render:', {
     graphNodesCount: Object.keys(graphNodes).length,
     graphsCount: Object.keys(graphs).length,
     selectedNodeId,
-    showContextFlow
+    showContextFlow,
+    stateSignature: currentStateSignature.substring(0, 50) + '...'
   })
 
   // Convert backend data to React Flow format
   const flowData = useMemo(() => {
-    console.log('Converting flow data...')
+    console.log('🔄 Converting flow data...')
     try {
       const flowNodes = convertToFlowNodes(graphNodes, selectedNodeId)
       const flowEdges = convertToFlowEdges(graphNodes, graphs, showContextFlow)
-      console.log('Flow data converted:', { nodes: flowNodes.length, edges: flowEdges.length })
+      console.log('✅ Flow data converted:', { 
+        nodes: flowNodes.length, 
+        edges: flowEdges.length,
+        nodeIds: flowNodes.map(n => n.id)
+      })
       return { nodes: flowNodes, edges: flowEdges }
     } catch (error) {
-      console.error('Error converting flow data:', error)
+      console.error('❌ Error converting flow data:', error)
       return { nodes: [], edges: [] }
     }
-  }, [graphNodes, graphs, selectedNodeId, showContextFlow])
+  }, [graphNodes, graphs, selectedNodeId, showContextFlow, currentStateSignature])
 
   // Update React Flow nodes and edges when data changes
   useEffect(() => {
-    console.log('Updating React Flow with:', flowData)
-    setNodes(flowData.nodes)
-    setEdges(flowData.edges)
-    
-    // Auto-fit view if we have nodes
-    if (flowData.nodes.length > 0) {
-      setTimeout(() => {
-        fitView({ padding: 0.2, duration: 800 })
-      }, 100)
+    const currentNodeCount = Object.keys(graphNodes).length
+    const hasNewNodes = currentNodeCount > prevNodeCountRef.current
+    const stateChanged = currentStateSignature !== prevGraphStateRef.current
+
+    if (stateChanged) {
+      console.log('🔄 State changed, updating React Flow:', {
+        previousNodes: prevNodeCountRef.current,
+        currentNodes: currentNodeCount,
+        hasNewNodes,
+        stateChanged
+      })
+
+      setNodes(flowData.nodes)
+      setEdges(flowData.edges)
+
+      // Auto-fit view when new nodes are added
+      if (hasNewNodes && flowData.nodes.length > 0) {
+        console.log('🎯 Auto-fitting view for new nodes')
+        setTimeout(() => {
+          fitView({ 
+            padding: 0.2, 
+            duration: 800,
+            includeHiddenNodes: false
+          })
+        }, 200)
+      }
+
+      // Update refs
+      prevNodeCountRef.current = currentNodeCount
+      prevGraphStateRef.current = currentStateSignature
     }
-  }, [flowData, setNodes, setEdges, fitView])
+  }, [flowData, setNodes, setEdges, fitView, currentStateSignature, graphNodes])
+
+  // Force re-render periodically to catch any missed updates
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const currentCount = Object.keys(graphNodes).length
+      if (currentCount > 0 && currentCount !== prevNodeCountRef.current) {
+        console.log('🔄 Periodic check detected changes, forcing update')
+        setNodes(flowData.nodes)
+        setEdges(flowData.edges)
+        prevNodeCountRef.current = currentCount
+      }
+    }, 3000) // Check every 3 seconds
+
+    return () => clearInterval(interval)
+  }, [graphNodes, flowData, setNodes, setEdges])
 
   const onNodeClick = useCallback(
     (_event: React.MouseEvent, node: Node) => {
@@ -111,6 +164,11 @@ const FlowContent: React.FC = () => {
       defaultViewport={{ x: 0, y: 0, zoom: 1 }}
       attributionPosition="bottom-left"
       proOptions={{ hideAttribution: true }}
+      // Enable better performance and updates
+      onlyRenderVisibleElements={false}
+      nodesDraggable={true}
+      nodesConnectable={false}
+      elementsSelectable={true}
     >
       <Background 
         variant={BackgroundVariant.Dots} 
@@ -139,6 +197,9 @@ const GraphVisualization: React.FC = () => {
           <p className="text-muted-foreground">
             Start a project to see the task decomposition graph
           </p>
+          <div className="mt-4 text-xs text-muted-foreground">
+            Real-time updates enabled ⚡
+          </div>
         </div>
       </div>
     )

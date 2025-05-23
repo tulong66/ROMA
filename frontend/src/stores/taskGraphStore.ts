@@ -46,23 +46,32 @@ export const useTaskGraphStore = create<TaskGraphState>()(
     
     // Actions
     setData: (data: APIResponse) => {
-      console.log('Store: Received data update:', data)
-      console.log('Nodes count:', Object.keys(data.all_nodes || {}).length)
-      console.log('Graphs count:', Object.keys(data.graphs || {}).length)
+      console.log('📊 Store: Received data update:', data)
+      console.log('📊 Nodes count:', Object.keys(data.all_nodes || {}).length)
+      console.log('📊 Graphs count:', Object.keys(data.graphs || {}).length)
+      
+      const hasNewData = Object.keys(data.all_nodes || {}).length > 0
       
       set({
         nodes: data.all_nodes || {},
         graphs: data.graphs || {},
         overallProjectGoal: data.overall_project_goal,
+        // Clear loading state when we receive data
+        isLoading: hasNewData ? false : get().isLoading,
       })
+      
+      console.log('📊 Store updated, isLoading now:', hasNewData ? false : get().isLoading)
     },
     
     setConnectionStatus: (status: boolean) => {
-      console.log('Store: Connection status changed:', status)
+      console.log('🔌 Store: Connection status changed:', status)
       set({ isConnected: status })
     },
     
-    setLoading: (loading: boolean) => set({ isLoading: loading }),
+    setLoading: (loading: boolean) => {
+      console.log('⏳ Store: Loading state changed:', loading)
+      set({ isLoading: loading })
+    },
     
     selectNode: (nodeId?: string) => set({ selectedNodeId: nodeId }),
     

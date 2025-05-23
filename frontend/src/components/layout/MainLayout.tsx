@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useTaskGraphStore } from '@/stores/taskGraphStore'
 import { webSocketService } from '@/services/websocketService'
 import Header from './Header'
@@ -13,8 +13,12 @@ const MainLayout: React.FC = () => {
     isConnected, 
     nodes, 
     overallProjectGoal,
-    isHITLModalOpen 
+    isHITLModalOpen,
+    isLoading
   } = useTaskGraphStore()
+
+  const [loadingMessage, setLoadingMessage] = useState('Initializing project...')
+  const [loadingDots, setLoadingDots] = useState('')
 
   useEffect(() => {
     // Initialize WebSocket connection
@@ -26,7 +30,50 @@ const MainLayout: React.FC = () => {
     }
   }, [])
 
+  // Animated loading dots
+  useEffect(() => {
+    if (!isLoading) return
+
+    const interval = setInterval(() => {
+      setLoadingDots(prev => prev.length >= 3 ? '' : prev + '.')
+    }, 500)
+
+    return () => clearInterval(interval)
+  }, [isLoading])
+
+  // Update loading message based on time elapsed
+  useEffect(() => {
+    if (!isLoading) return
+
+    const messages = [
+      'Initializing project...',
+      'Setting up task framework...',
+      'Creating root task...',
+      'Planning task decomposition...',
+      'Calling AI agents...',
+      'Processing initial analysis...'
+    ]
+
+    let messageIndex = 0
+    setLoadingMessage(messages[0])
+
+    const interval = setInterval(() => {
+      messageIndex = (messageIndex + 1) % messages.length
+      setLoadingMessage(messages[messageIndex])
+    }, 3000)
+
+    return () => clearInterval(interval)
+  }, [isLoading])
+
   const hasNodes = Object.keys(nodes).length > 0
+  
+  // Add debugging to see when this changes
+  console.log('MainLayout render:', { 
+    hasNodes, 
+    nodeCount: Object.keys(nodes).length, 
+    overallProjectGoal: overallProjectGoal?.substring(0, 50) + '...',
+    isLoading 
+  })
 
   return (
     <div className="h-screen flex flex-col bg-background">
@@ -45,7 +92,40 @@ const MainLayout: React.FC = () => {
           
           {/* Graph or Welcome Screen */}
           <div className="flex-1 relative">
-            {hasNodes ? (
+            {isLoading ? (
+              <div className="flex items-center justify-center h-full">
+                <div className="text-center max-w-md">
+                  {/* Loading spinner */}
+                  <div className="relative mb-6">
+                    <div className="animate-spin rounded-full h-12 w-12 border-4 border-muted border-t-primary mx-auto"></div>
+                    <div className="absolute inset-0 rounded-full h-12 w-12 border-4 border-primary/20 mx-auto animate-pulse"></div>
+                  </div>
+                  
+                  {/* Loading message */}
+                  <h3 className="text-xl font-semibold mb-2">
+                    {loadingMessage}{loadingDots}
+                  </h3>
+                  
+                  <p className="text-muted-foreground mb-4">
+                    This may take 15-30 seconds as AI agents analyze your project
+                  </p>
+                  
+                  {/* Progress indicators */}
+                  <div className="space-y-2 text-sm text-muted-foreground">
+                    <div className="flex items-center justify-center space-x-2">
+                      <div className="w-2 h-2 bg-primary rounded-full animate-pulse"></div>
+                      <span>Connecting to AI systems</span>
+                    </div>
+                    {overallProjectGoal && (
+                      <div className="flex items-center justify-center space-x-2">
+                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                        <span>Project goal received</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : hasNodes ? (
               <GraphVisualization />
             ) : (
               <div className="flex items-center justify-center h-full">
@@ -55,7 +135,7 @@ const MainLayout: React.FC = () => {
           </div>
         </div>
         
-        {/* Node Details Panel */}
+        {/* Node Details Panel - only show when we have nodes */}
         {hasNodes && <NodeDetailsPanel />}
       </div>
       

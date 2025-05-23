@@ -56,11 +56,13 @@ class WebSocketService {
     })
 
     this.socket.on('project_started', (data) => {
-      console.log('🚀 Project started:', data)
+      console.log('🚀 Project started confirmation:', data)
+      // Project has started, keep loading state until we get actual data
     })
 
     this.socket.on('error', (error) => {
       console.error('❌ Socket error:', error)
+      useTaskGraphStore.getState().setLoading(false)
     })
   }
 
@@ -91,6 +93,7 @@ class WebSocketService {
       this.socket.emit('start_project', { project_goal: projectGoal, max_steps: maxSteps })
     } else {
       console.error('❌ Cannot start project: not connected')
+      useTaskGraphStore.getState().setLoading(false)
     }
   }
 
