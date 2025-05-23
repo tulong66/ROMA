@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import { useTaskGraphStore } from '@/stores/taskGraphStore'
 import { webSocketService } from '@/services/websocketService'
 import Header from './Header'
@@ -20,15 +20,26 @@ const MainLayout: React.FC = () => {
   const [loadingMessage, setLoadingMessage] = useState('Initializing project...')
   const [loadingDots, setLoadingDots] = useState('')
 
+  // Initialize WebSocket connection once
   useEffect(() => {
-    // Initialize WebSocket connection
-    webSocketService.connect()
+    console.log('🔌 MainLayout: Initializing WebSocket connection')
+    
+    // Only connect if not already connected
+    if (!webSocketService.isConnected()) {
+      webSocketService.connect()
+    }
     
     // Cleanup on unmount
     return () => {
+      console.log('🔌 MainLayout: Cleaning up WebSocket connection')
       webSocketService.disconnect()
     }
-  }, [])
+  }, []) // Empty dependency array - only run once
+
+  // Handle connection status changes
+  useEffect(() => {
+    console.log('🔌 Connection status changed:', isConnected)
+  }, [isConnected])
 
   // Animated loading dots
   useEffect(() => {
@@ -67,11 +78,10 @@ const MainLayout: React.FC = () => {
 
   const hasNodes = Object.keys(nodes).length > 0
   
-  // Add debugging to see when this changes
   console.log('MainLayout render:', { 
     hasNodes, 
     nodeCount: Object.keys(nodes).length, 
-    overallProjectGoal: overallProjectGoal?.substring(0, 50) + '...',
+    isConnected,
     isLoading 
   })
 
@@ -113,8 +123,8 @@ const MainLayout: React.FC = () => {
                   {/* Progress indicators */}
                   <div className="space-y-2 text-sm text-muted-foreground">
                     <div className="flex items-center justify-center space-x-2">
-                      <div className="w-2 h-2 bg-primary rounded-full animate-pulse"></div>
-                      <span>Connecting to AI systems</span>
+                      <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-primary animate-pulse'}`}></div>
+                      <span>{isConnected ? 'Connected to AI systems' : 'Connecting to AI systems'}</span>
                     </div>
                     {overallProjectGoal && (
                       <div className="flex items-center justify-center space-x-2">

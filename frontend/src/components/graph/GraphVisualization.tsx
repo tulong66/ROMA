@@ -45,26 +45,15 @@ const FlowContent: React.FC = () => {
   
   // Use refs to track previous state for better change detection
   const prevNodeCountRef = useRef(0)
-  const prevGraphStateRef = useRef('')
-
-  // Create a state signature for change detection
-  const currentStateSignature = useMemo(() => {
-    const nodeEntries = Object.entries(graphNodes)
-    const signature = nodeEntries.map(([id, node]) => 
-      `${id}:${node.status}:${node.layer}:${node.goal.substring(0, 20)}`
-    ).join('|')
-    return signature
-  }, [graphNodes])
+  const isUpdatingRef = useRef(false)
 
   console.log('🔄 FlowContent render:', {
     graphNodesCount: Object.keys(graphNodes).length,
     graphsCount: Object.keys(graphs).length,
-    selectedNodeId,
-    showContextFlow,
-    stateSignature: currentStateSignature.substring(0, 50) + '...'
+    selectedNodeId
   })
 
-  // Convert backend data to React Flow format
+  // Convert backend data to React Flow format - optimized with better memoization
   const flowData = useMemo(() => {
     console.log('🔄 Converting flow data...')
     try {
@@ -72,79 +61,95 @@ const FlowContent: React.FC = () => {
       const flowEdges = convertToFlowEdges(graphNodes, graphs, showContextFlow)
       console.log('✅ Flow data converted:', { 
         nodes: flowNodes.length, 
-        edges: flowEdges.length,
-        nodeIds: flowNodes.map(n => n.id)
+        edges: flowEdges.length
       })
       return { nodes: flowNodes, edges: flowEdges }
     } catch (error) {
       console.error('❌ Error converting flow data:', error)
       return { nodes: [], edges: [] }
     }
-  }, [graphNodes, graphs, selectedNodeId, showContextFlow, currentStateSignature])
+  }, [graphNodes, graphs, selectedNodeId, showContextFlow])
 
-  // Update React Flow nodes and edges when data changes
+  // Update React Flow nodes and edges when data changes - optimized
   useEffect(() => {
+    if (isUpdatingRef.current) {
+      console.log('⚠️ Update already in progress, skipping')
+      return
+    }
+
     const currentNodeCount = Object.keys(graphNodes).length
     const hasNewNodes = currentNodeCount > prevNodeCountRef.current
-    const stateChanged = currentStateSignature !== prevGraphStateRef.current
-
-    if (stateChanged) {
-      console.log('🔄 State changed, updating React Flow:', {
+    
+    // Only update if there are actual changes
+    if (currentNodeCount !== prevNodeCountRef.current || hasNewNodes) {
+      isUpdatingRef.current = true
+      
+      console.log('🔄 Updating React Flow:', {
         previousNodes: prevNodeCountRef.current,
         currentNodes: currentNodeCount,
-        hasNewNodes,
-        stateChanged
+        hasNewNodes
       })
 
-      setNodes(flowData.nodes)
-      setEdges(flowData.edges)
-
-      // Auto-fit view when new nodes are added
-      if (hasNewNodes && flowData.nodes.length > 0) {
-        console.log('🎯 Auto-fitting view for new nodes')
-        setTimeout(() => {
-          fitView({ 
-            padding: 0.2, 
-            duration: 800,
-            includeHiddenNodes: false
-          })
-        }, 200)
-      }
-
-      // Update refs
-      prevNodeCountRef.current = currentNodeCount
-      prevGraphStateRef.current = currentStateSignature
-    }
-  }, [flowData, setNodes, setEdges, fitView, currentStateSignature, graphNodes])
-
-  // Force re-render periodically to catch any missed updates
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const currentCount = Object.keys(graphNodes).length
-      if (currentCount > 0 && currentCount !== prevNodeCountRef.current) {
-        console.log('🔄 Periodic check detected changes, forcing update')
+      try {
         setNodes(flowData.nodes)
         setEdges(flowData.edges)
-        prevNodeCountRef.current = currentCount
+
+        // Auto-fit view when new nodes are added
+        if (hasNewNodes && flowData.nodes.length > 0) {
+          console.log('🎯 Auto-fitting view for new nodes')
+          setTimeout(() => {
+            try {
+              fitView({ 
+                padding: 0.2, 
+                duration: 800,
+                includeHiddenNodes: false
+              })
+            } catch (error) {
+              console.error('❌ Error fitting view:', error)
+            }
+          }, 200)
+        }
+
+        // Update refs
+        prevNodeCountRef.current = currentNodeCount
+      } catch (error) {
+        console.error('❌ Error updating React Flow:', error)
+      } finally {
+        isUpdatingRef.current = false
       }
-    }, 3000) // Check every 3 seconds
+    }
+  }, [flowData.nodes, flowData.edges, graphNodes, setNodes, setEdges, fitView])
 
-    return () => clearInterval(interval)
-  }, [graphNodes, flowData, setNodes, setEdges])
-
+  // Optimized node click handler with error boundary
   const onNodeClick = useCallback(
     (_event: React.MouseEvent, node: Node) => {
-      selectNode(node.id === selectedNodeId ? undefined : node.id)
+      try {
+        console.log('🖱️ Node clicked:', node.id)
+        const newSelection = node.id === selectedNodeId ? undefined : node.id
+        selectNode(newSelection)
+      } catch (error) {
+        console.error('❌ Error handling node click:', error)
+      }
     },
     [selectNode, selectedNodeId]
   )
 
   const onPaneClick = useCallback(() => {
-    selectNode(undefined)
+    try {
+      selectNode(undefined)
+    } catch (error) {
+      console.error('❌ Error handling pane click:', error)
+    }
   }, [selectNode])
 
   const onConnect = useCallback(
-    (params: Connection) => setEdges((eds) => addEdge(params, eds)),
+    (params: Connection) => {
+      try {
+        setEdges((eds) => addEdge(params, eds))
+      } catch (error) {
+        console.error('❌ Error handling connection:', error)
+      }
+    },
     [setEdges]
   )
 
@@ -164,11 +169,13 @@ const FlowContent: React.FC = () => {
       defaultViewport={{ x: 0, y: 0, zoom: 1 }}
       attributionPosition="bottom-left"
       proOptions={{ hideAttribution: true }}
-      // Enable better performance and updates
-      onlyRenderVisibleElements={false}
+      // Optimized performance settings
+      onlyRenderVisibleElements={true}
       nodesDraggable={true}
       nodesConnectable={false}
       elementsSelectable={true}
+      minZoom={0.1}
+      maxZoom={4}
     >
       <Background 
         variant={BackgroundVariant.Dots} 
