@@ -26,6 +26,7 @@ from sentientresearchagent.hierarchical_agent_framework.agent_blueprints import 
 from .node_creation_utils import SubNodeCreator
 from .node_atomizer_utils import NodeAtomizer
 from .node_configs import NodeProcessorConfig
+from sentientresearchagent.config import SentientConfig
 
 
 
@@ -61,10 +62,14 @@ class NodeProcessor:
     def __init__(self,
                  task_graph: TaskGraph,
                  knowledge_store: KnowledgeStore,
-                 config: Optional[NodeProcessorConfig] = None,
-                 agent_blueprint_name: Optional[str] = None): # MODIFIED: Added agent_blueprint_name
+                 config: Optional[SentientConfig] = None,
+                 node_processor_config: Optional[NodeProcessorConfig] = None,
+                 agent_blueprint_name: Optional[str] = None):
         logger.info("NodeProcessor initialized.")
-        self.config = config if config else NodeProcessorConfig()
+        
+        self.config = config or SentientConfig()
+        self.node_processor_config = node_processor_config if node_processor_config else NodeProcessorConfig()
+        
         self.task_graph = task_graph
         self.knowledge_store = knowledge_store
         
@@ -78,7 +83,7 @@ class NodeProcessor:
         else:
             logger.info("NodeProcessor initialized without a specific Agent Blueprint.")
 
-        self.hitl_coordinator = HITLCoordinator(self.config)
+        self.hitl_coordinator = HITLCoordinator(self.node_processor_config)
         self.sub_node_creator = SubNodeCreator(task_graph, knowledge_store)
         # Assuming NodeAtomizer's constructor was updated to take hitl_coordinator directly
         self.node_atomizer = NodeAtomizer(self.hitl_coordinator)
@@ -87,7 +92,7 @@ class NodeProcessor:
         self.processor_context = ProcessorContext(
             task_graph=self.task_graph,
             knowledge_store=self.knowledge_store,
-            config=self.config,
+            config=self.node_processor_config,
             hitl_coordinator=self.hitl_coordinator,
             sub_node_creator=self.sub_node_creator,
             node_atomizer=self.node_atomizer,

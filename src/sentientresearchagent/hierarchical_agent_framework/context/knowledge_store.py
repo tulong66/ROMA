@@ -1,17 +1,13 @@
 from pydantic import BaseModel, Field
-from typing import List, Dict, Any, Optional, Literal
+from typing import List, Dict, Any, Optional
 from datetime import datetime
-from enum import Enum # Import Enum for the isinstance check
-from loguru import logger # Add loguru import
+from loguru import logger
 
-# Using string literals for status, task_type, node_type to align with TaskNode enums
-# but avoid circular dependency if TaskNode itself isn't fully defined when this is imported.
-# Or, ensure TaskNode enums are in a common 'types.py' if preferred.
-
-TaskStatusLiteral = Literal['PENDING', 'READY', 'RUNNING', 'PLAN_DONE', 'AGGREGATING', 'DONE', 'FAILED', 'NEEDS_REPLAN']
-TaskTypeLiteral = Literal['WRITE', 'THINK', 'SEARCH', 'AGGREGATE', 'CODE_INTERPRET', 'IMAGE_GENERATION'] # Add all from TaskNode.TaskType
-NodeTypeLiteral = Literal['PLAN', 'EXECUTE']
-
+# Import from our consolidated types module
+from sentientresearchagent.hierarchical_agent_framework.types import (
+    TaskStatusLiteral, TaskTypeLiteral, NodeTypeLiteral,
+    TaskStatus, TaskType, NodeType
+)
 
 class TaskRecord(BaseModel):
     """Represents the historical record of a task in the Knowledge Store."""
@@ -37,33 +33,30 @@ class TaskRecord(BaseModel):
     error_message: Optional[str] = None
 
     class Config:
-        use_enum_values = True # Keep this for serialization consistency if needed elsewhere
-
+        use_enum_values = True # Keep this for serialization consistency
 
 class KnowledgeStore(BaseModel):
     """A central repository for all task records."""
     records: Dict[str, TaskRecord] = Field(default_factory=dict)
 
     def add_or_update_record_from_node(self, node: Any): # Use Any to avoid circular dep with TaskNode initially
-        """Creates or updates a TaskRecord from a TaskNode."""
+        """Creates or updates a TaskRecord from a TaskNode with improved type handling."""
         
-        # --- MODIFIED SECTION START ---
-        # Get the string value, checking if the attribute is an Enum or already a string
-        task_type_val = node.task_type.value if isinstance(node.task_type, Enum) else node.task_type
-        node_type_val = node.node_type.value if isinstance(node.node_type, Enum) and node.node_type else node.node_type
-        status_val = node.status.value if isinstance(node.status, Enum) else node.status
-        # --- MODIFIED SECTION END ---
+        # Simplified enum handling - string enums work directly
+        task_type_val = str(node.task_type)
+        node_type_val = str(node.node_type) if node.node_type else None
+        status_val = str(node.status)
 
         record = TaskRecord(
             task_id=node.task_id,
             goal=node.goal,
-            task_type=task_type_val, # Use the derived string value
-            node_type=node_type_val, # Use the derived string value (or None)
+            task_type=task_type_val,
+            node_type=node_type_val,
             input_params_dict=node.input_payload_dict or {},
             output_content=node.result,
             output_type_description=node.output_type_description,
             output_summary=node.output_summary,
-            status=status_val, # Use the derived string value
+            status=status_val,
             timestamp_created=node.timestamp_created,
             timestamp_updated=node.timestamp_updated,
             timestamp_completed=node.timestamp_completed,
@@ -76,4 +69,37 @@ class KnowledgeStore(BaseModel):
         logger.info(f"KnowledgeStore: Added/Updated record for {node.task_id}")
 
     def get_record(self, task_id: str) -> Optional[TaskRecord]:
+        """Get a task record by ID."""
         return self.records.get(task_id)
+
+    def get_records_by_status(self, status: TaskStatusLiteral) -> List[TaskRecord]:
+        """Get all records with a specific status."""
+        return [record for record in self.records.values() if record.status == status]
+
+    def get_records_by_layer(self, layer: int) -> List[TaskRecord]:
+        """Get all records at a specific layer."""
+        return [record for record in self.records.values() if record.layer == layer]
+
+    def get_child_records(self, parent_task_id: str) -> List[TaskRecord]:
+        """Get all direct child records of a parent task."""
+        return [record for record in self.records.values() 
+                if record.parent_task_id == parent_task_id]
+
+    def clear(self):
+        """Clear all records."""
+        self.records.clear()
+        logger.info("KnowledgeStore: All records cleared")
+
+    def get_summary_stats(self) -> Dict[str, Any]:
+        """Get summary statistics about stored records."""
+        if not self.records:
+            return {"total_records": 0}
+            
+        statuses = [record.status for record in self.records.values()]
+        status_counts = {status: statuses.count(status) for status in set(statuses)}
+        
+        return {
+            "total_records": len(self.records),
+            "status_breakdown": status_counts,
+            "layers": list(set(record.layer for record in self.records.values() if record.layer is not None))
+        }

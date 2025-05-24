@@ -1,0 +1,36 @@
+# Framework-Level Configuration ONLY
+# (Your sophisticated agents are already configured in agents/configurations.py)
+
+# LLM Infrastructure (used by your AgnoAgents)
+llm:
+  provider: "openrouter"  # Since you're using OpenRouter
+  api_key: "your-openrouter-key"  # Or OPENROUTER_API_KEY env var
+  timeout: 60.0  # Longer timeout for complex reasoning
+  max_retries: 3
+
+# Cache System (for your sophisticated agent responses)  
+cache:
+  enabled: true
+  cache_type: "file"  # Persist between sessions
+  cache_dir: ".agent_cache"
+  ttl_seconds: 7200  # 2 hours (longer for complex reasoning)
+  max_size: 500  # Fewer but larger responses
+
+# Execution Framework
+execution:
+  max_concurrent_nodes: 3  # Conservative for complex agents
+  max_execution_steps: 500  # More steps for deep reasoning
+  enable_hitl: true
+  hitl_timeout_seconds: 600.0  # 10 minutes for human review
+
+# Logging (for debugging your complex agents)
+logging:
+  level: "INFO"  # More detailed for sophisticated system
+  enable_console: true
+  enable_file: true
+  file_path: "research_agent.log"
+
+# Environment
+environment: "research"
+
+# NO AGENT CONFIGURATION HERE - Your agents are already perfectly configured!

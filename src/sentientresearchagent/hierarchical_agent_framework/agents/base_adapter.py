@@ -15,6 +15,13 @@ from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models 
 # Import prompt templates
 from .prompts import INPUT_PROMPT, AGGREGATOR_PROMPT
 
+from sentientresearchagent.exceptions import (
+    AgentExecutionError, AgentTimeoutError, AgentRateLimitError,
+    handle_exception, create_error_context
+)
+from sentientresearchagent.error_handler import handle_agent_errors, ErrorRecovery
+from sentientresearchagent.cache.decorators import cache_agent_response, cache_get, cache_set
+
 InputType = TypeVar('InputType')
 OutputType = TypeVar('OutputType')
 
@@ -179,29 +186,44 @@ Ensure your output is a valid JSON conforming to the PlanOutput schema, containi
         else:
             raise TypeError(f"Unsupported agent_task_input type: {type(agent_task_input)} for _prepare_agno_run_arguments")
 
-    async def process(self, node: TaskNode, agent_task_input: InputType) -> OutputType: # Changed to async def
+    @handle_agent_errors(agent_name_param="self.agent_name", component="llm_adapter")
+    @cache_agent_response(ttl_seconds=3600)  # Cache for 1 hour by default
+    async def process(self, node: TaskNode, agent_task_input: InputType) -> OutputType:
         """
-        Processes a TaskNode using the configured AgnoAgent.
-        Includes a simple retry mechanism for the Agno agent call.
+        Processes a TaskNode using the configured AgnoAgent with caching and improved error handling.
         """
         logger.info(f"  Adapter '{self.agent_name}': Processing node {node.task_id} (Goal: '{node.goal[:50]}...')")
 
-        user_message_string = self._prepare_agno_run_arguments(agent_task_input)
+        # Check if we should skip cache for this request
+        if hasattr(agent_task_input, 'force_refresh') and agent_task_input.force_refresh:
+            logger.debug(f"  Adapter '{self.agent_name}': Skipping cache due to force_refresh flag")
+            # Note: The cache decorator will still try to cache the result
+        
+        try:
+            user_message_string = self._prepare_agno_run_arguments(agent_task_input)
+        except Exception as e:
+            raise AgentExecutionError(
+                agent_name=self.agent_name,
+                task_id=node.task_id,
+                original_error=e,
+                attempt_number=1
+            )
         
         agno_agent_name = getattr(self.agno_agent, 'name', 'N/A') or 'N/A'
-        logger.debug(f"    DEBUG: User message string to Agno Agent '{agno_agent_name}':\\n{user_message_string[:200]}...") # Log snippet
+        logger.debug(f"    DEBUG: User message string to Agno Agent '{agno_agent_name}':\\n{user_message_string[:200]}...")
 
-        max_retries = 3 # Set to 3 for 1 initial attempt + 2 retries
-        retry_delay_seconds = 5 
+        # Use the retry utility instead of manual retry logic
+        async def execute_agent():
+            if not hasattr(self.agno_agent, 'arun'):
+                raise AgentExecutionError(
+                    agent_name=self.agent_name,
+                    task_id=node.task_id,
+                    original_error=NotImplementedError(f"AgnoAgent for '{self.agent_name}' needs an async 'arun' method."),
+                    attempt_number=1
+                )
 
-        for attempt in range(max_retries):
             try:
-                if not hasattr(self.agno_agent, 'arun'):
-                    logger.error(f"AgnoAgent instance for '{self.agent_name}' does not have an 'arun' method.")
-                    raise NotImplementedError(f"AgnoAgent for '{self.agent_name}' needs an async 'arun' method.")
-
-                logger.debug(f"    Adapter '{self.agent_name}': About to call await self.agno_agent.arun() (Attempt {attempt + 1}/{max_retries})")
-                run_response_obj = await self.agno_agent.arun(user_message_string) 
+                run_response_obj = await self.agno_agent.arun(user_message_string)
                 logger.debug(f"    Adapter '{self.agent_name}': After await self.agno_agent.arun(), run_response_obj type: {type(run_response_obj)}")
                 
                 actual_content_data = None
@@ -217,46 +239,71 @@ Ensure your output is a valid JSON conforming to the PlanOutput schema, containi
                         logger.info(f"    Adapter '{self.agent_name}': content_attr is NOT a coroutine. Using its value directly.")
                         actual_content_data = content_attr
                 else:
-                    logger.warning(f"    Adapter Warning: Agno agent '{self.agent_name}' RunResponse object has no 'content' attribute for node {node.task_id} (Attempt {attempt + 1}).")
+                    logger.warning(f"    Adapter Warning: Agno agent '{self.agent_name}' RunResponse object has no 'content' attribute for node {node.task_id}.")
                 
-                # NEW: Check if response_model was set and if content is None
+                # Check if response_model was set and if content is None
                 if self.agno_agent.response_model is not None and actual_content_data is None:
-                    logger.error(
-                        f"  Adapter Error (Attempt {attempt + 1}/{max_retries}): Agno agent '{self.agent_name}' "
-                        f"for node {node.task_id} was configured with response_model="
-                        f"'{self.agno_agent.response_model.__name__}' but returned None content. "
-                        "This likely indicates an LLM failure to adhere to the expected output format, "
-                        "and Agno could not parse the response."
-                    )
-                    # We will still raise an exception to trigger retry or failure,
-                    # but this specific log helps diagnose the root cause (LLM format vs. Agno parsing).
-                    # The specific adapters (PlannerAdapter, etc.) are responsible for raising
-                    # a ValueError or TypeError if None content is unacceptable for their specific OutputType.
-                    # This exception here is more about the general Agno interaction failing.
-                    raise ValueError(
-                        f"Agno agent '{self.agent_name}' with response_model "
-                        f"'{self.agno_agent.response_model.__name__}' returned None."
+                    raise AgentExecutionError(
+                        agent_name=self.agent_name,
+                        task_id=node.task_id,
+                        original_error=ValueError(
+                            f"Agno agent '{self.agent_name}' with response_model "
+                            f"'{self.agno_agent.response_model.__name__}' returned None."
+                        ),
+                        attempt_number=1
                     )
 
-                # Specific adapters (like PlannerAdapter) are responsible for checking if actual_content_data is None
-                # and raising an error if None is not acceptable for them.
-                # This retry loop is primarily for exceptions during arun() or if arun() itself indicates
-                # a retryable issue, not specifically for None content if None is a possible 
-                # (though perhaps unhelpful) outcome for some agents.
+                logger.info(f"    Adapter '{self.agent_name}': Successfully processed. Type of actual_content_data: {type(actual_content_data)}")
+                return actual_content_data
                 
-                logger.info(f"    Adapter '{self.agent_name}': Successfully processed (Attempt {attempt+1}). Type of actual_content_data: {type(actual_content_data)}. Is it a coroutine? {asyncio.iscoroutine(actual_content_data)}")
-                return actual_content_data # Success, return the content
-            
             except Exception as e:
-                logger.warning(f"  Adapter Error (Attempt {attempt + 1}/{max_retries}): Exception during Agno agent '{self.agent_name}' execution for node {node.task_id}: {e}")
-                if attempt < max_retries - 1:
-                    logger.info(f"    Retrying in {retry_delay_seconds} seconds...")
-                    await asyncio.sleep(retry_delay_seconds)
+                # Handle specific error types
+                if "rate limit" in str(e).lower() or "429" in str(e):
+                    raise AgentRateLimitError(agent_name=self.agent_name)
+                elif "timeout" in str(e).lower():
+                    raise AgentTimeoutError(
+                        agent_name=self.agent_name, 
+                        task_id=node.task_id, 
+                        timeout_seconds=30.0
+                    )
                 else:
-                    logger.error(f"  Adapter Error: Max retries ({max_retries}) reached for Agno agent '{self.agent_name}' on node {node.task_id}. Re-raising last exception.")
-                    raise # Re-raise the last exception after max retries
-        
-        # This line should ideally not be reached if max_retries > 0 due to the 'raise' in the except block.
-        # However, as a fallback, and to satisfy linters/type checkers that expect a return value.
-        logger.error(f"  Adapter Error: Loop completed without successful return or re-raising exception for node {node.task_id}. This indicates an issue in retry logic.")
-        return None
+                    raise AgentExecutionError(
+                        agent_name=self.agent_name,
+                        task_id=node.task_id,
+                        original_error=e,
+                        attempt_number=1
+                    )
+
+        # Use ErrorRecovery for retry logic with better error handling
+        try:
+            result = await ErrorRecovery.retry_with_backoff(
+                func=execute_agent,
+                max_retries=3,
+                base_delay=5.0,
+                exceptions=(AgentRateLimitError, AgentTimeoutError, AgentExecutionError)
+            )
+            
+            # Cache result manually with additional metadata if needed
+            # (The decorator already handles basic caching, but we can add metadata here)
+            cache_set(
+                namespace="agent_responses", 
+                identifier=f"{self.agent_name}:{node.task_id}",
+                value=result,
+                context={"task_type": str(node.task_type), "node_type": str(node.node_type)},
+                ttl_seconds=3600
+            )
+            
+            return result
+            
+        except Exception as e:
+            # Final error handling - convert any remaining exceptions
+            raise handle_exception(
+                e, 
+                task_id=node.task_id, 
+                agent_name=self.agent_name,
+                context=create_error_context(
+                    task_goal=node.goal,
+                    task_type=node.task_type,
+                    node_type=node.node_type
+                )
+            )

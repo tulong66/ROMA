@@ -1,37 +1,16 @@
 import uuid
 from typing import Optional, Any, List, Dict
-from enum import Enum
 from pydantic import BaseModel, Field
 from datetime import datetime
 from loguru import logger
 
 from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models import ReplanRequestDetails
-
-class TaskStatus(Enum):
-    PENDING = "PENDING"
-    READY = "READY"
-    RUNNING = "RUNNING"
-    PLAN_DONE = "PLAN_DONE"  # For PLAN nodes after sub-graph creation
-    AGGREGATING = "AGGREGATING" # For PLAN nodes when children are done
-    DONE = "DONE"
-    FAILED = "FAILED"
-    NEEDS_REPLAN = "NEEDS_REPLAN"
-    CANCELLED = "CANCELLED"
-
-class NodeType(Enum):
-    PLAN = "PLAN"
-    EXECUTE = "EXECUTE"
-
-class TaskType(Enum):
-    # General types
-    WRITE = "WRITE"
-    THINK = "THINK"
-    SEARCH = "SEARCH"
-    AGGREGATE = "AGGREGATE" # For the aggregation step itself
-    # Specific types for future extension (examples)
-    CODE_INTERPRET = "CODE_INTERPRET"
-    IMAGE_GENERATION = "IMAGE_GENERATION"
-    # ... add other specific task types as needed
+# Import from our consolidated types module
+from sentientresearchagent.hierarchical_agent_framework.types import (
+    TaskStatus, NodeType, TaskType, safe_task_status
+)
+from sentientresearchagent.exceptions import InvalidTaskStateError, TaskError
+from sentientresearchagent.error_handler import safe_execute
 
 class TaskNode(BaseModel):
     """Represents a single task unit in the hierarchy."""
@@ -77,20 +56,107 @@ class TaskNode(BaseModel):
     class Config:
         use_enum_values = True # Important for serialization if you pass enums around
 
-    def update_status(self, new_status: TaskStatus, result: Any = None, error_msg: Optional[str] = None):
-        self.status = new_status
-        self.timestamp_updated = datetime.now()
-        if result is not None:
-            self.result = result
-        if error_msg is not None:
-            self.error = error_msg
-            self.status = TaskStatus.FAILED # Ensure status is FAILED if error is provided
+    def update_status(self, new_status: TaskStatus, result: Any = None, 
+                     error_msg: Optional[str] = None, result_summary: Optional[str] = None,
+                     validate_transition: bool = True):
+        """
+        Update the task status with better error handling and validation.
         
-        if new_status in [TaskStatus.DONE, TaskStatus.FAILED, TaskStatus.NEEDS_REPLAN]:
-            self.timestamp_completed = datetime.now()
+        Args:
+            new_status: New status to set (can be string or TaskStatus enum)
+            result: Optional result data
+            error_msg: Optional error message (will set status to FAILED if provided)
+            result_summary: Optional summary of the result
+            validate_transition: Whether to validate status transitions
+        """
+        old_status = self.status
         
-        # Basic logging, can be replaced with a proper logger
-        logger.info(f"Task {self.task_id} status updated to {new_status}. Result: {str(result)[:50] if result else 'N/A'}..., Error: {error_msg}")
+        try:
+            # Use safe conversion to handle string inputs
+            new_status_enum = safe_task_status(new_status) if not isinstance(new_status, TaskStatus) else new_status
+            
+            # Validate transition if requested
+            if validate_transition and not self._is_valid_transition(old_status, new_status_enum):
+                # Log warning but don't fail - just warn about potentially invalid transition
+                logger.warning(f"Task {self.task_id}: Potentially invalid status transition {old_status} → {new_status_enum}")
+                # Don't raise exception - just log the warning and proceed
+            
+            self.status = new_status_enum
+            self.timestamp_updated = datetime.now()
+            
+            if result is not None:
+                self.result = result
+                
+            if result_summary is not None:
+                self.output_summary = result_summary
+                
+            if error_msg is not None:
+                self.error = error_msg
+                self.status = TaskStatus.FAILED # Ensure status is FAILED if error is provided
+            
+            if self.status in [TaskStatus.DONE, TaskStatus.FAILED, TaskStatus.NEEDS_REPLAN, TaskStatus.CANCELLED]:
+                self.timestamp_completed = datetime.now()
+            
+            # Improved logging
+            logger.info(f"Task {self.task_id} status: {old_status} → {self.status}. "
+                       f"Result: {str(result)[:50] if result else 'N/A'}... "
+                       f"Error: {error_msg or 'None'}")
+                       
+        except Exception as e:
+            logger.error(f"Failed to update status for task {self.task_id}: {e}")
+            # Don't re-raise here to avoid cascading failures
+            # Just log the error and keep the old status
+    
+    def _is_valid_transition(self, from_status: TaskStatus, to_status: TaskStatus) -> bool:
+        """
+        Check if a status transition is valid.
+        
+        Args:
+            from_status: Current status
+            to_status: Desired new status
+            
+        Returns:
+            True if transition is valid, False otherwise
+        """
+        # Define valid transitions (more flexible than before)
+        valid_transitions = {
+            TaskStatus.PENDING: [TaskStatus.READY, TaskStatus.RUNNING, TaskStatus.FAILED, TaskStatus.CANCELLED],
+            TaskStatus.READY: [TaskStatus.RUNNING, TaskStatus.FAILED, TaskStatus.CANCELLED],
+            TaskStatus.RUNNING: [TaskStatus.DONE, TaskStatus.PLAN_DONE, TaskStatus.FAILED, TaskStatus.NEEDS_REPLAN, TaskStatus.CANCELLED],
+            TaskStatus.PLAN_DONE: [TaskStatus.AGGREGATING, TaskStatus.FAILED, TaskStatus.NEEDS_REPLAN],
+            TaskStatus.AGGREGATING: [TaskStatus.DONE, TaskStatus.FAILED, TaskStatus.NEEDS_REPLAN],
+            TaskStatus.NEEDS_REPLAN: [TaskStatus.READY, TaskStatus.RUNNING, TaskStatus.FAILED, TaskStatus.CANCELLED],  # More flexible
+            # Terminal states
+            TaskStatus.DONE: [TaskStatus.NEEDS_REPLAN],  # Allow retry
+            TaskStatus.FAILED: [TaskStatus.NEEDS_REPLAN, TaskStatus.READY],  # Allow retry
+            TaskStatus.CANCELLED: []
+        }
+        
+        return to_status in valid_transitions.get(from_status, [])
+    
+    def fail_with_error(self, error: Exception, context: Optional[Dict[str, Any]] = None):
+        """
+        Mark task as failed with detailed error information.
+        
+        Args:
+            error: The exception that caused the failure
+            context: Additional context information
+        """
+        error_message = str(error)
+        if context:
+            error_message += f" (Context: {context})"
+            
+        self.update_status(
+            TaskStatus.FAILED, 
+            error_msg=error_message,
+            validate_transition=False  # Don't validate when handling errors
+        )
+        
+        # Store additional error context in aux_data
+        if context:
+            self.aux_data.setdefault("error_context", {}).update(context)
+            
+        logger.error(f"Task {self.task_id} failed: {error_message}")
 
     def __repr__(self):
         return (f"TaskNode(id={self.task_id}, goal='{self.goal[:30]}...', "

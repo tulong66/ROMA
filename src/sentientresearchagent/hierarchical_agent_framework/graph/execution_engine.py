@@ -26,6 +26,9 @@ from sentientresearchagent.hierarchical_agent_framework.node.hitl_coordinator im
 # Import CycleManager
 from .cycle_manager import CycleManager
 
+# Import SentientConfig
+from sentientresearchagent.config import SentientConfig
+
 
 class ExecutionEngine:
     """Orchestrates the overall execution flow of tasks in the graph."""
@@ -35,12 +38,14 @@ class ExecutionEngine:
                  state_manager: StateManager,
                  knowledge_store: KnowledgeStore,
                  hitl_coordinator: HITLCoordinator,
+                 config: Optional[SentientConfig] = None,  # NEW: Add config parameter
                  # Allow NodeProcessor to be passed in for testing or custom setups,
                  # but create a default one if not provided.
                  node_processor: Optional[NodeProcessor] = None, 
                  initial_agent_blueprint_name: Optional[str] = "DeepResearchAgent" # MODIFIED: Added blueprint name with default
                 ):
         self.task_graph = task_graph
+        self.config = config or SentientConfig()  # NEW: Store config
         
         if node_processor:
             self.node_processor = node_processor
@@ -49,7 +54,7 @@ class ExecutionEngine:
             self.node_processor = NodeProcessor(
                 task_graph=self.task_graph,
                 knowledge_store=knowledge_store, 
-                # config=... # Pass NodeProcessorConfig if it's available here and NP needs it
+                config=self.config,  # NEW: Pass config
                 agent_blueprint_name=initial_agent_blueprint_name
             )
             
@@ -161,9 +166,12 @@ class ExecutionEngine:
         logger.info("ExecutionEngine: Root goal review complete. Proceeding to execution cycle.")
         return await self.run_cycle(max_steps)
 
-    async def run_cycle(self, max_steps: int = 250):
+    async def run_cycle(self, max_steps: Optional[int] = None):
         """Runs the execution loop for a specified number of steps or until completion/deadlock."""
-        logger.info("\n--- Starting Execution Cycle ---")
+        # Use config default if max_steps not provided
+        max_steps = max_steps or self.config.execution.max_execution_steps
+        
+        logger.info(f"\n--- Starting Execution Cycle (max_steps: {max_steps}) ---")
         
         root_node_initial_check = self.task_graph.get_node("root")
         if not self.task_graph.root_graph_id or not root_node_initial_check:
