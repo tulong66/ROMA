@@ -17,6 +17,24 @@ export interface TaskNode {
   timestamp_completed?: string
   planned_sub_task_ids?: string[]
   input_context_sources?: ContextSource[]
+  model_display?: string
+  model_info?: ModelInfo
+  execution_details?: ExecutionDetails
+}
+
+export interface ModelInfo {
+  adapter_name?: string
+  model_provider?: string
+  model_name?: string
+  model_id?: string
+}
+
+export interface ExecutionDetails {
+  processing_started?: string
+  processing_completed?: string
+  success?: boolean
+  error?: string
+  model_info?: ModelInfo
 }
 
 export type TaskStatus = 

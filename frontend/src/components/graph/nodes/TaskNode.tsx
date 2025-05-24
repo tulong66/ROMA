@@ -13,7 +13,8 @@ import {
   Zap,
   ArrowRight,
   Hash,
-  Check
+  Check,
+  Cpu
 } from 'lucide-react'
 import type { TaskNode as TaskNodeType } from '@/types'
 
@@ -90,6 +91,18 @@ const getNodeBackgroundColor = (status: string, nodeType: string, isHighlighted?
   return result
 }
 
+const formatProcessingTime = (started?: string, completed?: string): string | null => {
+  if (!started || !completed) return null
+  
+  const start = new Date(started)
+  const end = new Date(completed)
+  const diffMs = end.getTime() - start.getTime()
+  
+  if (diffMs < 1000) return `${diffMs}ms`
+  if (diffMs < 60000) return `${Math.round(diffMs / 1000)}s`
+  return `${Math.round(diffMs / 60000)}m ${Math.round((diffMs % 60000) / 1000)}s`
+}
+
 const TaskNodeComponent: React.FC<NodeProps<TaskNodeData>> = ({ data, selected }) => {
   const { 
     node, 
@@ -103,7 +116,10 @@ const TaskNodeComponent: React.FC<NodeProps<TaskNodeData>> = ({ data, selected }
   const isPlanNode = node.node_type === 'PLAN'
   const backgroundColorClass = getNodeBackgroundColor(node.status, node.node_type, isHighlighted, isDimmed)
   
-  // Enhanced styling for multi-selection
+  const processingTime = node.execution_details ? 
+    formatProcessingTime(node.execution_details.processing_started, node.execution_details.processing_completed) : 
+    null
+
   const nodeClassName = `
     min-w-[280px] max-w-[320px] p-4 rounded-xl border-2 shadow-lg transition-all duration-300 relative
     ${backgroundColorClass}
@@ -116,14 +132,12 @@ const TaskNodeComponent: React.FC<NodeProps<TaskNodeData>> = ({ data, selected }
 
   return (
     <div className={nodeClassName}>
-      {/* Multi-selection indicator */}
       {isMultiSelected && (
         <div className="absolute -top-2 -right-2 w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center shadow-md">
           <Check className="w-3 h-3" />
         </div>
       )}
 
-      {/* Input Handle with enhanced styling */}
       <Handle
         type="target"
         position={Position.Top}
@@ -136,21 +150,18 @@ const TaskNodeComponent: React.FC<NodeProps<TaskNodeData>> = ({ data, selected }
         }}
       />
       
-      {/* Execution Order Indicator */}
       {executionRank !== undefined && highlightMode === 'executionPath' && (
         <div className="absolute -top-2 -left-2 w-6 h-6 bg-amber-500 text-white rounded-full flex items-center justify-center text-xs font-bold shadow-md">
           {executionRank + 1}
         </div>
       )}
 
-      {/* Context Flow Indicator */}
       {isHighlighted && highlightMode === 'dataFlow' && (
         <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
           <ArrowRight className="w-2 h-2 text-white" />
         </div>
       )}
       
-      {/* Node Header */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center space-x-2">
           {isPlanNode ? (
@@ -173,7 +184,6 @@ const TaskNodeComponent: React.FC<NodeProps<TaskNodeData>> = ({ data, selected }
         </div>
       </div>
       
-      {/* Node Content */}
       <div className="space-y-2">
         <div className="text-sm font-semibold leading-tight text-foreground">
           {truncateText(node.goal, 120)}
@@ -185,7 +195,16 @@ const TaskNodeComponent: React.FC<NodeProps<TaskNodeData>> = ({ data, selected }
           </div>
         )}
 
-        {/* Context Sources Indicator */}
+        {node.model_display && node.model_display !== "Not processed" && (
+          <div className="text-xs text-muted-foreground bg-background/30 rounded px-2 py-1 flex items-center space-x-1">
+            <Cpu className="w-3 h-3" />
+            <span>{truncateText(node.model_display, 30)}</span>
+            {processingTime && (
+              <span className="text-gray-400">• {processingTime}</span>
+            )}
+          </div>
+        )}
+
         {node.input_context_sources && node.input_context_sources.length > 0 && (
           <div className="text-xs text-muted-foreground flex items-center space-x-1">
             <Hash className="w-3 h-3" />
@@ -199,15 +218,19 @@ const TaskNodeComponent: React.FC<NodeProps<TaskNodeData>> = ({ data, selected }
           </div>
         )}
 
-        {/* Execution timestamp for highlighted nodes */}
         {isHighlighted && highlightMode === 'executionPath' && node.timestamp_created && (
           <div className="text-xs text-muted-foreground border-t border-border/50 pt-1 mt-1">
             ⏰ {new Date(node.timestamp_created).toLocaleTimeString()}
           </div>
         )}
+
+        {node.execution_details && !node.execution_details.success && node.execution_details.error && (
+          <div className="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 rounded px-2 py-1 border-t border-red-200 dark:border-red-800 pt-1 mt-1">
+            ❌ {truncateText(node.execution_details.error, 60)}
+          </div>
+        )}
       </div>
       
-      {/* Output Handle with enhanced styling */}
       <Handle
         type="source"
         position={Position.Bottom}

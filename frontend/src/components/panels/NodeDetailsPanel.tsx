@@ -23,7 +23,8 @@ import {
   Activity,
   Layers,
   Database,
-  Navigation
+  Navigation,
+  Cpu
 } from 'lucide-react'
 import { getStatusColor, cn } from '@/lib/utils'
 import type { TaskNode, ContextSource } from '@/types'
@@ -339,17 +340,83 @@ const NodeDetailsPanel: React.FC = () => {
                 <div className="font-medium mt-1">{selectedNode.task_type}</div>
               </div>
             </div>
-
-            {selectedNode.agent_name && (
-              <div className="mt-3">
-                <span className="text-xs text-muted-foreground">Agent</span>
-                <div className="flex items-center space-x-2 mt-1">
-                  <User className="w-3 h-3 text-muted-foreground" />
-                  <span className="text-sm font-medium">{selectedNode.agent_name}</span>
-                </div>
-              </div>
-            )}
           </div>
+
+          {/* Execution Details Section */}
+          {(selectedNode.model_info || selectedNode.model_display || selectedNode.agent_name) && (
+            <div className="space-y-3">
+              <div className="flex items-center space-x-2 pb-2 border-b border-border/50">
+                <Cpu className="w-4 h-4 text-amber-600" />
+                <h3 className="text-sm font-semibold text-foreground">Execution Details</h3>
+              </div>
+              <div className="space-y-3 text-xs">
+                {selectedNode.agent_name && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground">Agent</span>
+                    <div className="flex items-center space-x-2">
+                      <User className="w-3 h-3 text-muted-foreground" />
+                      <span className="font-medium">{selectedNode.agent_name}</span>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Model Information */}
+                {(selectedNode.model_display || selectedNode.model_info?.model_name) && (
+                  <div className="flex justify-between items-start">
+                    <span className="text-muted-foreground">Model</span>
+                    <div className="flex flex-col items-end space-y-1">
+                      <div className="flex items-center space-x-2">
+                        <Brain className="w-3 h-3 text-muted-foreground" />
+                        <span className="font-medium font-mono text-sm bg-muted/50 px-2 py-1 rounded">
+                          {selectedNode.model_display || selectedNode.model_info?.model_name || 'Unknown'}
+                        </span>
+                      </div>
+                      {selectedNode.model_info?.model_provider && selectedNode.model_info.model_provider !== 'unknown' && (
+                        <span className="text-xs text-muted-foreground/70">
+                          via {selectedNode.model_info.model_provider}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+                
+                {/* Additional execution details if available */}
+                {selectedNode.execution_details?.processing_started && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground">Started</span>
+                    <span className="font-medium">
+                      {formatTimestamp(selectedNode.execution_details.processing_started)}
+                    </span>
+                  </div>
+                )}
+                
+                {selectedNode.execution_details?.processing_completed && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground">Completed</span>
+                    <span className="font-medium">
+                      {formatTimestamp(selectedNode.execution_details.processing_completed)}
+                    </span>
+                  </div>
+                )}
+                
+                {selectedNode.execution_details?.success !== undefined && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-muted-foreground">Status</span>
+                    <div className="flex items-center space-x-1">
+                      {selectedNode.execution_details.success ? (
+                        <CheckCircle className="w-3 h-3 text-green-600" />
+                      ) : (
+                        <XCircle className="w-3 h-3 text-red-600" />
+                      )}
+                      <span className="font-medium">
+                        {selectedNode.execution_details.success ? 'Success' : 'Failed'}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Timeline Section */}
           <div className="space-y-3">

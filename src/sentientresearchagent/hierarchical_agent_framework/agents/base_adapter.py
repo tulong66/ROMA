@@ -5,6 +5,7 @@ from agno.agent import Agent as AgnoAgent # Renaming to avoid conflict if we def
 # It's good practice to also import the async version if available and distinct
 # from agno.agent import AsyncAgent as AsyncAgnoAgent # Assuming such an import exists for type hinting
 import asyncio # Add this import
+from datetime import datetime
 
 from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode # For type hinting
 from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models import (
@@ -186,18 +187,105 @@ Ensure your output is a valid JSON conforming to the PlanOutput schema, containi
         else:
             raise TypeError(f"Unsupported agent_task_input type: {type(agent_task_input)} for _prepare_agno_run_arguments")
 
+    def _get_model_info(self) -> Dict[str, Any]:
+        """Extract model information from the AgnoAgent."""
+        model_info = {
+            "adapter_name": self.agent_name,
+            "model_provider": "unknown",
+            "model_name": "unknown",
+            "model_id": "unknown"
+        }
+        
+        try:
+            if hasattr(self.agno_agent, 'model') and self.agno_agent.model:
+                model = self.agno_agent.model
+                
+                # Try multiple approaches to get model information
+                model_id = None
+                
+                # Method 1: Direct model.id
+                if hasattr(model, 'id') and model.id:
+                    model_id = model.id
+                    
+                # Method 2: Model name attribute  
+                elif hasattr(model, 'name') and model.name:
+                    model_id = model.name
+                    
+                # Method 3: Check if it's a LiteLLM model with model attribute
+                elif hasattr(model, 'model') and model.model:
+                    model_id = model.model
+                    
+                # Method 4: Check for _model attribute (some LiteLLM versions)
+                elif hasattr(model, '_model') and model._model:
+                    model_id = model._model
+                    
+                # Method 5: Look in model configuration/args
+                elif hasattr(model, '__dict__'):
+                    for attr in ['model', '_model', 'model_name', 'engine']:
+                        if hasattr(model, attr):
+                            val = getattr(model, attr)
+                            if val and isinstance(val, str) and val not in ['unknown', '']:
+                                model_id = val
+                                break
+                
+                if model_id:
+                    model_info["model_id"] = model_id
+                    
+                    # Parse model ID for provider and name
+                    if "/" in model_id:
+                        # Format like "openrouter/anthropic/claude-3-sonnet" or "anthropic/claude-3-sonnet"
+                        parts = model_id.split("/")
+                        if len(parts) >= 2:
+                            # If it looks like provider/model or provider/company/model
+                            if parts[0] in ['openrouter', 'anthropic', 'openai', 'google', 'cohere', 'mistral']:
+                                model_info["model_provider"] = parts[0]
+                                model_info["model_name"] = "/".join(parts[1:])
+                            else:
+                                # Assume first part is provider, rest is model
+                                model_info["model_provider"] = parts[0]  
+                                model_info["model_name"] = "/".join(parts[1:])
+                    else:
+                        # No slash - could be direct model name like "gpt-4", "claude-3-sonnet-20241022"
+                        model_info["model_name"] = model_id
+                        
+                        # Infer provider from model name
+                        if model_id.startswith(('gpt-', 'text-', 'davinci', 'o1-')):
+                            model_info["model_provider"] = "openai"
+                        elif model_id.startswith(('claude-', 'claude')):
+                            model_info["model_provider"] = "anthropic"
+                        elif model_id.startswith(('gemini-', 'palm-')):
+                            model_info["model_provider"] = "google"
+                        elif model_id.startswith(('command-', 'embed-')):
+                            model_info["model_provider"] = "cohere"
+                        elif model_id.startswith(('mistral-', 'mixtral-')):
+                            model_info["model_provider"] = "mistral"
+                        else:
+                            model_info["model_provider"] = "unknown"
+                            
+        except Exception as e:
+            logger.debug(f"Could not extract model info from agent {self.agent_name}: {e}")
+            
+        return model_info
+
     @handle_agent_errors(agent_name_param="self.agent_name", component="llm_adapter")
-    @cache_agent_response(ttl_seconds=3600)  # Cache for 1 hour by default
+    @cache_agent_response(ttl_seconds=3600)
     async def process(self, node: TaskNode, agent_task_input: InputType) -> OutputType:
         """
         Processes a TaskNode using the configured AgnoAgent with caching and improved error handling.
         """
         logger.info(f"  Adapter '{self.agent_name}': Processing node {node.task_id} (Goal: '{node.goal[:50]}...')")
 
+        # Capture model information before processing
+        model_info = self._get_model_info()
+        
+        # Store model info in node's aux_data
+        node.aux_data.setdefault("execution_details", {})
+        node.aux_data["execution_details"]["model_info"] = model_info
+        node.aux_data["execution_details"]["processing_started"] = datetime.now().isoformat()
+
         # Check if we should skip cache for this request
         if hasattr(agent_task_input, 'force_refresh') and agent_task_input.force_refresh:
             logger.debug(f"  Adapter '{self.agent_name}': Skipping cache due to force_refresh flag")
-            # Note: The cache decorator will still try to cache the result
         
         try:
             user_message_string = self._prepare_agno_run_arguments(agent_task_input)
@@ -283,8 +371,11 @@ Ensure your output is a valid JSON conforming to the PlanOutput schema, containi
                 exceptions=(AgentRateLimitError, AgentTimeoutError, AgentExecutionError)
             )
             
+            # Update execution details with completion info
+            node.aux_data["execution_details"]["processing_completed"] = datetime.now().isoformat()
+            node.aux_data["execution_details"]["success"] = True
+            
             # Cache result manually with additional metadata if needed
-            # (The decorator already handles basic caching, but we can add metadata here)
             cache_set(
                 namespace="agent_responses", 
                 identifier=f"{self.agent_name}:{node.task_id}",
@@ -296,6 +387,11 @@ Ensure your output is a valid JSON conforming to the PlanOutput schema, containi
             return result
             
         except Exception as e:
+            # Update execution details with error info
+            node.aux_data["execution_details"]["processing_completed"] = datetime.now().isoformat()
+            node.aux_data["execution_details"]["success"] = False
+            node.aux_data["execution_details"]["error"] = str(e)
+            
             # Final error handling - convert any remaining exceptions
             raise handle_exception(
                 e, 

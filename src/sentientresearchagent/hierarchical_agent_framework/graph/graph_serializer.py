@@ -52,6 +52,26 @@ class GraphSerializer:
             else:
                 processed_result = str(node_obj.result)
 
+        # NEW: Extract model and execution information
+        model_info = None
+        execution_details = None
+        
+        if node_obj.aux_data and "execution_details" in node_obj.aux_data:
+            execution_details = node_obj.aux_data["execution_details"]
+            model_info = execution_details.get("model_info", {})
+
+        # Format model display name
+        model_display = "Not processed"
+        if model_info:
+            provider = model_info.get("model_provider", "unknown")
+            model_name = model_info.get("model_name", "unknown")
+            if provider != "unknown" and model_name != "unknown":
+                model_display = f"{provider}/{model_name}"
+            elif model_name != "unknown":
+                model_display = model_name
+            else:
+                model_display = model_info.get("model_id", "unknown model")
+
         return {
             "task_id": node_obj.task_id,
             "goal": node_obj.goal,
@@ -72,6 +92,10 @@ class GraphSerializer:
             "timestamp_created": node_obj.timestamp_created.isoformat() if node_obj.timestamp_created else None,
             "timestamp_updated": node_obj.timestamp_updated.isoformat() if node_obj.timestamp_updated else None,
             "timestamp_completed": node_obj.timestamp_completed.isoformat() if node_obj.timestamp_completed else None,
+            # NEW: Model and execution information
+            "model_display": model_display,
+            "model_info": model_info,
+            "execution_details": execution_details
         }
 
     def to_visualization_dict(self) -> Dict[str, Any]:
