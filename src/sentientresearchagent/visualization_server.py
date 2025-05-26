@@ -96,6 +96,14 @@ def initialize_sentient_systems():
         
         # Use new configuration system for node processor
         node_processor_config = NodeProcessorConfig()
+        
+        # Configure HITL based on main config
+        if hasattr(config, 'execution') and hasattr(config.execution, 'enable_hitl'):
+            if config.execution.enable_hitl:
+                node_processor_config.enable_hitl_after_plan_generation = True
+                node_processor_config.enable_hitl_after_modified_plan = True
+                print(f"🎮 HITL enabled globally")
+        
         live_hitl_coordinator = HITLCoordinator(config=node_processor_config)
         live_node_processor = NodeProcessor(
             task_graph=live_task_graph,
@@ -119,6 +127,8 @@ def initialize_sentient_systems():
         print(f"📊 Cache: {config.cache.cache_type} backend, {cache_stats['current_size']} items")
         print(f"⚙️  Execution: max {config.execution.max_concurrent_nodes} concurrent nodes")
         print(f"🔗 LLM: {config.llm.provider}/{config.llm.model}")
+        if hasattr(config.execution, 'enable_hitl'):
+            print(f"🎮 HITL: {'Enabled' if config.execution.enable_hitl else 'Disabled'}")
         
         return {
             'config': config,
@@ -172,6 +182,20 @@ def sync_project_to_display(project_id: str):
             
         project_task_graph = project_graphs[project_id]['task_graph']
         
+        # Ensure live_task_graph is still a TaskGraph instance
+        global live_task_graph
+        if not hasattr(live_task_graph, 'nodes') or not hasattr(live_task_graph, 'graphs'):
+            # Recreate if it was corrupted
+            print("⚠️ Recreating corrupted live_task_graph")
+            from sentientresearchagent.hierarchical_agent_framework.graph.task_graph import TaskGraph
+            live_task_graph = TaskGraph()
+        
+        # Ensure the attributes are dictionaries
+        if not isinstance(live_task_graph.nodes, dict):
+            live_task_graph.nodes = {}
+        if not isinstance(live_task_graph.graphs, dict):
+            live_task_graph.graphs = {}
+        
         # Copy project state to live display graph
         live_task_graph.nodes.clear()
         live_task_graph.nodes.update(project_task_graph.nodes)
@@ -186,6 +210,7 @@ def sync_project_to_display(project_id: str):
         
     except Exception as e:
         print(f"❌ Failed to sync project {project_id} to display: {e}")
+        traceback.print_exc()
         return False
 
 def create_project_update_callback(project_id: str):
@@ -195,6 +220,16 @@ def create_project_update_callback(project_id: str):
         current_project = project_manager.get_current_project()
         if current_project and current_project.id == project_id:
             sync_project_to_display(project_id)
+        # If not current project, just save the state without syncing to display
+        else:
+            try:
+                project_components = project_graphs.get(project_id)
+                if project_components:
+                    project_task_graph = project_components['task_graph']
+                    data = project_task_graph.to_visualization_dict()
+                    project_manager.save_project_state(project_id, data)
+            except Exception as e:
+                print(f"⚠️ Failed to save state for background project {project_id}: {e}")
     
     return update_callback
 
@@ -212,7 +247,21 @@ def get_or_create_project_graph(project_id: str):
         # Create project-specific components
         project_task_graph = TaskGraph()
         project_state_manager = StateManager(project_task_graph)
-        project_hitl_coordinator = HITLCoordinator(config=NodeProcessorConfig())
+        
+        # Create node processor config with HITL settings based on main config
+        node_processor_config = NodeProcessorConfig()
+        
+        # If the main config has HITL enabled, enable the specific HITL checkpoints
+        if hasattr(sentient_config, 'execution') and hasattr(sentient_config.execution, 'enable_hitl'):
+            if sentient_config.execution.enable_hitl:
+                # These are the actual fields in NodeProcessorConfig
+                node_processor_config.enable_hitl_after_plan_generation = True
+                node_processor_config.enable_hitl_after_atomizer = False  # Usually keep this off
+                node_processor_config.enable_hitl_before_execute = False  # Usually keep this off
+                node_processor_config.enable_hitl_after_modified_plan = True
+                print(f"🎮 HITL enabled for project {project_id}")
+        
+        project_hitl_coordinator = HITLCoordinator(config=node_processor_config)
         
         # Create update callback for real-time sync
         update_callback = create_project_update_callback(project_id)
@@ -221,7 +270,7 @@ def get_or_create_project_graph(project_id: str):
             task_graph=project_task_graph,
             knowledge_store=live_knowledge_store,
             config=sentient_config,
-            node_processor_config=NodeProcessorConfig()
+            node_processor_config=node_processor_config
         )
         
         project_execution_engine = ExecutionEngine(
@@ -253,16 +302,82 @@ class RealtimeExecutionWrapper:
         self.project_id = project_id
         self.execution_engine = execution_engine
         self.update_callback = update_callback
+        self._is_current_project = False
         
-    async def initialize_project(self, root_goal: str):
-        """Initialize project with real-time updates"""
-        result = self.execution_engine.initialize_project(root_goal=root_goal)
-        # Trigger update after initialization
-        self.update_callback()
-        return result
+    def _check_if_current(self):
+        """Check if this project is currently being displayed"""
+        current_project = project_manager.get_current_project()
+        self._is_current_project = current_project and current_project.id == self.project_id
+        return self._is_current_project
+        
+    async def run_project_flow(self, root_goal: str, max_steps: int = 250):
+        """Run the complete project flow with real-time updates"""
+        import asyncio
+        
+        # Create a task for the execution
+        async def execute_with_updates():
+            # Start the execution flow (includes initialization and HITL)
+            execution_task = asyncio.create_task(
+                self.execution_engine.run_project_flow(
+                    root_goal=root_goal,
+                    max_steps=max_steps
+                )
+            )
+            
+            # Create a periodic update task
+            async def periodic_updates():
+                while not execution_task.done():
+                    await asyncio.sleep(2)  # Update every 2 seconds
+                    if not execution_task.done():
+                        # Only update display if we're the current project
+                        if self._check_if_current():
+                            self.update_callback()
+                        else:
+                            # Still save state for background projects
+                            try:
+                                project_components = project_graphs.get(self.project_id)
+                                if project_components:
+                                    project_task_graph = project_components['task_graph']
+                                    if hasattr(project_task_graph, 'to_visualization_dict'):
+                                        data = project_task_graph.to_visualization_dict()
+                                    else:
+                                        from sentientresearchagent.hierarchical_agent_framework.graph.graph_serializer import GraphSerializer
+                                        serializer = GraphSerializer(project_task_graph)
+                                        data = serializer.to_visualization_dict()
+                                    project_manager.save_project_state(self.project_id, data)
+                            except Exception as e:
+                                print(f"⚠️ Failed to save background project state: {e}")
+            
+            update_task = asyncio.create_task(periodic_updates())
+            
+            try:
+                # Wait for execution to complete
+                result = await execution_task
+                # Cancel the update task
+                update_task.cancel()
+                try:
+                    await update_task
+                except asyncio.CancelledError:
+                    pass
+                # Final update only if current
+                if self._check_if_current():
+                    self.update_callback()
+                return result
+            except Exception as e:
+                update_task.cancel()
+                try:
+                    await update_task
+                except asyncio.CancelledError:
+                    pass
+                # Update on error too, but only if current
+                if self._check_if_current():
+                    self.update_callback()
+                raise e
+        
+        return await execute_with_updates()
     
     async def run_cycle(self, max_steps: int = 250):
-        """Run execution cycle with periodic real-time updates"""
+        """Run execution cycle with periodic real-time updates (for resuming)"""
         import asyncio
         
         # Create a task for the execution
@@ -277,7 +392,24 @@ class RealtimeExecutionWrapper:
                 while not execution_task.done():
                     await asyncio.sleep(2)  # Update every 2 seconds
                     if not execution_task.done():
-                        self.update_callback()
+                        # Only update display if we're the current project
+                        if self._check_if_current():
+                            self.update_callback()
+                        else:
+                            # Still save state for background projects
+                            try:
+                                project_components = project_graphs.get(self.project_id)
+                                if project_components:
+                                    project_task_graph = project_components['task_graph']
+                                    if hasattr(project_task_graph, 'to_visualization_dict'):
+                                        data = project_task_graph.to_visualization_dict()
+                                    else:
+                                        from sentientresearchagent.hierarchical_agent_framework.graph.graph_serializer import GraphSerializer
+                                        serializer = GraphSerializer(project_task_graph)
+                                        data = serializer.to_visualization_dict()
+                                    project_manager.save_project_state(self.project_id, data)
+                            except:
+                                pass
             
             update_task = asyncio.create_task(periodic_updates())
             
@@ -286,13 +418,23 @@ class RealtimeExecutionWrapper:
                 result = await execution_task
                 # Cancel the update task
                 update_task.cancel()
-                # Final update
-                self.update_callback()
+                try:
+                    await update_task
+                except asyncio.CancelledError:
+                    pass
+                # Final update only if current
+                if self._check_if_current():
+                    self.update_callback()
                 return result
             except Exception as e:
                 update_task.cancel()
-                # Update on error too
-                self.update_callback()
+                try:
+                    await update_task
+                except asyncio.CancelledError:
+                    pass
+                # Update on error too, but only if current
+                if self._check_if_current():
+                    self.update_callback()
                 raise e
         
         return await execute_with_updates()
@@ -328,6 +470,19 @@ def load_project_into_graph(project_id: str) -> bool:
                         if isinstance(node_data.get('timestamp_completed'), str):
                             node_data['timestamp_completed'] = datetime.fromisoformat(node_data['timestamp_completed'])
                         
+                        # Fix status and type enums if they're strings
+                        if 'status' in node_data and isinstance(node_data['status'], str):
+                            from sentientresearchagent.hierarchical_agent_framework.types import TaskStatus
+                            node_data['status'] = TaskStatus(node_data['status'])
+                        
+                        if 'task_type' in node_data and isinstance(node_data['task_type'], str):
+                            from sentientresearchagent.hierarchical_agent_framework.types import TaskType
+                            node_data['task_type'] = TaskType(node_data['task_type'])
+                        
+                        if 'node_type' in node_data and isinstance(node_data['node_type'], str):
+                            from sentientresearchagent.hierarchical_agent_framework.types import NodeType
+                            node_data['node_type'] = NodeType(node_data['node_type'])
+                        
                         # Create TaskNode object from dictionary
                         task_node = TaskNode(**node_data)
                         project_task_graph.nodes[node_id] = task_node
@@ -336,8 +491,30 @@ def load_project_into_graph(project_id: str) -> bool:
                         # Skip this node but continue with others
                         continue
             
+            # Properly reconstruct graphs
             if 'graphs' in project_state:
-                project_task_graph.graphs.update(project_state['graphs'])
+                import networkx as nx
+                
+                for graph_id, graph_data in project_state['graphs'].items():
+                    try:
+                        # Create a new DiGraph
+                        new_graph = nx.DiGraph()
+                        
+                        # Add nodes
+                        if 'nodes' in graph_data:
+                            new_graph.add_nodes_from(graph_data['nodes'])
+                        
+                        # Add edges
+                        if 'edges' in graph_data:
+                            for edge in graph_data['edges']:
+                                if isinstance(edge, dict) and 'source' in edge and 'target' in edge:
+                                    new_graph.add_edge(edge['source'], edge['target'])
+                                elif isinstance(edge, (list, tuple)) and len(edge) == 2:
+                                    new_graph.add_edge(edge[0], edge[1])
+                        
+                        project_task_graph.graphs[graph_id] = new_graph
+                    except Exception as e:
+                        print(f"⚠️ Failed to reconstruct graph {graph_id}: {e}")
             
             if 'overall_project_goal' in project_state:
                 project_task_graph.overall_project_goal = project_state['overall_project_goal']
@@ -354,7 +531,7 @@ def load_project_into_graph(project_id: str) -> bool:
         # Sync to display
         sync_project_to_display(project_id)
         
-        print(f"✅ Loaded project {project_id} into display graph: {len(live_task_graph.nodes)} nodes")
+        print(f"✅ Loaded project {project_id} into display graph: {len(project_task_graph.nodes)} nodes")
         return True
         
     except Exception as e:
@@ -362,43 +539,71 @@ def load_project_into_graph(project_id: str) -> bool:
         traceback.print_exc()
         return False
 
-def save_current_project_state():
-    """Save the current live graph state to the current project"""
-    current_project = project_manager.get_current_project()
-    if current_project:
-        try:
-            data = live_task_graph.to_visualization_dict()
-            project_manager.save_project_state(current_project.id, data)
-            
-            # Also update the project-specific graph if it exists
-            if current_project.id in project_graphs:
-                project_task_graph = project_graphs[current_project.id]['task_graph']
-                project_task_graph.nodes.clear()
-                project_task_graph.nodes.update(live_task_graph.nodes)
-                project_task_graph.graphs.clear()
-                project_task_graph.graphs.update(live_task_graph.graphs)
-                project_task_graph.overall_project_goal = live_task_graph.overall_project_goal
-                project_task_graph.root_graph_id = live_task_graph.root_graph_id
-            
-            print(f"💾 Saved state for project {current_project.id}")
-        except Exception as e:
-            print(f"❌ Failed to save current project state: {e}")
-
 def broadcast_graph_update():
     """Send current graph state to all connected clients with project info"""
     try:
         print("📡 Starting broadcast...")
         
-        # Get the current state
-        if hasattr(live_task_graph, 'to_visualization_dict'):
-            data = live_task_graph.to_visualization_dict()
-        else:
+        # Ensure live_task_graph is valid
+        global live_task_graph
+        
+        # Check if live_task_graph is corrupted
+        if (not hasattr(live_task_graph, 'nodes') or 
+            not hasattr(live_task_graph, 'graphs') or
+            not isinstance(live_task_graph.nodes, dict) or
+            not isinstance(live_task_graph.graphs, dict)):
+            print("⚠️ live_task_graph is corrupted, recreating...")
+            from sentientresearchagent.hierarchical_agent_framework.graph.task_graph import TaskGraph
+            live_task_graph = TaskGraph()
+            
+            # Try to restore from current project if available
+            current_project = project_manager.get_current_project()
+            if current_project and current_project.id in project_graphs:
+                sync_project_to_display(current_project.id)
+                return True  # sync_project_to_display will call broadcast again
+        
+        # Use the proper serialization method
+        try:
+            if hasattr(live_task_graph, 'to_visualization_dict'):
+                data = live_task_graph.to_visualization_dict()
+            else:
+                # Fallback: Import and use GraphSerializer directly
+                from sentientresearchagent.hierarchical_agent_framework.graph.graph_serializer import GraphSerializer
+                serializer = GraphSerializer(live_task_graph)
+                data = serializer.to_visualization_dict()
+        except Exception as e:
+            print(f"⚠️ Failed to use to_visualization_dict: {e}")
+            # Manual fallback serialization
             data = {
-                'all_nodes': getattr(live_task_graph, 'nodes', {}),
-                'graphs': getattr(live_task_graph, 'graphs', {}),
+                'all_nodes': {},
+                'graphs': {},
                 'overall_project_goal': getattr(live_task_graph, 'overall_project_goal', None),
                 'root_graph_id': getattr(live_task_graph, 'root_graph_id', None)
             }
+            
+            # Serialize graphs manually - convert DiGraph objects
+            if hasattr(live_task_graph, 'graphs') and isinstance(live_task_graph.graphs, dict):
+                for graph_id, graph in live_task_graph.graphs.items():
+                    try:
+                        if hasattr(graph, 'nodes') and hasattr(graph, 'edges'):
+                            # It's a NetworkX DiGraph
+                            data['graphs'][graph_id] = {
+                                'nodes': list(graph.nodes()),
+                                'edges': [{"source": u, "target": v} for u, v in graph.edges()]
+                            }
+                    except Exception as e:
+                        print(f"⚠️ Failed to serialize graph {graph_id}: {e}")
+            
+            # Serialize nodes manually
+            if hasattr(live_task_graph, 'nodes') and isinstance(live_task_graph.nodes, dict):
+                for node_id, node in live_task_graph.nodes.items():
+                    try:
+                        # Import the serializer to use its node serialization
+                        from sentientresearchagent.hierarchical_agent_framework.graph.graph_serializer import GraphSerializer
+                        temp_serializer = GraphSerializer(live_task_graph)
+                        data['all_nodes'][node_id] = temp_serializer._serialize_node(node)
+                    except Exception as e:
+                        print(f"⚠️ Failed to serialize node {node_id}: {e}")
         
         # Add current project info
         current_project = project_manager.get_current_project()
@@ -407,9 +612,11 @@ def broadcast_graph_update():
         
         node_count = len(data.get('all_nodes', {}))
         print(f"📡 Broadcasting update: {node_count} nodes")
+        
+        # Emit the data
         socketio.emit('task_graph_update', data)
         
-        # Save state for current project (but don't create infinite loop)
+        # Save state for current project
         if current_project:
             try:
                 project_manager.save_project_state(current_project.id, data)
@@ -427,12 +634,38 @@ def broadcast_graph_update():
             traceback.print_exc()
         return False
 
-# --- WebSocket Events ---
+# Add endpoint to get all projects on page load
+@socketio.on('request_initial_state')
+def handle_request_initial_state():
+    """Send initial state when frontend connects"""
+    print('📋 Client requested initial state')
+    try:
+        # Send project list
+        projects = project_manager.get_all_projects()
+        emit('projects_list', {
+            "projects": [p.to_dict() for p in projects],
+            "current_project_id": project_manager.current_project_id
+        })
+        
+        # If there's a current project, send its graph
+        current_project = project_manager.get_current_project()
+        if current_project:
+            load_project_into_graph(current_project.id)
+        else:
+            # Send empty graph
+            broadcast_graph_update()
+            
+    except Exception as e:
+        print(f"❌ Error sending initial state: {e}")
+        traceback.print_exc()
+
+# Modify the connect handler
 @socketio.on('connect')
-def handle_connect():
+def handle_connect(auth):
     print('👋 Client connected')
     try:
-        broadcast_graph_update()
+        # Send initial state
+        handle_request_initial_state()
     except Exception as e:
         error_handler = get_error_handler()
         if error_handler:
@@ -441,6 +674,7 @@ def handle_connect():
             print(f"❌ Error in connect handler: {e}")
             traceback.print_exc()
 
+# --- WebSocket Events ---
 @socketio.on('disconnect')
 def handle_disconnect():
     print('👋 Client disconnected')
@@ -521,8 +755,13 @@ async def run_project_cycle_async(project_id: str, goal: str, max_steps: int):
             update_callback
         )
         
-        # Set as current project
-        project_manager.set_current_project(project_id)
+        # Check if this should be the current project (only if no other project is current)
+        current_project = project_manager.get_current_project()
+        if not current_project:
+            project_manager.set_current_project(project_id)
+            should_display = True
+        else:
+            should_display = (current_project.id == project_id)
         
         # Load existing state into project graph
         project_state = project_manager.load_project_state(project_id)
@@ -542,16 +781,54 @@ async def run_project_cycle_async(project_id: str, goal: str, max_steps: int):
                     if isinstance(node_data.get('timestamp_completed'), str):
                         node_data['timestamp_completed'] = datetime.fromisoformat(node_data['timestamp_completed'])
                     
+                    # Fix status and type enums if they're strings
+                    if 'status' in node_data and isinstance(node_data['status'], str):
+                        from sentientresearchagent.hierarchical_agent_framework.types import TaskStatus
+                        node_data['status'] = TaskStatus(node_data['status'])
+                    
+                    if 'task_type' in node_data and isinstance(node_data['task_type'], str):
+                        from sentientresearchagent.hierarchical_agent_framework.types import TaskType
+                        node_data['task_type'] = TaskType(node_data['task_type'])
+                    
+                    if 'node_type' in node_data and isinstance(node_data['node_type'], str):
+                        from sentientresearchagent.hierarchical_agent_framework.types import NodeType
+                        node_data['node_type'] = NodeType(node_data['node_type'])
+                    
                     # Create TaskNode object from dictionary
                     task_node = TaskNode(**node_data)
                     project_task_graph.nodes[node_id] = task_node
                 except Exception as e:
                     print(f"⚠️ Failed to deserialize node {node_id}: {e}")
+                    traceback.print_exc()
                     # Skip this node but continue with others
                     continue
             
+            # Properly reconstruct graphs
             if 'graphs' in project_state:
-                project_task_graph.graphs.update(project_state['graphs'])
+                project_task_graph.graphs.clear()
+                import networkx as nx
+                
+                for graph_id, graph_data in project_state['graphs'].items():
+                    try:
+                        # Create a new DiGraph
+                        new_graph = nx.DiGraph()
+                        
+                        # Add nodes
+                        if 'nodes' in graph_data:
+                            new_graph.add_nodes_from(graph_data['nodes'])
+                        
+                        # Add edges
+                        if 'edges' in graph_data:
+                            for edge in graph_data['edges']:
+                                if isinstance(edge, dict) and 'source' in edge and 'target' in edge:
+                                    new_graph.add_edge(edge['source'], edge['target'])
+                                elif isinstance(edge, (list, tuple)) and len(edge) == 2:
+                                    new_graph.add_edge(edge[0], edge[1])
+                        
+                        project_task_graph.graphs[graph_id] = new_graph
+                    except Exception as e:
+                        print(f"⚠️ Failed to reconstruct graph {graph_id}: {e}")
+            
             if 'overall_project_goal' in project_state:
                 project_task_graph.overall_project_goal = project_state['overall_project_goal']
             if 'root_graph_id' in project_state:
@@ -560,10 +837,12 @@ async def run_project_cycle_async(project_id: str, goal: str, max_steps: int):
             # Update project status
             project_manager.update_project(project_id, status='running')
             
-            # Sync to display and broadcast
-            sync_project_to_display(project_id)
+            # Only sync to display if this is the current project
+            if should_display:
+                sync_project_to_display(project_id)
             
             # Continue execution from where it left off
+            print("⚡ Resuming execution...")
             await realtime_engine.run_cycle(max_steps=max_steps)
         else:
             print("🧹 Starting fresh project...")
@@ -579,31 +858,35 @@ async def run_project_cycle_async(project_id: str, goal: str, max_steps: int):
             if cache_manager and sentient_config.cache.enabled:
                 cache_manager.clear_namespace(f"project_{project_id}")
             
-            # Initialize project using project-specific execution engine with real-time updates
-            print("🚀 Calling initialize_project...")
-            start_time = time.time()
-            
-            await realtime_engine.initialize_project(root_goal=goal)
-            
-            init_time = time.time() - start_time
-            print(f"⏱️ Initialization took {init_time:.2f} seconds")
-            
             # Update project status
             project_manager.update_project(project_id, status='running')
             
-            print(f"📊 Initial state sent: {len(project_task_graph.nodes)} nodes")
+            # Run the complete project flow (initialization + HITL + execution)
+            print("🚀 Starting project flow...")
+            start_time = time.time()
             
-            # Run execution cycle using real-time wrapper
-            print("⚡ Starting execution...")
-            await realtime_engine.run_cycle(max_steps=max_steps)
+            await realtime_engine.run_project_flow(root_goal=goal, max_steps=max_steps)
+            
+            total_time = time.time() - start_time
+            print(f"⏱️ Project execution took {total_time:.2f} seconds")
         
         # Update project status
         project_manager.update_project(project_id, status='completed')
         
-        # Final sync and broadcast
-        sync_project_to_display(project_id)
+        # Final sync only if current project
+        if project_manager.get_current_project() and project_manager.get_current_project().id == project_id:
+            sync_project_to_display(project_id)
         
-        print("✅ Project completed")
+        # Always save final state
+        if hasattr(project_task_graph, 'to_visualization_dict'):
+            data = project_task_graph.to_visualization_dict()
+        else:
+            from sentientresearchagent.hierarchical_agent_framework.graph.graph_serializer import GraphSerializer
+            serializer = GraphSerializer(project_task_graph)
+            data = serializer.to_visualization_dict()
+        project_manager.save_project_state(project_id, data)
+        
+        print(f"✅ Project {project_id} completed")
         
     except Exception as e:
         # Update project status to failed
@@ -617,8 +900,8 @@ async def run_project_cycle_async(project_id: str, goal: str, max_steps: int):
             traceback.print_exc()
         
         try:
-            # Sync error state
-            if project_id in project_graphs:
+            # Sync error state only if current project
+            if project_manager.get_current_project() and project_manager.get_current_project().id == project_id:
                 sync_project_to_display(project_id)
         except:
             print("❌ Failed to broadcast error state")
@@ -646,7 +929,14 @@ def run_project_in_thread(project_id: str, goal: str, max_steps: int):
 def get_task_graph_data():
     """Get current graph data"""
     try:
-        data = live_task_graph.to_visualization_dict()
+        if hasattr(live_task_graph, 'to_visualization_dict'):
+            data = live_task_graph.to_visualization_dict()
+        else:
+            # Fallback: Import and use GraphSerializer directly
+            from sentientresearchagent.hierarchical_agent_framework.graph.graph_serializer import GraphSerializer
+            serializer = GraphSerializer(live_task_graph)
+            data = serializer.to_visualization_dict()
+            
         response = make_response(jsonify(data))
         response.headers['Access-Control-Allow-Origin'] = 'http://localhost:3000'
         return response
@@ -783,6 +1073,37 @@ def get_project(project_id: str):
         if error_handler:
             error_handler.handle_error(e, component="get_project", reraise=False)
         return jsonify({"error": str(e)}), 500
+
+def save_current_project_state():
+    """Save the current live graph state to the current project"""
+    current_project = project_manager.get_current_project()
+    if current_project:
+        try:
+            # Use the proper serialization method
+            if hasattr(live_task_graph, 'to_visualization_dict'):
+                data = live_task_graph.to_visualization_dict()
+            else:
+                # Fallback: Import and use GraphSerializer directly
+                from sentientresearchagent.hierarchical_agent_framework.graph.graph_serializer import GraphSerializer
+                serializer = GraphSerializer(live_task_graph)
+                data = serializer.to_visualization_dict()
+            
+            project_manager.save_project_state(current_project.id, data)
+            
+            # Also update the project-specific graph if it exists
+            if current_project.id in project_graphs:
+                project_task_graph = project_graphs[current_project.id]['task_graph']
+                project_task_graph.nodes.clear()
+                project_task_graph.nodes.update(live_task_graph.nodes)
+                project_task_graph.graphs.clear()
+                project_task_graph.graphs.update(live_task_graph.graphs)
+                project_task_graph.overall_project_goal = live_task_graph.overall_project_goal
+                project_task_graph.root_graph_id = live_task_graph.root_graph_id
+            
+            print(f"💾 Saved state for project {current_project.id}")
+        except Exception as e:
+            print(f"❌ Failed to save current project state: {e}")
+            traceback.print_exc()
 
 @app.route('/api/projects/<project_id>/switch', methods=['POST'])
 def switch_project(project_id: str):

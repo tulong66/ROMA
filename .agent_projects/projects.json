@@ -1,17 +1,29 @@
 {
   "projects": [
     {
-      "id": "39494bc8-278d-41bd-afa6-b7d9ae6ecc76",
-      "title": "Write Me A Short 2 Section Report About...",
-      "description": "Write me a short 2 section report about the recent U.S. trade tariffs and their effect on the global economy",
-      "created_at": "2025-05-25T23:02:24.443166",
-      "updated_at": "2025-05-25T23:08:00.923570",
-      "status": "running",
-      "goal": "Write me a short 2 section report about the recent U.S. trade tariffs and their effect on the global economy",
+      "id": "47e2b4b5-d1e6-4cc9-99e3-9c030baf8948",
+      "title": "Write Me A 2 Section Report About The...",
+      "description": "Write me a 2 section report about the recent U.S. trade tariffs and their effect on the global economy",
+      "created_at": "2025-05-26T13:50:45.096680",
+      "updated_at": "2025-05-26T13:52:15.545500",
+      "status": "failed",
+      "goal": "Write me a 2 section report about the recent U.S. trade tariffs and their effect on the global economy",
       "max_steps": 250,
-      "node_count": 18,
+      "node_count": 19,
+      "completion_percentage": 0.0
+    },
+    {
+      "id": "b93b00aa-869e-46b2-a5c2-9b9488ad01d8",
+      "title": "Write Me A 2 Section Report About Ai",
+      "description": "write me a 2 section report about AI",
+      "created_at": "2025-05-26T13:51:14.176204",
+      "updated_at": "2025-05-26T13:52:15.523078",
+      "status": "failed",
+      "goal": "write me a 2 section report about AI",
+      "max_steps": 250,
+      "node_count": 12,
       "completion_percentage": 0.0
     }
   ],
-  "current_project_id": "39494bc8-278d-41bd-afa6-b7d9ae6ecc76"
+  "current_project_id": "47e2b4b5-d1e6-4cc9-99e3-9c030baf8948"
 }
