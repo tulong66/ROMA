@@ -283,12 +283,21 @@ Ensure your output is a valid JSON conforming to the PlanOutput schema, containi
         node.aux_data["execution_details"]["model_info"] = model_info
         node.aux_data["execution_details"]["processing_started"] = datetime.now().isoformat()
 
+        # NEW: Store system prompt if available
+        system_prompt = getattr(self.agno_agent, 'system_message', None) or getattr(self.agno_agent, 'system_prompt', None)
+        if system_prompt:
+            node.aux_data["execution_details"]["system_prompt"] = system_prompt
+
         # Check if we should skip cache for this request
         if hasattr(agent_task_input, 'force_refresh') and agent_task_input.force_refresh:
             logger.debug(f"  Adapter '{self.agent_name}': Skipping cache due to force_refresh flag")
         
         try:
             user_message_string = self._prepare_agno_run_arguments(agent_task_input)
+            
+            # Store the final formatted input for frontend display
+            node.aux_data["execution_details"]["final_llm_input"] = user_message_string
+            
         except Exception as e:
             raise AgentExecutionError(
                 agent_name=self.agent_name,

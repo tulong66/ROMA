@@ -7,6 +7,7 @@ __pycache__/
 *.so
 
 .agent_cache/
+
 # Distribution / packaging
 .Python
 build/

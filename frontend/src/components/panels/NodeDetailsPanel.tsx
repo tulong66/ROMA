@@ -24,11 +24,15 @@ import {
   Layers,
   Database,
   Navigation,
-  Cpu
+  Cpu,
+  MessageSquare,
+  ExternalLink,
+  Settings
 } from 'lucide-react'
 import { getStatusColor, cn } from '@/lib/utils'
 import type { TaskNode, ContextSource } from '@/types'
 import FullResultModal from './FullResultModal'
+import FinalInputModal from './FinalInputModal'
 import NodeNavigator from './NodeNavigator'
 
 const getStatusIcon = (status: string) => {
@@ -239,6 +243,7 @@ const SubTasksList: React.FC<{ taskIds: string[], allNodes: Record<string, TaskN
 const NodeDetailsPanel: React.FC = () => {
   const { selectedNodeId, nodes, selectNode } = useTaskGraphStore()
   const [isFullResultModalOpen, setIsFullResultModalOpen] = useState(false)
+  const [isFinalInputModalOpen, setIsFinalInputModalOpen] = useState(false)
   const [isNavigationExpanded, setIsNavigationExpanded] = useState(false)
   
   const selectedNode = selectedNodeId ? nodes[selectedNodeId] : null
@@ -264,6 +269,12 @@ const NodeDetailsPanel: React.FC = () => {
   const hasSubTasks = selectedNode.planned_sub_task_ids && selectedNode.planned_sub_task_ids.length > 0
   const hasContextSources = selectedNode.input_context_sources && selectedNode.input_context_sources.length > 0
   const hasFullResult = selectedNode.full_result != null && selectedNode.full_result !== undefined
+  
+  // Check for prompts in execution details
+  const hasFinalInput = selectedNode.execution_details?.final_llm_input || 
+                       (selectedNode as any).aux_data?.execution_details?.final_llm_input
+  const hasSystemPrompt = selectedNode.execution_details?.system_prompt || 
+                         (selectedNode as any).aux_data?.execution_details?.system_prompt
 
   return (
     <>
@@ -308,7 +319,7 @@ const NodeDetailsPanel: React.FC = () => {
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {/* Goal Section - Always allow expansion */}
+          {/* Goal Section */}
           <div className="space-y-3">
             <div className="flex items-center space-x-2 pb-2 border-b border-border/50">
               <Target className="w-4 h-4 text-blue-600" />
@@ -320,6 +331,59 @@ const NodeDetailsPanel: React.FC = () => {
               alwaysShowButton={true}
             />
           </div>
+
+          {/* LLM Prompts Section */}
+          {(hasFinalInput || hasSystemPrompt) && (
+            <div className="space-y-3">
+              <div className="flex items-center space-x-2 pb-2 border-b border-border/50">
+                <MessageSquare className="w-4 h-4 text-indigo-600" />
+                <h3 className="text-sm font-semibold text-foreground">LLM Prompts</h3>
+              </div>
+              <div className="space-y-3">
+                {/* System Prompt Preview */}
+                {hasSystemPrompt && (
+                  <div className="space-y-2">
+                    <div className="flex items-center space-x-2">
+                      <Settings className="w-3 h-3 text-amber-600" />
+                      <span className="text-xs font-medium text-muted-foreground">System Prompt</span>
+                    </div>
+                    <ExpandableContent
+                      content={selectedNode.execution_details?.system_prompt || 
+                              (selectedNode as any).aux_data?.execution_details?.system_prompt}
+                      maxLength={150}
+                      className="bg-amber-50/50 dark:bg-amber-900/10 p-3 rounded-lg border"
+                    />
+                  </div>
+                )}
+
+                {/* User Input Preview */}
+                {hasFinalInput && (
+                  <div className="space-y-2">
+                    <div className="flex items-center space-x-2">
+                      <User className="w-3 h-3 text-blue-600" />
+                      <span className="text-xs font-medium text-muted-foreground">User Input</span>
+                    </div>
+                    <ExpandableContent
+                      content={selectedNode.execution_details?.final_llm_input || 
+                              (selectedNode as any).aux_data?.execution_details?.final_llm_input}
+                      maxLength={150}
+                      className="bg-blue-50/50 dark:bg-blue-900/10 p-3 rounded-lg border"
+                    />
+                  </div>
+                )}
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsFinalInputModalOpen(true)}
+                  className="w-full justify-start"
+                >
+                  <ExternalLink className="w-4 h-4 mr-2" />
+                  View Full Prompts in Modal
+                </Button>
+              </div>
+            </div>
+          )}
 
           {/* Metadata Section */}
           <div className="space-y-3">
@@ -588,6 +652,15 @@ const NodeDetailsPanel: React.FC = () => {
         <FullResultModal
           isOpen={isFullResultModalOpen}
           onClose={() => setIsFullResultModalOpen(false)}
+          node={selectedNode}
+        />
+      )}
+
+      {/* Final Input Modal */}
+      {(hasFinalInput || hasSystemPrompt) && (
+        <FinalInputModal
+          isOpen={isFinalInputModalOpen}
+          onClose={() => setIsFinalInputModalOpen(false)}
           node={selectedNode}
         />
       )}

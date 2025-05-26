@@ -24,6 +24,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { TaskNode } from '@/types'
+import AdvancedMarkdownViewer from '@/components/ui/AdvancedMarkdownViewer'
 
 interface FullResultModalProps {
   isOpen: boolean
@@ -173,79 +174,14 @@ const getTypeColor = (type: FormattedData['type']) => {
   }
 }
 
-// Add simple markdown-to-HTML converter
-const parseMarkdown = (content: string): string => {
-  return content
-    // Headers
-    .replace(/^### (.*$)/gim, '<h3 class="text-lg font-semibold mb-2 mt-4 text-foreground">$1</h3>')
-    .replace(/^## (.*$)/gim, '<h2 class="text-xl font-semibold mb-3 mt-4 text-foreground">$1</h2>')
-    .replace(/^# (.*$)/gim, '<h1 class="text-2xl font-bold mb-3 mt-4 text-foreground">$1</h1>')
-    
-    // Bold and italic
-    .replace(/\*\*\*(.*?)\*\*\*/g, '<strong><em>$1</em></strong>')
-    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.*?)\*/g, '<em>$1</em>')
-    
-    // Code blocks
-    .replace(/```([\s\S]*?)```/g, '<pre class="bg-muted p-3 rounded-md overflow-x-auto my-3 border text-sm"><code>$1</code></pre>')
-    .replace(/`(.*?)`/g, '<code class="bg-muted px-1 py-0.5 rounded text-sm">$1</code>')
-    
-    // Lists
-    .replace(/^\* (.*$)/gim, '<li class="ml-4 mb-1">• $1</li>')
-    .replace(/^- (.*$)/gim, '<li class="ml-4 mb-1">• $1</li>')
-    .replace(/^\d+\. (.*$)/gim, '<li class="ml-4 mb-1 list-decimal">$1</li>')
-    
-    // Links
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="text-blue-600 dark:text-blue-400 hover:underline" target="_blank" rel="noopener noreferrer">$1</a>')
-    
-    // Line breaks
-    .replace(/\n\n/g, '<br><br>')
-    .replace(/\n/g, '<br>')
-}
-
-const MarkdownViewer: React.FC<{ content: string }> = ({ content }) => {
-  const [isRawMode, setIsRawMode] = useState(false)
-  
-  const renderedContent = useMemo(() => {
-    if (isRawMode) return content
-    return parseMarkdown(content)
-  }, [content, isRawMode])
-
+const AdvancedMarkdownViewerComponent: React.FC<{ content: string }> = ({ content }) => {
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <span className="text-sm text-muted-foreground">Markdown Content</span>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setIsRawMode(!isRawMode)}
-          className="h-6 px-2 text-xs"
-        >
-          {isRawMode ? (
-            <>
-              <Eye className="w-3 h-3 mr-1" />
-              Rendered
-            </>
-          ) : (
-            <>
-              <EyeOff className="w-3 h-3 mr-1" />
-              Raw
-            </>
-          )}
-        </Button>
-      </div>
-      
-      {isRawMode ? (
-        <pre className="text-sm font-mono bg-muted/30 p-4 rounded-lg overflow-auto max-h-96 border whitespace-pre-wrap">
-          {content}
-        </pre>
-      ) : (
-        <div 
-          className="prose prose-sm dark:prose-invert max-w-none bg-muted/30 p-4 rounded-lg overflow-auto max-h-96 border text-sm leading-relaxed"
-          dangerouslySetInnerHTML={{ __html: renderedContent }}
-        />
-      )}
-    </div>
+    <AdvancedMarkdownViewer 
+      content={content}
+      maxHeight="max-h-[60vh]"
+      title="Markdown Result"
+      showControls={true}
+    />
   )
 }
 
@@ -410,7 +346,7 @@ const FullResultModal: React.FC<FullResultModalProps> = ({ isOpen, onClose, node
   const renderContent = () => {
     switch (formattedData.type) {
       case 'markdown':
-        return <MarkdownViewer content={formattedData.content} />
+        return <AdvancedMarkdownViewerComponent content={formattedData.content} />
       case 'json':
         return <JsonViewer content={formattedData.content} />
       case 'url':
@@ -422,7 +358,7 @@ const FullResultModal: React.FC<FullResultModalProps> = ({ isOpen, onClose, node
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
+      <DialogContent className="max-w-6xl max-h-[90vh] flex flex-col">
         <DialogHeader>
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
