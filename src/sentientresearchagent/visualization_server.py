@@ -316,9 +316,25 @@ def load_project_into_graph(project_id: str) -> bool:
             project_task_graph.overall_project_goal = None
             
             if 'all_nodes' in project_state:
-                # Load nodes as dictionaries (they're already serialized)
+                # Load nodes by deserializing dictionaries back to TaskNode objects
                 for node_id, node_data in project_state['all_nodes'].items():
-                    project_task_graph.nodes[node_id] = node_data
+                    try:
+                        # Convert datetime strings back to datetime objects if needed
+                        if isinstance(node_data.get('timestamp_created'), str):
+                            from datetime import datetime
+                            node_data['timestamp_created'] = datetime.fromisoformat(node_data['timestamp_created'])
+                        if isinstance(node_data.get('timestamp_updated'), str):
+                            node_data['timestamp_updated'] = datetime.fromisoformat(node_data['timestamp_updated'])
+                        if isinstance(node_data.get('timestamp_completed'), str):
+                            node_data['timestamp_completed'] = datetime.fromisoformat(node_data['timestamp_completed'])
+                        
+                        # Create TaskNode object from dictionary
+                        task_node = TaskNode(**node_data)
+                        project_task_graph.nodes[node_id] = task_node
+                    except Exception as e:
+                        print(f"⚠️ Failed to deserialize node {node_id}: {e}")
+                        # Skip this node but continue with others
+                        continue
             
             if 'graphs' in project_state:
                 project_task_graph.graphs.update(project_state['graphs'])
@@ -513,10 +529,26 @@ async def run_project_cycle_async(project_id: str, goal: str, max_steps: int):
         if project_state and 'all_nodes' in project_state and len(project_state['all_nodes']) > 0:
             print(f"📊 Resuming project with {len(project_state['all_nodes'])} existing nodes")
             
-            # Load state into project graph
+            # Load state into project graph - properly deserialize nodes
             project_task_graph.nodes.clear()
             for node_id, node_data in project_state['all_nodes'].items():
-                project_task_graph.nodes[node_id] = node_data
+                try:
+                    # Convert datetime strings back to datetime objects if needed
+                    if isinstance(node_data.get('timestamp_created'), str):
+                        from datetime import datetime
+                        node_data['timestamp_created'] = datetime.fromisoformat(node_data['timestamp_created'])
+                    if isinstance(node_data.get('timestamp_updated'), str):
+                        node_data['timestamp_updated'] = datetime.fromisoformat(node_data['timestamp_updated'])
+                    if isinstance(node_data.get('timestamp_completed'), str):
+                        node_data['timestamp_completed'] = datetime.fromisoformat(node_data['timestamp_completed'])
+                    
+                    # Create TaskNode object from dictionary
+                    task_node = TaskNode(**node_data)
+                    project_task_graph.nodes[node_id] = task_node
+                except Exception as e:
+                    print(f"⚠️ Failed to deserialize node {node_id}: {e}")
+                    # Skip this node but continue with others
+                    continue
             
             if 'graphs' in project_state:
                 project_task_graph.graphs.update(project_state['graphs'])

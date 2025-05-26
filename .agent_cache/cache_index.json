@@ -1,657 +1,457 @@
 {
   "agent_responses:DefaultAtomizer:root:a1b8da0a84918ebb": {
     "file": "11235b04f165b7791380411e22e6c32af71cabde5ceb5837e591aa217280c058.cache",
-    "created_at": "2025-05-25T20:59:03.634104",
-    "expires_at": "2025-05-25T21:59:03.634104"
+    "created_at": "2025-05-25T23:02:27.178125",
+    "expires_at": "2025-05-26T00:02:27.178125"
   },
   "agent_responses:SimpleTestPlanner:root:a1b8da0a84918ebb": {
     "file": "b96265c36bd92e86df60b6fb1c91ac5dc47f042fd6471da59f759a87cd4d142a.cache",
-    "created_at": "2025-05-25T20:58:42.280676",
-    "expires_at": "2025-05-25T21:58:42.280676"
+    "created_at": "2025-05-25T23:02:33.827936",
+    "expires_at": "2025-05-26T00:02:33.827936"
   },
   "agent_responses:DefaultAtomizer:root.1:b4a8294f8aca63b0": {
     "file": "12dc4b73bf8f5521b6e2bbf7c1efa4e1735733823d65e8bde643af12c7ba3a68.cache",
-    "created_at": "2025-05-25T20:58:45.309405",
-    "expires_at": "2025-05-25T21:58:45.309405"
-  },
-  "agent_responses:DefaultAtomizer:root.4:b4a8294f8aca63b0": {
-    "file": "d0cfaf4cfd90062d0085a21870179fd5446614c8ee71de1817b58a815aaca6bd.cache",
-    "created_at": "2025-05-25T20:19:00.065558",
-    "expires_at": "2025-05-25T21:19:00.065558"
+    "created_at": "2025-05-25T23:02:37.436194",
+    "expires_at": "2025-05-26T00:02:37.436194"
   },
   "agent_responses:DefaultAtomizer:root.2:b4a8294f8aca63b0": {
     "file": "5d3727836697b7f81a0679621b3980c7e68205a0b8dacc0576a49fcb2120904f.cache",
-    "created_at": "2025-05-25T20:58:50.999460",
-    "expires_at": "2025-05-25T21:58:50.999460"
+    "created_at": "2025-05-25T23:02:40.824342",
+    "expires_at": "2025-05-26T00:02:40.824342"
   },
   "agent_responses:DefaultAtomizer:root.3:b4a8294f8aca63b0": {
     "file": "742c850ccc30d6b9ba7c4e4fa7681bfc2694c7a58606bd20266a98f9103b7ff9.cache",
-    "created_at": "2025-05-25T20:58:48.118555",
-    "expires_at": "2025-05-25T21:58:48.118555"
+    "created_at": "2025-05-25T22:05:04.790610",
+    "expires_at": "2025-05-25T23:05:04.790610"
   },
   "agent_responses:SimpleTestPlanner:root.1:b4a8294f8aca63b0": {
     "file": "41f8e927dfbe88f1cadf21848bbfd475d37f0249547a737cb0f5fbd3c42e6083.cache",
-    "created_at": "2025-05-25T20:58:55.717855",
-    "expires_at": "2025-05-25T21:58:55.717855"
-  },
-  "agent_responses:SimpleTestPlanner:root.4:b4a8294f8aca63b0": {
-    "file": "1dbe6fff90b585000c7b545ae79d96cc43fac13de0023d93c758b0ceab507a5c.cache",
-    "created_at": "2025-05-25T20:19:12.540648",
-    "expires_at": "2025-05-25T21:19:12.540648"
+    "created_at": "2025-05-25T23:02:47.419487",
+    "expires_at": "2025-05-26T00:02:47.419487"
   },
   "agent_responses:SimpleTestPlanner:root.3:b4a8294f8aca63b0": {
     "file": "efc84a8795811f756eb2b792640a525519e4dbc032bb1464262e1ce852fd82c4.cache",
-    "created_at": "2025-05-25T20:59:05.053482",
-    "expires_at": "2025-05-25T21:59:05.053482"
+    "created_at": "2025-05-25T22:05:15.548709",
+    "expires_at": "2025-05-25T23:05:15.548709"
   },
   "agent_responses:SimpleTestPlanner:root.2:b4a8294f8aca63b0": {
     "file": "b43808f5c5b59b58198714449bad045f77500b04e3508b20601e6225758c6fa9.cache",
-    "created_at": "2025-05-25T20:59:05.518969",
-    "expires_at": "2025-05-25T21:59:05.518969"
-  },
-  "agent_responses:DefaultAtomizer:root.4.1:c14900d727e7422e": {
-    "file": "84f0318f58b77e860544d46bae27b134b7c75334abc71151c74f7cf9f9acd238.cache",
-    "created_at": "2025-05-25T20:19:15.683327",
-    "expires_at": "2025-05-25T21:19:15.683327"
+    "created_at": "2025-05-25T23:02:56.163361",
+    "expires_at": "2025-05-26T00:02:56.163361"
   },
   "agent_responses:DefaultAtomizer:root.2.2:c14900d727e7422e": {
     "file": "67ea8c46e478ccb4efb10fdc3e36c5e5822165ebc5dcd7d27bb05ef1f9f00993.cache",
-    "created_at": "2025-05-25T20:53:15.217098",
-    "expires_at": "2025-05-25T21:53:15.217098"
-  },
-  "agent_responses:DefaultAtomizer:root.2.1:c14900d727e7422e": {
-    "file": "d951e59768683ca00b334faf7e5a0f95b04dd280adf783ed973d94fd32aeecd6.cache",
-    "created_at": "2025-05-25T20:19:46.387673",
-    "expires_at": "2025-05-25T21:19:46.387673"
-  },
-  "agent_responses:DefaultAtomizer:root.2.4:c14900d727e7422e": {
-    "file": "4a45bb4d0e39e124194b630b26b8816baf1f5f23b5533021251b9df1cf02fbfb.cache",
-    "created_at": "2025-05-25T20:19:18.397392",
-    "expires_at": "2025-05-25T21:19:18.397392"
-  },
-  "agent_responses:DefaultAtomizer:root.3.2:c14900d727e7422e": {
-    "file": "efe96e25167dbfeb5a5b759d8c1f88b636f24e91c737df210d9ba230531f9892.cache",
-    "created_at": "2025-05-25T20:19:42.017078",
-    "expires_at": "2025-05-25T21:19:42.017078"
-  },
-  "agent_responses:DefaultAtomizer:root.4.2:c14900d727e7422e": {
-    "file": "124705ffff1a1e22e650f0b09750f3fcb5a51b86fa88ef334b6df4239cbcb8ad.cache",
-    "created_at": "2025-05-25T20:19:58.918302",
-    "expires_at": "2025-05-25T21:19:58.918302"
-  },
-  "agent_responses:DefaultAtomizer:root.3.1:c14900d727e7422e": {
-    "file": "6da2e495d5edaddef3a6b017de11d5a2259140f872dfcad45aa377de000a82ac.cache",
-    "created_at": "2025-05-25T20:19:34.907001",
-    "expires_at": "2025-05-25T21:19:34.907001"
-  },
-  "agent_responses:DefaultAtomizer:root.3.4:c14900d727e7422e": {
-    "file": "a56ea2615ec72c0cd0cd3a80fc04865766a95f8809d2f1551d66b46133401d22.cache",
-    "created_at": "2025-05-25T20:19:39.730490",
-    "expires_at": "2025-05-25T21:19:39.730490"
+    "created_at": "2025-05-25T23:03:16.486184",
+    "expires_at": "2025-05-26T00:03:16.486184"
   },
   "agent_responses:DefaultAtomizer:root.1.1:c14900d727e7422e": {
     "file": "fb9988b7f920f09883d8191a8c39f3c808fb873f5e21052dab000584f3aad7cc.cache",
-    "created_at": "2025-05-25T20:47:02.442122",
-    "expires_at": "2025-05-25T21:47:02.442122"
-  },
-  "agent_responses:DefaultAtomizer:root.4.4:c14900d727e7422e": {
-    "file": "dabcc5e41b83ba0ac8c8a83c36727c3d85cfa655393717bdba1b1ecb2badf020.cache",
-    "created_at": "2025-05-25T20:19:54.059954",
-    "expires_at": "2025-05-25T21:19:54.059954"
-  },
-  "agent_responses:DefaultAtomizer:root.4.3:c14900d727e7422e": {
-    "file": "f635065abeec3ed78a80e94a254a12bc08d75c9d60a524448d72a6f9329b606f.cache",
-    "created_at": "2025-05-25T20:19:48.495260",
-    "expires_at": "2025-05-25T21:19:48.495260"
+    "created_at": "2025-05-25T23:03:09.127671",
+    "expires_at": "2025-05-26T00:03:09.127671"
   },
   "agent_responses:DefaultAtomizer:root.2.3:c14900d727e7422e": {
     "file": "a75578fe1ff04a7fbd9f8d806e9afaea12d7a9d35c440647868381286801bd21.cache",
-    "created_at": "2025-05-25T20:53:13.014343",
-    "expires_at": "2025-05-25T21:53:13.014343"
+    "created_at": "2025-05-25T23:03:03.097269",
+    "expires_at": "2025-05-26T00:03:03.097269"
   },
   "agent_responses:DefaultAtomizer:root.1.3:c14900d727e7422e": {
     "file": "68ffd9c4ef38ee2be3974a159d50f17bc21a428e3fba6787aeaffa21f0f72e2e.cache",
-    "created_at": "2025-05-25T20:47:05.147977",
-    "expires_at": "2025-05-25T21:47:05.147977"
+    "created_at": "2025-05-25T23:03:00.840183",
+    "expires_at": "2025-05-26T00:03:00.840183"
   },
   "agent_responses:DefaultAtomizer:root.1.2:c14900d727e7422e": {
     "file": "64b80da05b458269b608237f4209bb4f02afbf86b205711d4e4ec3df5c06be32.cache",
-    "created_at": "2025-05-25T20:53:17.489459",
-    "expires_at": "2025-05-25T21:53:17.489459"
+    "created_at": "2025-05-25T23:03:11.347268",
+    "expires_at": "2025-05-26T00:03:11.347268"
   },
   "agent_responses:DefaultAtomizer:root.1.4:c14900d727e7422e": {
     "file": "c43f3f407b64ac4fb6bd3e2a130e40f9fc0d41ad09f9340eea1482eee60ae40f.cache",
-    "created_at": "2025-05-25T20:47:10.394501",
-    "expires_at": "2025-05-25T21:47:10.394501"
+    "created_at": "2025-05-25T23:03:06.642091",
+    "expires_at": "2025-05-26T00:03:06.642091"
   },
   "agent_responses:DefaultAtomizer:root.1.5:e067ab22d624b6ca": {
     "file": "93e0aa7d19b2dfb4bed4296446d375aebeb9e5ff80906eb5b89459ef488dc659.cache",
-    "created_at": "2025-05-25T20:47:26.184799",
-    "expires_at": "2025-05-25T21:47:26.184799"
+    "created_at": "2025-05-25T23:03:47.536596",
+    "expires_at": "2025-05-26T00:03:47.536596"
   },
   "agent_responses:SearchSynthesizer:root.1.5:e067ab22d624b6ca": {
     "file": "63667a092a44d5511bed43d8e3e24d52198c7ac81d23d7dc6737eedaa26978c7.cache",
-    "created_at": "2025-05-25T20:47:46.556886",
-    "expires_at": "2025-05-25T21:47:46.556886"
+    "created_at": "2025-05-25T23:04:15.104380",
+    "expires_at": "2025-05-26T00:04:15.104380"
   },
   "agent_responses:DefaultAggregator:root.1:b4a8294f8aca63b0": {
     "file": "ba35de5628921a28921d612858029568be256494de30c3542b21ca82facfba3b.cache",
-    "created_at": "2025-05-25T20:48:30.343914",
-    "expires_at": "2025-05-25T21:48:30.343914"
-  },
-  "agent_responses:DefaultAtomizer:d3c58c0cf70ef664": {
-    "file": "8186080e147103a4e76318eacd72f8026985289896626b725c28a9db6a076f28.cache",
-    "created_at": "2025-05-25T20:08:03.609881",
-    "expires_at": "2025-05-25T21:08:03.609881"
-  },
-  "agent_responses:SimpleTestPlanner:2b6841a6ad727887": {
-    "file": "8c329b2215bc0610fb38730779a3fdafd2830def9f53d710c61c01f1bef27254.cache",
-    "created_at": "2025-05-25T20:08:10.222383",
-    "expires_at": "2025-05-25T21:08:10.222383"
-  },
-  "agent_responses:DefaultAtomizer:e706f1a70c5a1d55": {
-    "file": "c88d625d3123895107e006b5f4a782ab95fa3b7740448ceaf4e013808567ee85.cache",
-    "created_at": "2025-05-25T20:08:34.829754",
-    "expires_at": "2025-05-25T21:08:34.829754"
-  },
-  "agent_responses:DefaultAtomizer:f9193da9b5fa17fb": {
-    "file": "b35a46294fe3c0dbfb8da982a5dc22ca6377e62d7fb35b41647dac698977d0ac.cache",
-    "created_at": "2025-05-25T20:08:37.492291",
-    "expires_at": "2025-05-25T21:08:37.492291"
-  },
-  "agent_responses:DefaultAtomizer:6a2fd870962f84dd": {
-    "file": "1c0b6cb67a972dba09f8a345662d21fb8324080f5ba9a12065566f2dc01a4852.cache",
-    "created_at": "2025-05-25T20:08:39.972872",
-    "expires_at": "2025-05-25T21:08:39.972872"
-  },
-  "agent_responses:DefaultAtomizer:db75b674a0c2970c": {
-    "file": "8864a55a216223fb7a3ebf006f6d64c47d50c4532a14863a497bb0dea0ea2d4b.cache",
-    "created_at": "2025-05-25T20:08:42.232197",
-    "expires_at": "2025-05-25T21:08:42.232197"
-  },
-  "agent_responses:SimpleTestPlanner:39efa4e09e37dee4": {
-    "file": "3d19ad7995629fe556967a2131fb79239596d9ec38b1305021c7b98def9902a9.cache",
-    "created_at": "2025-05-25T20:08:49.725356",
-    "expires_at": "2025-05-25T21:08:49.725356"
-  },
-  "agent_responses:SimpleTestPlanner:1ec96533bf57751d": {
-    "file": "6cfddbfe4e51224944375631463e6c947d59e2ca2ec48ef1f6bf65650ee611d1.cache",
-    "created_at": "2025-05-25T20:08:50.010248",
-    "expires_at": "2025-05-25T21:08:50.010248"
-  },
-  "agent_responses:SimpleTestPlanner:5c016f54fd3bd588": {
-    "file": "f7add75b7064f634b50d73623fcf0154cb0049034871f7935a16658eba9f3925.cache",
-    "created_at": "2025-05-25T20:08:51.296454",
-    "expires_at": "2025-05-25T21:08:51.296454"
-  },
-  "agent_responses:SimpleTestPlanner:20e6dfd8253986a8": {
-    "file": "c353a8dd21769371910b6efa795fea7794ada7229c1ec7a647c66ac0c4a0f0c8.cache",
-    "created_at": "2025-05-25T20:08:53.122820",
-    "expires_at": "2025-05-25T21:08:53.122820"
-  },
-  "agent_responses:DefaultAtomizer:875735b52e411c09": {
-    "file": "499c19d654720c658ba58fecbbca50f385922c339a831d20de2634ffbafdf7d1.cache",
-    "created_at": "2025-05-25T20:08:55.479664",
-    "expires_at": "2025-05-25T21:08:55.479664"
-  },
-  "agent_responses:DefaultAtomizer:root.4.4:b4a8294f8aca63b0": {
-    "file": "58c4172cecba6fe165053d67fbebebf4003f30d19a16fcd851541247543e1033.cache",
-    "created_at": "2025-05-25T20:08:58.209253",
-    "expires_at": "2025-05-25T21:08:58.209253"
-  },
-  "agent_responses:DefaultAtomizer:1e98cb0da29ff5b5": {
-    "file": "a96917105913d45b9e68c69ddbb5c6c1e2e0731e93537e347d021812ab381588.cache",
-    "created_at": "2025-05-25T20:08:58.210765",
-    "expires_at": "2025-05-25T21:08:58.210765"
-  },
-  "agent_responses:DefaultAtomizer:e84dc5583ea0b901": {
-    "file": "1b1f214d0000392b924b02fdfa3cab99e0e179c85fba0ed95d63f3e2f5dd451c.cache",
-    "created_at": "2025-05-25T20:09:00.636897",
-    "expires_at": "2025-05-25T21:09:00.636897"
-  },
-  "agent_responses:DefaultAtomizer:a071f8451435e0f8": {
-    "file": "c4b25f712b11fe68b488aafff4758ec77c569652ed06b8ecc1ee9d7749e832af.cache",
-    "created_at": "2025-05-25T20:15:05.978022",
-    "expires_at": "2025-05-25T21:15:05.978022"
-  },
-  "agent_responses:SimpleTestPlanner:2e1551667921cdf9": {
-    "file": "9193f0489b2ea01fd9271f6a47a01a91dc9c07a1fd0051f08a6f4edecb9d5124.cache",
-    "created_at": "2025-05-25T20:15:13.737658",
-    "expires_at": "2025-05-25T21:15:13.737658"
-  },
-  "agent_responses:DefaultAtomizer:a3fe5f697ff5fc08": {
-    "file": "597b8f64873bd45c8dfe64740d6c112774994181434ebded7d628ab2568cca40.cache",
-    "created_at": "2025-05-25T20:15:16.364291",
-    "expires_at": "2025-05-25T21:15:16.364291"
-  },
-  "agent_responses:DefaultAtomizer:a29aebb6e951933e": {
-    "file": "fd5131e30b169c2c1d242e48da3c27cf45b5959a5c38631a857b19fdab2bf825.cache",
-    "created_at": "2025-05-25T20:15:19.192959",
-    "expires_at": "2025-05-25T21:15:19.192959"
-  },
-  "agent_responses:DefaultAtomizer:c037994a385f7385": {
-    "file": "410fc37b15ead855038209f9ccfa2eb0f15bbe356da0e60d458c8e1fa269bdb6.cache",
-    "created_at": "2025-05-25T20:15:21.620282",
-    "expires_at": "2025-05-25T21:15:21.620282"
-  },
-  "agent_responses:DefaultAtomizer:1d6bbb76a47bb462": {
-    "file": "3bdc7acc139d11b0027cf5286d690eab9830877a609a428791631daffa307883.cache",
-    "created_at": "2025-05-25T20:15:23.489531",
-    "expires_at": "2025-05-25T21:15:23.489531"
-  },
-  "agent_responses:SimpleTestPlanner:d454aa65d64c8c00": {
-    "file": "0f64474b5b0ae62ff466555cf990dc94596a9b222f8dd503f3d2fd99452c45d3.cache",
-    "created_at": "2025-05-25T20:15:25.862472",
-    "expires_at": "2025-05-25T21:15:25.862472"
-  },
-  "agent_responses:SimpleTestPlanner:aedcb56e401bfe23": {
-    "file": "499206352ad375394140466b712e4cecb4f67ee5ce05bf47f8f04cdd30e86290.cache",
-    "created_at": "2025-05-25T20:15:32.570092",
-    "expires_at": "2025-05-25T21:15:32.570092"
-  },
-  "agent_responses:SimpleTestPlanner:998f605209d7e32e": {
-    "file": "4cece220d589b675a4ec9c540955983a3f276d361d73a256aecd2dfd5f7529eb.cache",
-    "created_at": "2025-05-25T20:15:33.713644",
-    "expires_at": "2025-05-25T21:15:33.713644"
-  },
-  "agent_responses:SimpleTestPlanner:a2117a033945178a": {
-    "file": "91d3f99254fcfeec06caf3b38ec19b193bdd6d3cb7cbe2d28e2f77723805a19e.cache",
-    "created_at": "2025-05-25T20:15:34.131666",
-    "expires_at": "2025-05-25T21:15:34.131666"
-  },
-  "agent_responses:DefaultAtomizer:8364732a13e8495e": {
-    "file": "6fff3ea405c33a5e1ea6d6b2e1021afdfd557c1712b2b0212152ea1c9537d6ed.cache",
-    "created_at": "2025-05-25T20:15:36.468391",
-    "expires_at": "2025-05-25T21:15:36.468391"
-  },
-  "agent_responses:DefaultAtomizer:9574326af4813766": {
-    "file": "48d99c8c1ad0267a4ea93a49ac9d9e059935d8e949b31574e95b2604ca08f78d.cache",
-    "created_at": "2025-05-25T20:15:39.487865",
-    "expires_at": "2025-05-25T21:15:39.487865"
-  },
-  "agent_responses:DefaultAtomizer:root.3.1:b4a8294f8aca63b0": {
-    "file": "76fddde919f9edfebeac9c24ce04c19c25f6e8333d395d98283143d44db4f0cb.cache",
-    "created_at": "2025-05-25T20:15:41.133342",
-    "expires_at": "2025-05-25T21:15:41.133342"
-  },
-  "agent_responses:DefaultAtomizer:3c809aa508b0d647": {
-    "file": "f7abde867bbd8dbecaaf067e6eb91464b4d96bd623c468eaca54d9010952a974.cache",
-    "created_at": "2025-05-25T20:15:41.138713",
-    "expires_at": "2025-05-25T21:15:41.138713"
-  },
-  "agent_responses:DefaultAtomizer:71cfebf43e43f79b": {
-    "file": "054c038418a6da6cb91217da151bf9d3207ee5f7be0c6551b623ce6f75c21ff3.cache",
-    "created_at": "2025-05-25T20:15:43.243279",
-    "expires_at": "2025-05-25T21:15:43.243279"
-  },
-  "agent_responses:DefaultAtomizer:2d0692095680a160": {
-    "file": "49e4cf29ed900bfdf392c63a1d7511c2aef0e9af9ac3f6a3b5c7c2dfc7ab73f7.cache",
-    "created_at": "2025-05-25T20:15:45.782107",
-    "expires_at": "2025-05-25T21:15:45.782107"
-  },
-  "agent_responses:DefaultAtomizer:f35226e4652f5fe9": {
-    "file": "23517149cd2a6f59b4f8eeedb6ef79b31952bcfd38e20ab3a2ed8b1371e25729.cache",
-    "created_at": "2025-05-25T20:18:43.375163",
-    "expires_at": "2025-05-25T21:18:43.375163"
-  },
-  "agent_responses:SimpleTestPlanner:57dc4f54694dd303": {
-    "file": "0dc8a0e685620bc2b6407c40c168b86853167da903599cc741fe692ce3a8a269.cache",
-    "created_at": "2025-05-25T20:18:50.593680",
-    "expires_at": "2025-05-25T21:18:50.593680"
-  },
-  "agent_responses:DefaultAtomizer:0281cd23cbafd3d0": {
-    "file": "81d7477d355896d791c66e0f918ab32b08f8459b3caed1ba3a9abb6908a9efe2.cache",
-    "created_at": "2025-05-25T20:18:54.119592",
-    "expires_at": "2025-05-25T21:18:54.119592"
-  },
-  "agent_responses:DefaultAtomizer:c3238c89ba8f2b22": {
-    "file": "a643619a364c1360756c4cd139a9686683e4ad732c32aeec8e273f8708908136.cache",
-    "created_at": "2025-05-25T20:18:57.112126",
-    "expires_at": "2025-05-25T21:18:57.112126"
-  },
-  "agent_responses:DefaultAtomizer:41ca6f7b14514a64": {
-    "file": "cf332bb9c6d0d03f79f1feb4faeb34b3873f191dc341cd8126be71582b9fad73.cache",
-    "created_at": "2025-05-25T20:19:00.069024",
-    "expires_at": "2025-05-25T21:19:00.069024"
-  },
-  "agent_responses:DefaultAtomizer:604ae84cc45010f6": {
-    "file": "fb36da5baff5344edeacd908e7f981fae08776b90dcdae47cc2c868076785d3b.cache",
-    "created_at": "2025-05-25T20:19:02.494832",
-    "expires_at": "2025-05-25T21:19:02.494832"
-  },
-  "agent_responses:SimpleTestPlanner:a02c2be52bc54486": {
-    "file": "6e8c32b557b5fd4e6612d6929e5897021a1a2d3791c68f99dca8f8a9930c5cb2.cache",
-    "created_at": "2025-05-25T20:19:07.190179",
-    "expires_at": "2025-05-25T21:19:07.190179"
-  },
-  "agent_responses:SimpleTestPlanner:8464fbd8256b5404": {
-    "file": "36b91e1e53848834a6b10736734759efc2011536779eeb38b911b7a976b1ba27.cache",
-    "created_at": "2025-05-25T20:19:07.542231",
-    "expires_at": "2025-05-25T21:19:07.542231"
-  },
-  "agent_responses:SimpleTestPlanner:62dbf4761f64ea9c": {
-    "file": "5c4d3fa554b89fa6898963fe97068e2652cf0992fbd136f9cd952a995bb31005.cache",
-    "created_at": "2025-05-25T20:19:12.543933",
-    "expires_at": "2025-05-25T21:19:12.543933"
-  },
-  "agent_responses:SimpleTestPlanner:9bcf61083ba94a30": {
-    "file": "ba1d14940669e15bfca68c216997e95df6b370c9785f3fe7d4f3a9c5dfb51612.cache",
-    "created_at": "2025-05-25T20:19:13.338318",
-    "expires_at": "2025-05-25T21:19:13.338318"
-  },
-  "agent_responses:DefaultAtomizer:321c49b440af52ae": {
-    "file": "fa68f054f1728c08720241f11aaa03992f60e9a4c82d5351dfe5be68779b6e8f.cache",
-    "created_at": "2025-05-25T20:19:15.686154",
-    "expires_at": "2025-05-25T21:19:15.686154"
-  },
-  "agent_responses:DefaultAtomizer:0e59a62b9aac5457": {
-    "file": "1fd577066789114f99f62e464dc6c42a77796a84d93f8da68417ea0c2aa3773d.cache",
-    "created_at": "2025-05-25T20:19:18.398791",
-    "expires_at": "2025-05-25T21:19:18.398791"
-  },
-  "agent_responses:DefaultAtomizer:45503f43d28eb39e": {
-    "file": "40b580feec560f205c1700e8ecfbf07863fbff4eb72917cbf7b16f1b599e81c4.cache",
-    "created_at": "2025-05-25T20:19:20.948369",
-    "expires_at": "2025-05-25T21:19:20.948369"
+    "created_at": "2025-05-25T23:06:05.951119",
+    "expires_at": "2025-05-26T00:06:05.951119"
   },
   "agent_responses:DefaultAtomizer:root.3.3:c14900d727e7422e": {
     "file": "8d0ee312bdcedacf1e45f36cefa756cd7e6016b414694ebf3619f8e19106adf3.cache",
-    "created_at": "2025-05-25T20:53:10.317794",
-    "expires_at": "2025-05-25T21:53:10.317794"
+    "created_at": "2025-05-25T22:06:34.360646",
+    "expires_at": "2025-05-25T23:06:34.360646"
   },
-  "agent_responses:DefaultAtomizer:35fbab5a720e580a": {
-    "file": "56d94cb7e069629a7015c1f08c824a53ce1cc81fdaebd078ab867d74eaba6a2a.cache",
-    "created_at": "2025-05-25T20:19:32.907917",
-    "expires_at": "2025-05-25T21:19:32.907917"
+  "agent_responses:DefaultAtomizer:root.2.4:c14900d727e7422e": {
+    "file": "4a45bb4d0e39e124194b630b26b8816baf1f5f23b5533021251b9df1cf02fbfb.cache",
+    "created_at": "2025-05-25T23:03:14.186840",
+    "expires_at": "2025-05-26T00:03:14.186840"
   },
-  "agent_responses:DefaultAtomizer:9fd95c958edab082": {
-    "file": "6c62a05b7cf6d13cf2e39e1cfa8c7c9ebe371c2cabddee85a49ad65594aa8e0d.cache",
-    "created_at": "2025-05-25T20:19:34.910571",
-    "expires_at": "2025-05-25T21:19:34.910571"
+  "agent_responses:DefaultAtomizer:root.2.1:c14900d727e7422e": {
+    "file": "d951e59768683ca00b334faf7e5a0f95b04dd280adf783ed973d94fd32aeecd6.cache",
+    "created_at": "2025-05-25T23:02:58.530311",
+    "expires_at": "2025-05-26T00:02:58.530311"
   },
-  "agent_responses:DefaultAtomizer:ce3f2514179b8ef0": {
-    "file": "7e42f0f630db9b0515bbef4a68e49dc1028204354f8cf740e5afbb9375596a8d.cache",
-    "created_at": "2025-05-25T20:19:37.182830",
-    "expires_at": "2025-05-25T21:19:37.182830"
+  "agent_responses:DefaultAtomizer:root.3.4:c14900d727e7422e": {
+    "file": "a56ea2615ec72c0cd0cd3a80fc04865766a95f8809d2f1551d66b46133401d22.cache",
+    "created_at": "2025-05-25T22:06:21.746201",
+    "expires_at": "2025-05-25T23:06:21.746201"
   },
-  "agent_responses:DefaultAtomizer:f2c98063c7932817": {
-    "file": "248bab1abd4de1426d77c2c58abea417895c8cfff9a4b2b472b1875a290bf06f.cache",
-    "created_at": "2025-05-25T20:19:39.733912",
-    "expires_at": "2025-05-25T21:19:39.733912"
+  "agent_responses:DefaultAtomizer:root.3.1:c14900d727e7422e": {
+    "file": "6da2e495d5edaddef3a6b017de11d5a2259140f872dfcad45aa377de000a82ac.cache",
+    "created_at": "2025-05-25T22:06:41.967855",
+    "expires_at": "2025-05-25T23:06:41.967855"
   },
-  "agent_responses:DefaultAtomizer:4cbd85ec8fa43606": {
-    "file": "73d22ea37f39d4ac29882fcb1d4eac8f111480ed75e90e6b3a125ecf211e42bf.cache",
-    "created_at": "2025-05-25T20:19:42.019981",
-    "expires_at": "2025-05-25T21:19:42.019981"
+  "agent_responses:DefaultAtomizer:root.3.2:c14900d727e7422e": {
+    "file": "efe96e25167dbfeb5a5b759d8c1f88b636f24e91c737df210d9ba230531f9892.cache",
+    "created_at": "2025-05-25T22:06:23.676354",
+    "expires_at": "2025-05-25T23:06:23.676354"
   },
-  "agent_responses:DefaultAtomizer:7158f0d92ef2724b": {
-    "file": "26a473bd66827abbdf49fa41d88a82c010ff15602eae93eb94f7f88a1a3d1ab8.cache",
-    "created_at": "2025-05-25T20:19:46.388576",
-    "expires_at": "2025-05-25T21:19:46.388576"
+  "agent_responses:DefaultAtomizer:e23682ee958d912f": {
+    "file": "2c6f25d7f1fbb518787110ee1d36247b0e157b84b50c5f0b00d46cd3a99e78ce.cache",
+    "created_at": "2025-05-25T22:04:18.572309",
+    "expires_at": "2025-05-25T23:04:18.572309"
   },
-  "agent_responses:DefaultAtomizer:7f38171d123af6b8": {
-    "file": "f05439ec3934591ca2b42d0a09eb65ecee51486d88067a866ee37d376e493bc7.cache",
-    "created_at": "2025-05-25T20:19:48.498021",
-    "expires_at": "2025-05-25T21:19:48.498021"
+  "agent_responses:SimpleTestPlanner:b4f0191620b15908": {
+    "file": "87e07e996398b47bc7f26826f86e8252adbbce8a38cfd1acd78f531b5cc035fd.cache",
+    "created_at": "2025-05-25T22:04:41.156666",
+    "expires_at": "2025-05-25T23:04:41.156666"
   },
-  "agent_responses:DefaultAtomizer:5772025c202f1921": {
-    "file": "cbc3531a04e91d877c2e82d88e27893a6b0e32431bdadf9bd3d754bcd47179b4.cache",
-    "created_at": "2025-05-25T20:19:50.692410",
-    "expires_at": "2025-05-25T21:19:50.692410"
+  "agent_responses:DefaultAtomizer:b3ac8403168661a3": {
+    "file": "a5207700c29e1b0c10277549ee583185c41b1a9cac7f8f029b3e1aad2c8a5fd0.cache",
+    "created_at": "2025-05-25T22:05:04.793968",
+    "expires_at": "2025-05-25T23:05:04.793968"
   },
-  "agent_responses:DefaultAtomizer:fd1b233a4741d779": {
-    "file": "a2329ad79a2630a5206e23591725839fd2aeffedbcd34a8b2eae72cd8b79cfaa.cache",
-    "created_at": "2025-05-25T20:19:51.896583",
-    "expires_at": "2025-05-25T21:19:51.896583"
+  "agent_responses:DefaultAtomizer:236afeb0cef2f407": {
+    "file": "a7b3fe4ea7f886980ac569d92a9f13947eefa1b1834337abf177e6d0778e9b1e.cache",
+    "created_at": "2025-05-25T22:05:12.782465",
+    "expires_at": "2025-05-25T23:05:12.782465"
   },
-  "agent_responses:DefaultAtomizer:16fe6f0ae688ae95": {
-    "file": "ca91df0c3fa690318319e0e19a09942f7431df81b128ecc596423435c053c15b.cache",
-    "created_at": "2025-05-25T20:19:54.061456",
-    "expires_at": "2025-05-25T21:19:54.061456"
+  "agent_responses:SimpleTestPlanner:b374f9d7c97ca083": {
+    "file": "417da3cb5f9b9ec32bc54ac547a89dd9daf8cdb784f7d8775340a6a3ed4eeb2f.cache",
+    "created_at": "2025-05-25T22:05:15.552023",
+    "expires_at": "2025-05-25T23:05:15.552023"
   },
-  "agent_responses:DefaultAtomizer:d9a959b8c9a63d2c": {
-    "file": "6373747d05c3d7609474189e1ee9a792a192013980a66fff25e10fb0e552138f.cache",
-    "created_at": "2025-05-25T20:19:56.522364",
-    "expires_at": "2025-05-25T21:19:56.522364"
+  "agent_responses:DefaultAtomizer:6bab4160f9644a3b": {
+    "file": "8761c252c86179ee551bf180adecd6404b33dcf4d141e452f68c6a382fcd122a.cache",
+    "created_at": "2025-05-25T22:05:19.849284",
+    "expires_at": "2025-05-25T23:05:19.849284"
   },
-  "agent_responses:DefaultAtomizer:e57cb8ca14fcedf4": {
-    "file": "5b19758b3e58ed3b275e9798fffce7df0c1bfbbb8c49bbe83452c85c656e8332.cache",
-    "created_at": "2025-05-25T20:19:58.922031",
-    "expires_at": "2025-05-25T21:19:58.922031"
+  "agent_responses:SimpleTestPlanner:b77981ffd8a1a449": {
+    "file": "b4255a365726057e1555a7e870f658a6352147953dff539f21e433a5497f09c3.cache",
+    "created_at": "2025-05-25T22:05:41.104682",
+    "expires_at": "2025-05-25T23:05:41.104682"
   },
-  "agent_responses:DefaultAtomizer:13aa1f3189493a70": {
-    "file": "3d9b35ecde99f7c126eb067327c05a4d0f4c409db3760c008e11589bc8080bc6.cache",
-    "created_at": "2025-05-25T20:20:01.046231",
-    "expires_at": "2025-05-25T21:20:01.046231"
+  "agent_responses:SimpleTestPlanner:5c002061df78987f": {
+    "file": "90f11aaf39847e97532d443e7c504a0b36e7ac79ced37eecf076174b2bb42ae0.cache",
+    "created_at": "2025-05-25T22:05:53.985768",
+    "expires_at": "2025-05-25T23:05:53.985768"
   },
-  "agent_responses:DefaultAtomizer:363455201e309f65": {
-    "file": "b6ccae111100397928010bd9be32facfddb91973b9eefc121f9d65186018d7a4.cache",
-    "created_at": "2025-05-25T20:46:37.586656",
-    "expires_at": "2025-05-25T21:46:37.586656"
+  "agent_responses:DefaultAtomizer:e7db40bfea28cde4": {
+    "file": "f860789ccd607b037b246253952b9278204616e91970d98da717477b2be7c51c.cache",
+    "created_at": "2025-05-25T22:05:58.431211",
+    "expires_at": "2025-05-25T23:05:58.431211"
   },
-  "agent_responses:SimpleTestPlanner:fa1c98c664daab78": {
-    "file": "0139d3cdba95a64630b331f4953a8695cf0fb43d35e132e5cdbb42b399b939bc.cache",
-    "created_at": "2025-05-25T20:46:45.224922",
-    "expires_at": "2025-05-25T21:46:45.224922"
+  "agent_responses:DefaultAtomizer:00bd72b6952e4107": {
+    "file": "37e1d37f19489723b6b7a55960a00845f27a915c76abef5db712e91bd6a17187.cache",
+    "created_at": "2025-05-25T22:06:19.051381",
+    "expires_at": "2025-05-25T23:06:19.051381"
   },
-  "agent_responses:DefaultAtomizer:c7707e55a79ee8fe": {
-    "file": "169e272b997a5f953aa5e83974b17ab7a1cc4097720918f36e71a0b596d20c83.cache",
-    "created_at": "2025-05-25T20:46:50.558727",
-    "expires_at": "2025-05-25T21:46:50.558727"
+  "agent_responses:DefaultAtomizer:3efc0fe3bb539805": {
+    "file": "efca8c1afbba4b2bcb00959ccc155997dbaaf68d70e8f32f4c74c0162b1e8b67.cache",
+    "created_at": "2025-05-25T22:06:21.747254",
+    "expires_at": "2025-05-25T23:06:21.747254"
   },
-  "agent_responses:SimpleTestPlanner:8d74448d14f64401": {
-    "file": "917b785409570280bc58ac29cda79f90efa0ebea9f76424346ade295df7989a5.cache",
-    "created_at": "2025-05-25T20:47:00.514551",
-    "expires_at": "2025-05-25T21:47:00.514551"
+  "agent_responses:DefaultAtomizer:ea2c073d54483f05": {
+    "file": "5d7c93e4be7681f3eccb831450bd6a86b6b4a25a43f878618e705897d1ca1139.cache",
+    "created_at": "2025-05-25T22:06:23.680812",
+    "expires_at": "2025-05-25T23:06:23.680812"
   },
-  "agent_responses:DefaultAtomizer:e635ea1000d21e5f": {
-    "file": "0b26555923e43cb7f373fe637ec5d9661b1cf6ce509db5469461f2221d4a6e93.cache",
-    "created_at": "2025-05-25T20:47:02.445412",
-    "expires_at": "2025-05-25T21:47:02.445412"
+  "agent_responses:DefaultAtomizer:5f7e00fd15c7b7b5": {
+    "file": "6fc7dedaf23f81e093b54896211d437619a21fe808b1e84b9fe5c684940a75da.cache",
+    "created_at": "2025-05-25T22:06:26.328208",
+    "expires_at": "2025-05-25T23:06:26.328208"
   },
-  "agent_responses:DefaultAtomizer:a3ef4536fb89dc8f": {
-    "file": "6773ca0475df5028d4be698f681e52f341ae6b52174756429636ad797a1671e6.cache",
-    "created_at": "2025-05-25T20:47:05.149131",
-    "expires_at": "2025-05-25T21:47:05.149131"
+  "agent_responses:DefaultAtomizer:db3121d36f11fcdd": {
+    "file": "e449066fdd17348a4d477f23d90c04980560bc835c571db3259ed2fb3474756c.cache",
+    "created_at": "2025-05-25T22:06:29.633885",
+    "expires_at": "2025-05-25T23:06:29.633885"
   },
-  "agent_responses:DefaultAtomizer:67fcd0921bd2444c": {
-    "file": "892fd34d74f76b32ccd39ec9c8916879c253bb94c9b1765da0621cb084210f38.cache",
-    "created_at": "2025-05-25T20:47:08.330418",
-    "expires_at": "2025-05-25T21:47:08.330418"
+  "agent_responses:DefaultAtomizer:ff8b090e71d64560": {
+    "file": "f1a3daa1cd8a23b73100ce4fb96da6eab5ac7b96051f017c543277453fb6c0e1.cache",
+    "created_at": "2025-05-25T22:06:32.008357",
+    "expires_at": "2025-05-25T23:06:32.008357"
   },
-  "agent_responses:DefaultAtomizer:f5ad0e1ee6564740": {
-    "file": "fa78fe8c364b70f20db9b455de0c51490e5a738910d8b428645bddb5c1fe298d.cache",
-    "created_at": "2025-05-25T20:47:10.398374",
-    "expires_at": "2025-05-25T21:47:10.398374"
+  "agent_responses:DefaultAtomizer:8df4384072fee17c": {
+    "file": "887fc0be28e7fc742cc948e5eef7d04c60ccae04d3d5ce3c7d77537797087529.cache",
+    "created_at": "2025-05-25T22:06:34.364240",
+    "expires_at": "2025-05-25T23:06:34.364240"
   },
-  "agent_responses:DefaultAtomizer:4092a4323b0293f6": {
-    "file": "a505d8884ff5422809a6013dfe0e85b8710653c2fad3efa18b8da8e72cfa42f4.cache",
-    "created_at": "2025-05-25T20:47:26.191294",
-    "expires_at": "2025-05-25T21:47:26.191294"
+  "agent_responses:DefaultAtomizer:036b7771967e2868": {
+    "file": "f6f799575d5153c76206640d00c4f3633fe5fc37d70609148bd674af22a1e8d7.cache",
+    "created_at": "2025-05-25T22:06:36.995100",
+    "expires_at": "2025-05-25T23:06:36.995100"
   },
-  "agent_responses:SearchSynthesizer:9d3d7bc89dfe2e07": {
-    "file": "24e2bc6f618d44f6c1c6e3cf636f551275bf466b6a4e6349062670830029d161.cache",
-    "created_at": "2025-05-25T20:47:46.562010",
-    "expires_at": "2025-05-25T21:47:46.562010"
+  "agent_responses:DefaultAtomizer:c46a12b6cf3e909d": {
+    "file": "9f44f5e1ccab23ab87dcc3f2558d5633a76804383949e58a525395160d7d17f7.cache",
+    "created_at": "2025-05-25T22:06:39.775830",
+    "expires_at": "2025-05-25T23:06:39.775830"
   },
-  "agent_responses:DefaultAtomizer:9c75f44ffba35902": {
-    "file": "a8495c54a84944f0a05f262c66ad587c8bf43ead73824deae1530b2bfed228f1.cache",
-    "created_at": "2025-05-25T20:48:13.835247",
-    "expires_at": "2025-05-25T21:48:13.835247"
+  "agent_responses:DefaultAtomizer:88cc9b2a3ef11235": {
+    "file": "93a5b43dd621ea23d0cf4bcd60c06e5594637041911c43b15d9a00a97298d856.cache",
+    "created_at": "2025-05-25T22:06:41.970831",
+    "expires_at": "2025-05-25T23:06:41.970831"
   },
-  "agent_responses:SimpleTestPlanner:9ef01ba72233652a": {
-    "file": "3767f514f20b9899dafe1a43da124611caa5e4d45658772448aaee5e966c96ae.cache",
-    "created_at": "2025-05-25T20:48:20.465134",
-    "expires_at": "2025-05-25T21:48:20.465134"
+  "agent_responses:DefaultAtomizer:root.2.5:d4bef3ba34ffacd4": {
+    "file": "8c72a7ad00cafaa68e85bdff5d9699a7391c5b904d753a1dc109eedd6bf49746.cache",
+    "created_at": "2025-05-25T22:07:11.152953",
+    "expires_at": "2025-05-25T23:07:11.152953"
   },
-  "agent_responses:DefaultAtomizer:8c06cc11ea401e49": {
-    "file": "9f3d8e287e83331339e7484ad6788097fe31f4c158aa3115e458d7f9bd71bb0e.cache",
-    "created_at": "2025-05-25T20:48:24.337622",
-    "expires_at": "2025-05-25T21:48:24.337622"
+  "agent_responses:DefaultAtomizer:54c26755902175f7": {
+    "file": "3ad739d579ce21f5d0e6c6fa2d85b18228b05f8f93cb9ce34856d352f7adc31e.cache",
+    "created_at": "2025-05-25T22:07:11.158334",
+    "expires_at": "2025-05-25T23:07:11.158334"
   },
-  "agent_responses:DefaultAtomizer:3a41962bba1f61dd": {
-    "file": "29a88981d21f7633c88c11b6859e174725dbabd65ed12c83c0279507b4834002.cache",
-    "created_at": "2025-05-25T20:48:26.836881",
-    "expires_at": "2025-05-25T21:48:26.836881"
+  "agent_responses:DefaultAtomizer:11acb13225f2ec31": {
+    "file": "4131673b76b8d765e783ed563425c37577eb6353cbfa879b5ac41b555863498b.cache",
+    "created_at": "2025-05-25T22:07:16.088488",
+    "expires_at": "2025-05-25T23:07:16.088488"
   },
-  "agent_responses:DefaultAggregator:9e9e4566cb76d4ee": {
-    "file": "985225e5b02f94b1a9a71fb2626606b93907d454f5a5c8de7425fdabbd4adb3b.cache",
-    "created_at": "2025-05-25T20:48:30.348406",
-    "expires_at": "2025-05-25T21:48:30.348406"
+  "agent_responses:DefaultAtomizer:root.3.5:e067ab22d624b6ca": {
+    "file": "0d760a72790ec565496bd62bab3ca1d87b6c4ecd4007ba88cf1563aeb52fb412.cache",
+    "created_at": "2025-05-25T22:07:21.031055",
+    "expires_at": "2025-05-25T23:07:21.031055"
   },
-  "agent_responses:SimpleTestPlanner:2a707a218e87084d": {
-    "file": "d254d8b81d017f6e87fb1adce0743e589ffe3b0a21ad3dba5f23b7296a51f658.cache",
-    "created_at": "2025-05-25T20:48:41.201478",
-    "expires_at": "2025-05-25T21:48:41.201478"
+  "agent_responses:DefaultAtomizer:8ddfaa65c01883f0": {
+    "file": "8ecccad81f2f578982ca689e057f9310a01e4eec2a3c854161612d62cd7219ef.cache",
+    "created_at": "2025-05-25T22:07:21.033773",
+    "expires_at": "2025-05-25T23:07:21.033773"
   },
-  "agent_responses:DefaultAtomizer:87acc9fc89c31643": {
-    "file": "80c75b979b0af86d94abec9591a90ae881235a19f38ff0f88eefdf67fed66557.cache",
-    "created_at": "2025-05-25T20:52:38.245613",
-    "expires_at": "2025-05-25T21:52:38.245613"
+  "agent_responses:SearchSynthesizer:root.3.5:e067ab22d624b6ca": {
+    "file": "4a115e61c7aa85750d02664285d2d1aaa53684e87a48979ba228f3322c0fe0e5.cache",
+    "created_at": "2025-05-25T22:07:50.010185",
+    "expires_at": "2025-05-25T23:07:50.010185"
   },
-  "agent_responses:SimpleTestPlanner:cdff518adff8f501": {
-    "file": "a681bf09d7590ef56f0b54330613d22c2f1597ac53c93eba88fbb2b6320fe327.cache",
-    "created_at": "2025-05-25T20:52:45.572818",
-    "expires_at": "2025-05-25T21:52:45.572818"
+  "agent_responses:SearchSynthesizer:4f722875c0b1283b": {
+    "file": "236fc4166c3d5b655056e18c5cfcdd39864b905a622f871658dba2fd549866ae.cache",
+    "created_at": "2025-05-25T22:07:50.016817",
+    "expires_at": "2025-05-25T23:07:50.016817"
   },
-  "agent_responses:DefaultAtomizer:587a11b1b36d29e7": {
-    "file": "716a5d59a32a214789720769ca5e26d291038d42281797d4a16ce4b7de47aad7.cache",
-    "created_at": "2025-05-25T20:52:53.012294",
-    "expires_at": "2025-05-25T21:52:53.012294"
+  "agent_responses:BasicReportWriter:root.2.5:d4bef3ba34ffacd4": {
+    "file": "5fb21a4e44b74afa3241e595cfd8971deebcd1f1aee42a00f3a02d863a3da28b.cache",
+    "created_at": "2025-05-25T22:08:18.469220",
+    "expires_at": "2025-05-25T23:08:18.469220"
   },
-  "agent_responses:DefaultAtomizer:5ddf5e030c2fa0d7": {
-    "file": "7b1ee00e77d4b220a0c1867ba2b13134ba8acd5a07deb70f3ca8da1ab023270e.cache",
-    "created_at": "2025-05-25T20:52:56.019366",
-    "expires_at": "2025-05-25T21:52:56.019366"
+  "agent_responses:BasicReportWriter:685baddae9f779dd": {
+    "file": "4fa79185914bbf82a18148e7f8530868466fddd6084561c2458119a06f27638f.cache",
+    "created_at": "2025-05-25T22:08:18.471745",
+    "expires_at": "2025-05-25T23:08:18.471745"
   },
-  "agent_responses:DefaultAtomizer:f8763d19c3f433ac": {
-    "file": "f2b76f38154622588ea3006c94bdc009f3fafbccc5bd9a6d6029806db8992061.cache",
-    "created_at": "2025-05-25T20:52:59.392485",
-    "expires_at": "2025-05-25T21:52:59.392485"
+  "agent_responses:DefaultAtomizer:2a609ec0efcca92e": {
+    "file": "b02d881d5ace26cb1de04177882872372ece6dc88dc445cf1ded915c4cd2f74a.cache",
+    "created_at": "2025-05-25T22:08:20.314775",
+    "expires_at": "2025-05-25T23:08:20.314775"
   },
-  "agent_responses:SimpleTestPlanner:979c869caf39c5d4": {
-    "file": "55f0a625e7c650a22c4c3e7bbae235ee5cee6381bc2639b8b3db3e4ef71b19d7.cache",
-    "created_at": "2025-05-25T20:53:02.604995",
-    "expires_at": "2025-05-25T21:53:02.604995"
+  "agent_responses:SearchSynthesizer:0d57f90428854a8d": {
+    "file": "81cd6df8a8a1d565b72360945b14f406605c7bc5b15a9f6a43af5e3d629d8e49.cache",
+    "created_at": "2025-05-25T22:08:51.661010",
+    "expires_at": "2025-05-25T23:08:51.661010"
   },
-  "agent_responses:SimpleTestPlanner:5ac62325b19ae7dc": {
-    "file": "54d88e161d39ce74979b0bff74af29a102905d322609b068a3b142274cb615b3.cache",
-    "created_at": "2025-05-25T20:53:07.278297",
-    "expires_at": "2025-05-25T21:53:07.278297"
+  "agent_responses:DefaultAggregator:43ef011790320531": {
+    "file": "122b1f7a17c02205753a46912e9d640d4de4b91ee15747727862d82d0c098fdb.cache",
+    "created_at": "2025-05-25T22:09:54.999434",
+    "expires_at": "2025-05-25T23:09:54.999434"
   },
-  "agent_responses:SimpleTestPlanner:187bea4d974e3e79": {
-    "file": "5f9ab32ee68a7f0a0f787cfb1fa08f6c562e7c10eac63dc66e2eb9f4728d60b4.cache",
-    "created_at": "2025-05-25T20:53:08.179078",
-    "expires_at": "2025-05-25T21:53:08.179078"
+  "agent_responses:DefaultAtomizer:54c0f35fdb994bd2": {
+    "file": "8713812732745c9d5a9b9916453a15fb10e85bf04760950d4c014435ac738658.cache",
+    "created_at": "2025-05-25T22:30:08.450709",
+    "expires_at": "2025-05-25T23:30:08.450709"
   },
-  "agent_responses:DefaultAtomizer:705596333f9c0519": {
-    "file": "247d9d0a2efc3057f44b6eb19230ae97c1981450eba7192bb03d97baab9f5cee.cache",
-    "created_at": "2025-05-25T20:53:10.321018",
-    "expires_at": "2025-05-25T21:53:10.321018"
+  "agent_responses:DefaultAtomizer:82bfb11589bacbc8": {
+    "file": "c2ee28e21c94bf3058934da289281b8fa2c1ca795e2d378bb70797ad44faad8a.cache",
+    "created_at": "2025-05-25T22:33:14.222827",
+    "expires_at": "2025-05-25T23:33:14.222827"
   },
-  "agent_responses:DefaultAtomizer:199fca4e421ee8d6": {
-    "file": "c5502422af430d060c1461dd3a84f5f511ec5f9d15471bc3212a0b569dc77478.cache",
-    "created_at": "2025-05-25T20:53:13.015107",
-    "expires_at": "2025-05-25T21:53:13.015107"
+  "agent_responses:DefaultAtomizer:a4ea723373d6b06d": {
+    "file": "e5ca82662d68796b991da819b7eb71615d3ae344fc3935db673dc1736a6af552.cache",
+    "created_at": "2025-05-25T23:02:27.179557",
+    "expires_at": "2025-05-26T00:02:27.179557"
   },
-  "agent_responses:DefaultAtomizer:9417d23f94ce8571": {
-    "file": "569843fd2c194188d9e2a536ece99b4a4dd015ca8a2c6e1bc4dba66e02d50151.cache",
-    "created_at": "2025-05-25T20:53:15.145077",
-    "expires_at": "2025-05-25T21:53:15.145077"
+  "agent_responses:SimpleTestPlanner:a9f943e4fd4501ed": {
+    "file": "d66be655d95f9de4e54822786e5b09d2687fa4a87ac06699c77fb44222a39371.cache",
+    "created_at": "2025-05-25T23:02:33.829795",
+    "expires_at": "2025-05-26T00:02:33.829795"
   },
-  "agent_responses:DefaultAtomizer:8be76a27938a19e1": {
-    "file": "181c269e44f598853208f223469cbcd2e6a3a0af2831d6b68783a2725ddf8342.cache",
-    "created_at": "2025-05-25T20:53:15.221202",
-    "expires_at": "2025-05-25T21:53:15.221202"
+  "agent_responses:DefaultAtomizer:102018bbdbafd9ed": {
+    "file": "1f357d7f17524050377e41aa449118c50b35eaf58b1a53cfecd3be246c932e15.cache",
+    "created_at": "2025-05-25T23:02:37.439375",
+    "expires_at": "2025-05-26T00:02:37.439375"
   },
-  "agent_responses:DefaultAtomizer:aa30757f2e1fa3f1": {
-    "file": "f899801c5d81dfc4bd49a34e0d53ab35d0a21be325a2ddedfe395d48437c3643.cache",
-    "created_at": "2025-05-25T20:53:17.491132",
-    "expires_at": "2025-05-25T21:53:17.491132"
+  "agent_responses:DefaultAtomizer:40ef0156b2b0a94d": {
+    "file": "55ea4ed3d7c98002ee3808f1cbd707e36384198df0b92e09304f6c645b2fca79.cache",
+    "created_at": "2025-05-25T23:02:40.826823",
+    "expires_at": "2025-05-26T00:02:40.826823"
   },
-  "agent_responses:DefaultAtomizer:23ac26c9e086a4d6": {
-    "file": "e5f95208ef6c42c21f80643cf26b59e722637bd3ed3fe8f266d387533eda4b3e.cache",
-    "created_at": "2025-05-25T20:55:26.369234",
-    "expires_at": "2025-05-25T21:55:26.369234"
+  "agent_responses:SimpleTestPlanner:6e3a966a315add3f": {
+    "file": "9946453abfeced48a0ca8400b21b3116e5ba4b00d48a1ebeb1673c454440c570.cache",
+    "created_at": "2025-05-25T23:02:47.422774",
+    "expires_at": "2025-05-26T00:02:47.422774"
   },
-  "agent_responses:SimpleTestPlanner:94002d3f032725d1": {
-    "file": "103d6a5832c2d4417b0b23390f412fd58757e5b47a7db25604cb2d93dfcb231f.cache",
-    "created_at": "2025-05-25T20:55:33.406928",
-    "expires_at": "2025-05-25T21:55:33.406928"
+  "agent_responses:SimpleTestPlanner:501383d0c6e4d907": {
+    "file": "c086b96e23e2d0258b02d5c6153fa0acbb5e55ef4d2141c10a87679df2249771.cache",
+    "created_at": "2025-05-25T23:02:56.166713",
+    "expires_at": "2025-05-26T00:02:56.166713"
   },
-  "agent_responses:DefaultAtomizer:b8413eae652e7cf0": {
-    "file": "6f44b9a9bf51f9a485bc520851e00790dcd71373a522bc89f0f9965a2bd1f7ea.cache",
-    "created_at": "2025-05-25T20:55:36.816187",
-    "expires_at": "2025-05-25T21:55:36.816187"
+  "agent_responses:DefaultAtomizer:9f112905c0abf9e3": {
+    "file": "4d19cb42876f73ea60206db38d700baded190d55f94e5e7cd23625d8548e0ae4.cache",
+    "created_at": "2025-05-25T23:02:58.535639",
+    "expires_at": "2025-05-26T00:02:58.535639"
   },
-  "agent_responses:DefaultAtomizer:9b639b9bc2163f81": {
-    "file": "f60d2e81644f7142f79b9382b382543caf89ded851252a28d14fbf4d84714c62.cache",
-    "created_at": "2025-05-25T20:55:39.157531",
-    "expires_at": "2025-05-25T21:55:39.157531"
+  "agent_responses:DefaultAtomizer:de83ca06bf25a03a": {
+    "file": "22b0b4e32b90e3da3148a57f62118682a0714181dcad7f7562cc71f1e040fdff.cache",
+    "created_at": "2025-05-25T23:03:00.840881",
+    "expires_at": "2025-05-26T00:03:00.840881"
   },
-  "agent_responses:DefaultAtomizer:5210e2d43212f844": {
-    "file": "f7c50ae8fb5ff5f4a146610c4bcb95e1bcadc815a13083a47016f1e102abfa02.cache",
-    "created_at": "2025-05-25T20:55:41.042218",
-    "expires_at": "2025-05-25T21:55:41.042218"
+  "agent_responses:DefaultAtomizer:a6193433c074e3bc": {
+    "file": "a12bad779d083cbb3591d9327e4c4e94b95522c6e3053747560b1c1dfe61d9a7.cache",
+    "created_at": "2025-05-25T23:03:03.098250",
+    "expires_at": "2025-05-26T00:03:03.098250"
   },
-  "agent_responses:SimpleTestPlanner:29180377a02667a5": {
-    "file": "cddef47e3c00363464b0ae8f40fc5780b1f24b56e8d343519a341ea1dae3165e.cache",
-    "created_at": "2025-05-25T20:55:47.337782",
-    "expires_at": "2025-05-25T21:55:47.337782"
+  "agent_responses:DefaultAtomizer:f4dfdfb4afe83c4d": {
+    "file": "633b56e5e0762fab1c938733f24e56a6bba826373aa79d985f0ba08f5d115cb7.cache",
+    "created_at": "2025-05-25T23:03:06.644526",
+    "expires_at": "2025-05-26T00:03:06.644526"
   },
-  "agent_responses:SimpleTestPlanner:4d9102d85e95dd8c": {
-    "file": "ce80704af46cec856d3bdea078c1548732d1fdd479bcf8ff3d47b0dad18c6962.cache",
-    "created_at": "2025-05-25T20:55:48.779983",
-    "expires_at": "2025-05-25T21:55:48.779983"
+  "agent_responses:DefaultAtomizer:90261db5f0057389": {
+    "file": "21a53f34b822c68ee51d530c273290eec7d1a7742ee1734085ffc6f3072b895d.cache",
+    "created_at": "2025-05-25T23:03:09.128633",
+    "expires_at": "2025-05-26T00:03:09.128633"
   },
-  "agent_responses:SimpleTestPlanner:59259ec6b71822cd": {
-    "file": "7b592f4aff8446e6d312bda347eb7871139b2efaaa7e601bf8d1dd61a11436cc.cache",
-    "created_at": "2025-05-25T20:55:53.680376",
-    "expires_at": "2025-05-25T21:55:53.680376"
+  "agent_responses:DefaultAtomizer:0c7aa1a0207e687e": {
+    "file": "268dff0dd389942c5989262cca85ea7b853eff6fbd35b2bdc77edbba2d2150e1.cache",
+    "created_at": "2025-05-25T23:03:11.348479",
+    "expires_at": "2025-05-26T00:03:11.348479"
   },
-  "agent_responses:DefaultAtomizer:4c93d302b97ba46f": {
-    "file": "c7bb0461ba67c8e6e690b2e1a546eac18a8c68a51f3b8d351ad1a7a570c99b71.cache",
-    "created_at": "2025-05-25T20:58:36.483300",
-    "expires_at": "2025-05-25T21:58:36.483300"
+  "agent_responses:DefaultAtomizer:fb2b8b715fa3d782": {
+    "file": "287a215ec3277a8e55baffbeeafedac3351720cfcc65f2a409bdbd38ed6cfffb.cache",
+    "created_at": "2025-05-25T23:03:14.188749",
+    "expires_at": "2025-05-26T00:03:14.188749"
   },
-  "agent_responses:SimpleTestPlanner:ce77dc4e088e9b03": {
-    "file": "b16324d713a48cf012dd0ad627a224431e2abdce5ce9f960a2fb49355ae84a7b.cache",
-    "created_at": "2025-05-25T20:58:42.283620",
-    "expires_at": "2025-05-25T21:58:42.283620"
+  "agent_responses:DefaultAtomizer:2fde2688cb520066": {
+    "file": "e505a7c8664e4e115996cb4faaaacd3725e8725a879448222f46d6ede699f84a.cache",
+    "created_at": "2025-05-25T23:03:16.488130",
+    "expires_at": "2025-05-26T00:03:16.488130"
   },
-  "agent_responses:DefaultAtomizer:459de77e7973630f": {
-    "file": "0f20202ad5fd3a6f5c946e4dc99405c9cc34c7a3ab0211ad6a1e66c7f246fc86.cache",
-    "created_at": "2025-05-25T20:58:45.312568",
-    "expires_at": "2025-05-25T21:58:45.312568"
+  "agent_responses:DefaultAtomizer:root.2.5:e067ab22d624b6ca": {
+    "file": "b7891035432b7e19eb711dee502cd8a91edf75995f6b2670941dfecdd14fb760.cache",
+    "created_at": "2025-05-25T23:03:43.593858",
+    "expires_at": "2025-05-26T00:03:43.593858"
   },
-  "agent_responses:DefaultAtomizer:89e24283e92e9086": {
-    "file": "91e9045bb286e6193a73b23935de6539c4c29c56e642a6393b748664584a7e8c.cache",
-    "created_at": "2025-05-25T20:58:48.120864",
-    "expires_at": "2025-05-25T21:58:48.120864"
+  "agent_responses:DefaultAtomizer:29535fed21690225": {
+    "file": "8cf02be70f1c9701c7b622aa28bcb1c6da5ff7dd9c1968f2b0e3cc1d54d289d9.cache",
+    "created_at": "2025-05-25T23:03:43.595471",
+    "expires_at": "2025-05-26T00:03:43.595471"
   },
-  "agent_responses:DefaultAtomizer:5744af3ce123df3f": {
-    "file": "cce3be679dabfa66204eb5ae7512da8917d49bc5f0cef0b2a6eca8a3704e9b8b.cache",
-    "created_at": "2025-05-25T20:58:51.000902",
-    "expires_at": "2025-05-25T21:58:51.000902"
+  "agent_responses:DefaultAtomizer:91dc87a2bbe595cc": {
+    "file": "89e0280f36261607ddd8280064c0b8f18c06d36c43f79341aa2ab8534d5d9d86.cache",
+    "created_at": "2025-05-25T23:03:47.539824",
+    "expires_at": "2025-05-26T00:03:47.539824"
   },
-  "agent_responses:SimpleTestPlanner:68b7daae8c0c90a6": {
-    "file": "795c233c8f67c2e2602a874644d777c7f257a711cd4950b46079b79afc72c824.cache",
-    "created_at": "2025-05-25T20:58:55.720715",
-    "expires_at": "2025-05-25T21:58:55.720715"
+  "agent_responses:SearchSynthesizer:root.2.5:e067ab22d624b6ca": {
+    "file": "e89cbef086a3825b5253a00ce08c9b52860f4b72b89e58185b0130b4bee69ec2.cache",
+    "created_at": "2025-05-25T23:03:58.479872",
+    "expires_at": "2025-05-26T00:03:58.479872"
   },
-  "agent_responses:DefaultAtomizer:8b148156791c2d48": {
-    "file": "f85105e651e8fa6335576f1b0a6a55c57640f90f528726e7573c0da36977d2b2.cache",
-    "created_at": "2025-05-25T20:59:03.636644",
-    "expires_at": "2025-05-25T21:59:03.636644"
+  "agent_responses:SearchSynthesizer:7a46cf8fc08ccdcb": {
+    "file": "885c4e1a282ecde544c8b164697c8f8099365e865af5a0259dd82fe4aa84df9c.cache",
+    "created_at": "2025-05-25T23:03:58.481555",
+    "expires_at": "2025-05-26T00:03:58.481555"
   },
-  "agent_responses:SimpleTestPlanner:fcf1c96c09c3a08a": {
-    "file": "194bffc47320d2c49ca4a6d0d96fe11831610e5e414c2a78533e810ff5821085.cache",
-    "created_at": "2025-05-25T20:59:05.054952",
-    "expires_at": "2025-05-25T21:59:05.054952"
+  "agent_responses:SearchSynthesizer:feed9ba3b9be8a9f": {
+    "file": "fe68442512f102863cd2e8094846be1f5e2e39df22e0ec2b9b7fc46e2ad322bd.cache",
+    "created_at": "2025-05-25T23:04:15.107369",
+    "expires_at": "2025-05-26T00:04:15.107369"
   },
-  "agent_responses:SimpleTestPlanner:8a9cf9e7007ed309": {
-    "file": "75502b17ab2af885c48d879df73590870aba36f4aca99615319193b8d96ea49a.cache",
-    "created_at": "2025-05-25T20:59:05.520919",
-    "expires_at": "2025-05-25T21:59:05.520919"
+  "agent_responses:DefaultAtomizer:root.2.6:d4bef3ba34ffacd4": {
+    "file": "6e292dd366815cea80a8b94f9acbbbf6bc9a6714cf569b294a936b458a999143.cache",
+    "created_at": "2025-05-25T23:04:17.407061",
+    "expires_at": "2025-05-26T00:04:17.407061"
+  },
+  "agent_responses:DefaultAtomizer:703157fb1d89847f": {
+    "file": "17003a057d59162fe8ea367961ccf3e98c67370de87dd4538008d07009ca8e46.cache",
+    "created_at": "2025-05-25T23:04:17.411483",
+    "expires_at": "2025-05-26T00:04:17.411483"
+  },
+  "agent_responses:BasicReportWriter:root.2.6:d4bef3ba34ffacd4": {
+    "file": "bc33c55a6a286b9eac260d1d41bee6b9e8fea3e8a6d9ca5eebbade739a25a391.cache",
+    "created_at": "2025-05-25T23:05:34.437438",
+    "expires_at": "2025-05-26T00:05:34.437438"
+  },
+  "agent_responses:BasicReportWriter:4b509c2d6ef0801b": {
+    "file": "dc4e489eb16491e1b84989f0d81814876b65e089c4ac6ef5802372c38fdce027.cache",
+    "created_at": "2025-05-25T23:05:34.440418",
+    "expires_at": "2025-05-26T00:05:34.440418"
+  },
+  "agent_responses:DefaultAggregator:3ce958c6c2d6f5d5": {
+    "file": "3caaf65deaa99e82c714367a7bbbc4ed3f583b8d1506bd2c12003c7881196d62.cache",
+    "created_at": "2025-05-25T23:06:05.953293",
+    "expires_at": "2025-05-26T00:06:05.953293"
+  },
+  "agent_responses:DefaultAggregator:root.2:b4a8294f8aca63b0": {
+    "file": "c8242caee81d2d05c7c0982956939641815d543caa1d04cd9c7781adecb379bc.cache",
+    "created_at": "2025-05-25T23:07:22.539229",
+    "expires_at": "2025-05-26T00:07:22.539229"
+  },
+  "agent_responses:DefaultAggregator:947e06f917f6ae40": {
+    "file": "3ad4fb6828cd2c0e40abe3195a07fe322a92ad2f03748a22f1c7f9255e8e38af.cache",
+    "created_at": "2025-05-25T23:07:22.541965",
+    "expires_at": "2025-05-26T00:07:22.541965"
+  },
+  "agent_responses:DefaultAtomizer:root.3:e067ab22d624b6ca": {
+    "file": "1ff6f13fba343307ae765fe03c412e4e9749f3ec155dd340b8d3efc5898cfa43.cache",
+    "created_at": "2025-05-25T23:07:24.498678",
+    "expires_at": "2025-05-26T00:07:24.498678"
+  },
+  "agent_responses:DefaultAtomizer:aaad7677f979eb94": {
+    "file": "be5701cdfc8778f3d0da199b1b6a85c2c6e30a1158780d31e95805a447470573.cache",
+    "created_at": "2025-05-25T23:07:24.501132",
+    "expires_at": "2025-05-26T00:07:24.501132"
+  },
+  "agent_responses:SearchSynthesizer:root.3:e067ab22d624b6ca": {
+    "file": "69192e0656c12f0b7b3086eeb91aed39c9e1942f9be3e95bfd78e1a75fbcc1f2.cache",
+    "created_at": "2025-05-25T23:07:41.687588",
+    "expires_at": "2025-05-26T00:07:41.687588"
+  },
+  "agent_responses:SearchSynthesizer:1853bcca340f481a": {
+    "file": "5a9e9354466b50fda2d4e61f02c1af80b3b3583c1c58587c05441dd69fc74dbc.cache",
+    "created_at": "2025-05-25T23:07:41.690356",
+    "expires_at": "2025-05-26T00:07:41.690356"
+  },
+  "agent_responses:DefaultAtomizer:root.4:d4bef3ba34ffacd4": {
+    "file": "4f3be1922c1ea72edde9e266506c0b631e3875d6fb21f6b676c98475904313b2.cache",
+    "created_at": "2025-05-25T23:07:44.365273",
+    "expires_at": "2025-05-26T00:07:44.365273"
+  },
+  "agent_responses:DefaultAtomizer:cdc8c69a4496adf5": {
+    "file": "a83bf27daca660c03137b819e3e87c884bdfe7b19c5a62e92dd591cf0ee49d72.cache",
+    "created_at": "2025-05-25T23:07:44.367695",
+    "expires_at": "2025-05-26T00:07:44.367695"
+  },
+  "agent_responses:DefaultAtomizer:root.5:d4bef3ba34ffacd4": {
+    "file": "9eeb402e22b93607e4aae45900c18c1eb7968bfbda9e086869fa94ebd9338679.cache",
+    "created_at": "2025-05-25T23:07:48.397371",
+    "expires_at": "2025-05-26T00:07:48.397371"
+  },
+  "agent_responses:DefaultAtomizer:0b3ecb46a9008624": {
+    "file": "7899827648f31684ad9fae4bd1aaa0f40dab52f7e68a2c6a4f94b8257367874b.cache",
+    "created_at": "2025-05-25T23:07:48.399977",
+    "expires_at": "2025-05-26T00:07:48.399977"
   }
 }
