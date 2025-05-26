@@ -3,12 +3,17 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Send, Loader2 } from 'lucide-react'
 import { useTaskGraphStore } from '@/stores/taskGraphStore'
-import { webSocketService } from '@/services/websocketService'
+import { useProjectStore } from '@/stores/projectStore'
+import { projectService } from '@/services/projectService'
+import { toast } from '@/components/ui/use-toast'
 
 const ProjectInput: React.FC = () => {
   const [goal, setGoal] = useState('Write me a detailed report about the recent U.S. trade tariffs and their effect on the global economy')
   const [isStarting, setIsStarting] = useState(false)
   const { isConnected, setLoading } = useTaskGraphStore()
+  const { addProject, getCurrentProject } = useProjectStore()
+
+  const currentProject = getCurrentProject()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -16,14 +21,27 @@ const ProjectInput: React.FC = () => {
 
     console.log('🚀 Starting project from ProjectInput')
     setIsStarting(true)
-    setLoading(true) // Set loading state in store
+    setLoading(true)
     
     try {
-      webSocketService.startProject(goal.trim())
-      console.log('✅ Project start request sent')
+      const result = await projectService.createProject(goal.trim())
+      addProject(result.project)
+      
+      toast({
+        title: "Project Created",
+        description: result.message,
+      })
+      
+      console.log('✅ Project created and started')
     } catch (error) {
-      console.error('❌ Failed to start project:', error)
-      setLoading(false) // Reset loading on error
+      console.error('❌ Failed to create project:', error)
+      setLoading(false)
+      
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to create project",
+        variant: "destructive",
+      })
     } finally {
       setIsStarting(false)
     }
@@ -32,7 +50,9 @@ const ProjectInput: React.FC = () => {
   return (
     <div className="max-w-2xl mx-auto p-8">
       <div className="text-center mb-8">
-        <h2 className="text-3xl font-bold mb-4">Start a New Project</h2>
+        <h2 className="text-3xl font-bold mb-4">
+          {currentProject ? 'Start Another Project' : 'Start a New Project'}
+        </h2>
         <p className="text-muted-foreground">
           Describe your research goal and watch as the AI breaks it down into manageable tasks
         </p>
@@ -65,13 +85,13 @@ const ProjectInput: React.FC = () => {
           >
             {isStarting ? (
               <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Starting...
+                <Loader2 className="w-4 w-4 mr-2 animate-spin" />
+                Creating...
               </>
             ) : (
               <>
                 <Send className="w-4 h-4 mr-2" />
-                Start Project
+                Create Project
               </>
             )}
           </Button>

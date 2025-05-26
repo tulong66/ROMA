@@ -1,0 +1,501 @@
+{
+  "overall_project_goal": "write me a short 3 section report about recent US tariffs",
+  "root_graph_id": "root_graph",
+  "graphs": {
+    "root_graph": {
+      "nodes": [
+        "root"
+      ],
+      "edges": []
+    },
+    "subgraph_root": {
+      "nodes": [
+        "root.1",
+        "root.2",
+        "root.3",
+        "root.4",
+        "root.5"
+      ],
+      "edges": [
+        {
+          "source": "root.1",
+          "target": "root.4"
+        },
+        {
+          "source": "root.2",
+          "target": "root.4"
+        },
+        {
+          "source": "root.3",
+          "target": "root.4"
+        },
+        {
+          "source": "root.4",
+          "target": "root.5"
+        }
+      ]
+    },
+    "subgraph_root.1": {
+      "nodes": [
+        "root.1.1",
+        "root.1.2",
+        "root.1.3",
+        "root.1.4",
+        "root.1.5"
+      ],
+      "edges": [
+        {
+          "source": "root.1.1",
+          "target": "root.1.5"
+        },
+        {
+          "source": "root.1.2",
+          "target": "root.1.5"
+        },
+        {
+          "source": "root.1.3",
+          "target": "root.1.5"
+        },
+        {
+          "source": "root.1.4",
+          "target": "root.1.5"
+        }
+      ]
+    }
+  },
+  "all_nodes": {
+    "root": {
+      "task_id": "root",
+      "goal": "Write a concise report with three sections about recent United States tariff policies, including their implementation, economic impacts, and international responses.",
+      "task_type": "WRITE",
+      "node_type": "PLAN",
+      "agent_name": null,
+      "status": "PLAN_DONE",
+      "layer": 0,
+      "parent_node_id": null,
+      "overall_objective": "write me a short 3 section report about recent US tariffs",
+      "output_summary": "Planned 5 sub-tasks.",
+      "full_result": {
+        "sub_tasks": [
+          {
+            "goal": "Research and gather information on key US tariff policies and changes from 2018-present, focusing on major trade partners affected.",
+            "task_type": "SEARCH",
+            "node_type": "PLAN",
+            "depends_on_indices": []
+          },
+          {
+            "goal": "Research and compile data on the economic impacts of recent US tariffs on domestic industries, consumers, and overall trade balance.",
+            "task_type": "SEARCH",
+            "node_type": "PLAN",
+            "depends_on_indices": []
+          },
+          {
+            "goal": "Investigate current tariff disputes, negotiations, and potential future policy directions in US trade relations.",
+            "task_type": "SEARCH",
+            "node_type": "PLAN",
+            "depends_on_indices": []
+          },
+          {
+            "goal": "Create an outline for the 3-section report on recent US tariffs, defining the focus and structure of each section based on research findings.",
+            "task_type": "THINK",
+            "node_type": "EXECUTE",
+            "depends_on_indices": [
+              0,
+              1,
+              2
+            ]
+          },
+          {
+            "goal": "Write the short 3-section report on recent US tariffs, incorporating the researched information and following the created outline.",
+            "task_type": "WRITE",
+            "node_type": "EXECUTE",
+            "depends_on_indices": [
+              3
+            ]
+          }
+        ]
+      },
+      "error": null,
+      "sub_graph_id": "subgraph_root",
+      "planned_sub_task_ids": [
+        "root.1",
+        "root.2",
+        "root.3",
+        "root.4",
+        "root.5"
+      ],
+      "input_payload_summary": "Input payload with keys: current_task_goal, overall_objective, parent_task_goal, planning_depth, execution_history_and_context, replan_request_details, global_constraints_or_preferences",
+      "input_context_sources": [],
+      "timestamp_created": "2025-05-25T20:58:30.979974",
+      "timestamp_updated": "2025-05-25T20:58:43.320364",
+      "timestamp_completed": null,
+      "model_display": "openrouter/anthropic/claude-3-7-sonnet",
+      "model_info": {
+        "adapter_name": "SimpleTestPlanner",
+        "model_provider": "openrouter",
+        "model_name": "anthropic/claude-3-7-sonnet",
+        "model_id": "openrouter/anthropic/claude-3-7-sonnet"
+      },
+      "execution_details": {
+        "model_info": {
+          "adapter_name": "SimpleTestPlanner",
+          "model_provider": "openrouter",
+          "model_name": "anthropic/claude-3-7-sonnet",
+          "model_id": "openrouter/anthropic/claude-3-7-sonnet"
+        },
+        "processing_started": "2025-05-25T20:58:36.486195",
+        "system_prompt": "You are an expert hierarchical and recursive task decomposition agent. Your primary role is to break down complex goals into a sequence of **3 to 6 manageable, complementary, and largely mutually exclusive sub-tasks.** The overall aim is to achieve thoroughness without excessive, redundant granularity. 'SEARCH/EXECUTE' tasks must be highly specific.\n\n**Input Schema:**\n\nYou will receive input in JSON format with the following fields:\n\n*   `current_task_goal` (string, mandatory): The specific goal for this planning instance.\n*   `overall_objective` (string, mandatory): The ultimate high-level goal of the entire operation. This helps maintain alignment.\n*   `parent_task_goal` (string, optional): The goal of the immediate parent task that led to this decomposition. Null if this is the root task.\n*   `planning_depth` (integer, optional): Current recursion depth (e.g., 0 for initial, 1 for sub-tasks).\n*   `execution_history_and_context` (object, mandatory):\n    *   `prior_sibling_task_outputs` (array of objects, optional): Outputs from tasks at the same hierarchical level that executed before this planning step. Each object contains:\n        *   `task_goal` (string): Goal of the sibling task.\n        *   `outcome_summary` (string): Brief summary of what the sibling task achieved or produced.\n        *   `full_output_reference_id` (string, optional): ID to fetch the full output if needed.\n    *   `relevant_ancestor_outputs` (array of objects, optional): Key outputs from parent or higher-level tasks crucial for `current_task_goal`. Each object similar to sibling outputs.\n    *   `global_knowledge_base_summary` (string, optional): Brief summary/keywords of available global knowledge.\n*   `replan_request_details` (object, optional): If this is a re-plan, this object contains structured feedback. Null otherwise.\n    *   `failed_sub_goal` (string): The specific sub-goal related to `current_task_goal` that previously failed.\n    *   `reason_for_failure_or_replan` (string): Detailed explanation of the failure or re-plan need.\n    *   `previous_attempt_output_summary` (string, optional): Summary of the failed attempt's output.\n    *   `specific_guidance_for_replan` (string, optional): Concrete suggestions for the re-plan.\n*   `global_constraints_or_preferences` (array of strings, optional): E.g., \"Prioritize accuracy\", \"Maximum 3 sub-tasks\".\n\n**Core Task:**\n\n1.  Analyze the `current_task_goal` in the context of `overall_objective`, `parent_task_goal`, and available `execution_history_and_context`.\n2.  Decompose `current_task_goal` into a list of **3 to 6 granular sub-tasks.** If a goal is exceptionally complex and absolutely requires more than 6 sub-tasks to maintain clarity and avoid overly broad steps, you may slightly exceed this, but strive for conciseness. Aim for sub-tasks that represent meaningful, coherent units of work. While `EXECUTE` tasks should be specific, avoid breaking down a goal into excessively small pieces if a slightly larger, but still focused and directly actionable, `EXECUTE` task is feasible for a specialized agent. Prioritize clarity and manageability over maximum possible decomposition.\n3.  For each sub-task, define:\n    *   `goal` (string): The specific goal. Ensure sub-task goals are distinct and avoid significant overlap with sibling tasks in the current plan.\n    *   `task_type` (string): 'WRITE', 'THINK', or 'SEARCH'.\n    *   `node_type` (string): 'EXECUTE' (atomic) or 'PLAN' (needs more planning).\n    *   `depends_on_indices` (list of integers, optional): A list of 0-based indices of other sub-tasks *in the current list of sub-tasks you are generating* that this specific sub-task directly depends on. Example: If sub-task at index 2 depends on sub-task at index 0 and sub-task at index 1, this field would be `[0, 1]`. If a sub-task can start as soon as the parent plan is approved (i.e., it doesn't depend on any other sibling sub-tasks in *this* plan), this should be an empty list `[]`. Use this to define sequential dependencies when one sub-task in your plan needs the output of another sub-task from the *same* plan. Ensure indices are valid and refer to previously listed sub-tasks in your current plan.\n4.  **Task Ordering and Dependencies**:\n    *   List sub-tasks in a logical order.\n    *   Use `depends_on_indices` to explicitly state if a sub-task requires the completion of one or more *other sub-tasks from the current plan* before it can start.\n    *   If tasks are largely independent and can run in parallel, their `depends_on_indices` should be `[]`.\n\n**Re-planning Logic**: \n\nIf `replan_request_details` is provided:\n    *   Pay **critical attention** to `reason_for_failure_or_replan` and `specific_guidance_for_replan`.\n    *   Your new plan **MUST** address the failure by:\n        *   Being more granular for the `failed_sub_goal`.\n        *   Altering the approach (e.g., different `task_type`s).\n        *   Suggesting different information gathering if context was missing.\n        *   Modifying sub-task goals based on `specific_guidance_for_replan`.\n        *   Adjusting `depends_on_indices` if the previous dependency structure was flawed.\n    *   Ensure the new plan for `current_task_goal` explicitly mitigates the previous failure.\n\n**Planning Tips (Leveraging New Input):**\n\n1.  **Context is Key**: Use `prior_sibling_task_outputs` to build sequentially (if logically dependent) and avoid redundancy. Leverage `relevant_ancestor_outputs`.\n2.  **Mutual Exclusivity & Complementation**:\n    *   Strive for sub-tasks that cover different aspects of the `current_task_goal` without significant overlap. They should be complementary, together achieving the parent goal.\n    *   Before finalizing sub-tasks, review them as a set: Do they make sense together? Is there redundancy? Are there gaps? Are dependencies correctly defined using `depends_on_indices`?\n3.  **CRITICAL - Balanced Granularity for SEARCH Tasks**:\n    *   **`SEARCH/EXECUTE` Specificity**: A `SEARCH/EXECUTE` sub-task goal **MUST** be so specific that it typically targets a single fact, statistic, definition, or a very narrow aspect of a topic.\n        *   *Good `SEARCH/EXECUTE` examples*: \"Find the 2023 import tariff rate for Chinese-made solar panels in the US.\", \"List the main arguments for the Jones Act.\"\n        *   *Bad `SEARCH/EXECUTE` examples (these should be `SEARCH/PLAN` or broken down)*: \"Research US solar panel tariffs.\", \"Understand the Jones Act.\"\n    *   **Avoiding Over-Fragmentation**: While specificity is key, if multiple *very small, extremely closely related pieces of data* can be retrieved with a single, well-crafted, targeted search query (and an agent can easily parse them), you can group them into one `SEARCH/EXECUTE` task. Example: Instead of three tasks \"Find 2022 EV sales\", \"Find 2023 EV sales\", \"Find 2024 EV sales\", one task \"Find annual US EV sales figures for 2022, 2023, and 2024\" is acceptable if the search agent can handle it. However, do not combine distinct conceptual questions.\n    *   **When to use `SEARCH/PLAN`**: If a research sub-goal still requires investigating multiple *distinct conceptual areas* or is too broad for one or two highly targeted queries (even if slightly grouped as above), that sub-task **MUST** be `task_type: 'SEARCH'` and `node_type: 'PLAN'`. This ensures it gets further decomposed.\n    *   **Example of Balanced Research Breakdown:**\n        *   Initial Broad Goal: \"Write a report on US electric vehicle (EV) adoption.\"\n        *   Planner (Step 1) might create:\n            1. `{\"goal\": \"Research current US EV market penetration statistics (annual sales, market share) for the last 3-5 years.\", \"task_type\": \"SEARCH\", \"node_type\": \"EXECUTE\", \"depends_on_indices\": []}`\n            2. `{\"goal\": \"Identify and summarize key federal and prominent state-level (e.g., CA, NY, TX) government incentives for EV purchases.\", \"task_type\": \"SEARCH\", \"node_type\": \"PLAN\", \"depends_on_indices\": []}`\n            3. `{\"goal\": \"Investigate primary consumer adoption barriers for EVs (e.g., price, range, charging) based on recent surveys and industry reports.\", \"task_type\": \"SEARCH\", \"node_type\": \"PLAN\", \"depends_on_indices\": []}`\n            4. `{\"goal\": \"Outline the EV adoption report, incorporating planned research areas.\", \"task_type\": \"THINK\", \"node_type\": \"EXECUTE\", \"depends_on_indices\": [0, 1, 2]}` (Depends on prior research)\n            5. `{\"goal\": \"Write the EV adoption report.\", \"task_type\": \"WRITE\", \"node_type\": \"PLAN\", \"depends_on_indices\": [3]}` (Depends on the outline)\n4.  **Node Type Selection (Summary)**:\n    *   Use 'PLAN' if a sub-task requires further decomposition. This includes research goals covering multiple distinct conceptual areas or broad 'WRITE' tasks.\n    *   Prefer 'EXECUTE' for single, well-defined, actionable steps.\n\n**Example 1 (Initial Complex WRITE Goal - Revised for MECE and task limits):**\nInput:\n```json\n{\n  \"current_task_goal\": \"Write a comprehensive report on the recent state of US tariffs.\",\n  \"overall_objective\": \"Produce an publishable analysis of US tariff policy and its impacts.\",\n  \"parent_task_goal\": null,\n  \"planning_depth\": 0,\n  \"execution_history_and_context\": {\n    \"prior_sibling_task_outputs\": [],\n    \"relevant_ancestor_outputs\": [],\n    \"global_knowledge_base_summary\": \"Basic economic principles, trade agreement types.\"\n  },\n  \"replan_request_details\": null,\n  \"global_constraints_or_preferences\": [\"Focus on 2020-present data\"]\n}\n```\nPlanner Output (Revised for 3-6 tasks, MECE, dependencies, and appropriate PLAN nodes):\n```json\n[\n  {\"goal\": \"Identify key US tariff legislation, executive orders, and stated policy aims concerning major trade partners (e.g., China, EU) from 2020-present.\", \"task_type\": \"SEARCH\", \"node_type\": \"PLAN\", \"depends_on_indices\": []},\n  {\"goal\": \"Gather and synthesize data on the economic impacts of these recent US tariffs, focusing on 2-3 key affected domestic sectors (e.g., manufacturing, agriculture) and overall trade balance figures (2020-present).\", \"task_type\": \"SEARCH\", \"node_type\": \"PLAN\", \"depends_on_indices\": []},\n  {\"goal\": \"Analyze significant tariff-related disputes and retaliatory actions between the US and its major trade partners (limit to 1-2 key partners like China or EU if too broad) from 2020-present, noting resolutions or ongoing status.\", \"task_type\": \"SEARCH\", \"node_type\": \"PLAN\", \"depends_on_indices\": []},\n  {\"goal\": \"Develop a structured outline for the comprehensive tariff report, ensuring logical flow and coverage of findings from the planned research tasks.\", \"task_type\": \"THINK\", \"node_type\": \"EXECUTE\", \"depends_on_indices\": [0, 1, 2]},\n  {\"goal\": \"Draft the comprehensive US tariffs report based on the synthesized research and outline, ensuring clear sections for policy, impacts, and disputes.\", \"task_type\": \"WRITE\", \"node_type\": \"PLAN\", \"depends_on_indices\": [3]}\n]\n```\n\n**Example 2 (Re-plan request due to missing specific research for a WRITE task):**\n\nInput:\n```json\n{\n  \"current_task_goal\": \"Write a detailed history of early US tariffs (1789-1900), analyzing their economic impacts and political contexts.\",\n  \"overall_objective\": \"Complete Chapter 2 of the 'History of US Economic Policy' book.\",\n  \"parent_task_goal\": \"Draft Chapter 2: Early US Economic Policy (1789-1900)\",\n  \"planning_depth\": 1,\n  \"execution_history_and_context\": {\n    \"prior_sibling_task_outputs\": [],\n    \"relevant_ancestor_outputs\": [\n        {\"task_goal\": \"Develop outline for Chapter 2\", \"output_summary\": \"Outline includes section on tariffs, but details are sparse.\"}\n    ],\n    \"global_knowledge_base_summary\": null\n  },\n  \"replan_request_details\": {\n    \"failed_sub_goal\": \"Write a detailed history of early US tariffs (1789-1900), analyzing their economic impacts and political contexts.\",\n    \"reason_for_failure_or_replan\": \"<<NEEDS_REPLAN>> The previous attempt to write this history failed because it lacked specific research data. The executor agent reported: 'Cannot produce an accurate, comprehensive history without information on: 1) Major tariff legislation of the period, 2) Economic data showing impacts, 3) Political contexts for each major tariff change.'\",\n    \"previous_attempt_output_summary\": \"A very shallow draft was produced, lacking substance.\",\n    \"specific_guidance_for_replan\": \"The new plan must prioritize gathering the missing historical data *before* attempting to write the section. Break down the research into specific areas mentioned in the failure reason.\"\n  },\n  \"global_constraints_or_preferences\": [\"Ensure historical accuracy\", \"Cite primary sources where possible\"]\n}\n```\nPlanner Output (Good - addresses feedback by adding research steps and defining dependencies):\n```json\n[\n  {\"goal\": \"Research major US tariff legislation enacted between 1789 and 1900.\", \"task_type\": \"SEARCH\", \"node_type\": \"EXECUTE\", \"depends_on_indices\": []},\n  {\"goal\": \"Gather economic data and contemporary analyses regarding the impacts of key US tariff acts from the period 1789-1900.\", \"task_type\": \"SEARCH\", \"node_type\": \"EXECUTE\", \"depends_on_indices\": []},\n  {\"goal\": \"Investigate the political contexts, debates, and regional interests surrounding major US tariff changes from 1789-1900.\", \"task_type\": \"SEARCH\", \"node_type\": \"EXECUTE\", \"depends_on_indices\": []},\n  {\"goal\": \"Synthesize research findings on early US tariffs (1789-1900) covering legislation, economic impacts, and political contexts to create a consolidated knowledge base for writing.\", \"task_type\": \"THINK\", \"node_type\": \"EXECUTE\", \"depends_on_indices\": [0, 1, 2]},\n  {\"goal\": \"Write the detailed history of early US tariffs (1789-1900) based on the synthesized research, structured chronologically and thematically, adhering to historical accuracy and citation guidelines.\", \"task_type\": \"WRITE\", \"node_type\": \"EXECUTE\", \"depends_on_indices\": [3]}\n]\n```\n\n**Required Output Attributes per Sub-Task:**\n`goal`, `task_type` (string: 'WRITE', 'THINK', or 'SEARCH'), `node_type` (string: 'EXECUTE' or 'PLAN'), `depends_on_indices` (list of integers).\n\n**Output Format:**\n- Respond ONLY with a JSON list of sub-task objects.\n- Or an empty list if the `current_task_goal` cannot or should not be broken down further (e.g., it's already atomic enough given the context).\n",
+        "final_llm_input": "Overall Objective: write me a short 3 section report about recent US tariffs\n\nCurrent Task Goal: write me a short 3 section report about recent US tariffs\n\nCurrent Planning Depth: 0\n\n\nBased on the 'Current Task Goal' and other provided information, generate a plan to achieve it.",
+        "processing_completed": "2025-05-25T20:58:42.280546",
+        "success": true
+      }
+    },
+    "root.1": {
+      "task_id": "root.1",
+      "goal": "Research and compile a comprehensive overview of significant US tariff policies and changes from 2018 to present, identifying major trade partners affected, key industries impacted, and notable policy shifts across different presidential administrations.",
+      "task_type": "SEARCH",
+      "node_type": "PLAN",
+      "agent_name": null,
+      "status": "PLAN_DONE",
+      "layer": 1,
+      "parent_node_id": "root",
+      "overall_objective": "write me a short 3 section report about recent US tariffs",
+      "output_summary": "Planned 5 sub-tasks.",
+      "full_result": {
+        "sub_tasks": [
+          {
+            "goal": "Identify and summarize major US tariff policies and executive orders implemented between 2018-2023, noting key dates, affected product categories, and tariff rates.",
+            "task_type": "SEARCH",
+            "node_type": "EXECUTE",
+            "depends_on_indices": []
+          },
+          {
+            "goal": "Research specific tariff measures targeting China during 2018-present, including Section 301 tariffs, their evolution through different phases, and any recent modifications under the Biden administration.",
+            "task_type": "SEARCH",
+            "node_type": "EXECUTE",
+            "depends_on_indices": []
+          },
+          {
+            "goal": "Investigate US tariff policies and changes affecting the European Union from 2018-present, including steel and aluminum tariffs, digital services disputes, and recent developments in trade relations.",
+            "task_type": "SEARCH",
+            "node_type": "EXECUTE",
+            "depends_on_indices": []
+          },
+          {
+            "goal": "Research US tariff measures affecting other significant trade partners (e.g., Canada, Mexico, Japan, South Korea) from 2018-present, including USMCA-related changes and any special exemptions or agreements.",
+            "task_type": "SEARCH",
+            "node_type": "EXECUTE",
+            "depends_on_indices": []
+          },
+          {
+            "goal": "Compile and organize all gathered tariff policy information into a structured format that clearly outlines the chronology, scope, and key trade partners affected by US tariff changes since 2018.",
+            "task_type": "THINK",
+            "node_type": "EXECUTE",
+            "depends_on_indices": [
+              0,
+              1,
+              2,
+              3
+            ]
+          }
+        ]
+      },
+      "error": null,
+      "sub_graph_id": "subgraph_root.1",
+      "planned_sub_task_ids": [
+        "root.1.1",
+        "root.1.2",
+        "root.1.3",
+        "root.1.4",
+        "root.1.5"
+      ],
+      "input_payload_summary": "Input payload with keys: current_task_goal, overall_objective, parent_task_goal, planning_depth, execution_history_and_context, replan_request_details, global_constraints_or_preferences",
+      "input_context_sources": [],
+      "timestamp_created": "2025-05-25T20:58:43.318289",
+      "timestamp_updated": "2025-05-25T20:58:55.725129",
+      "timestamp_completed": null,
+      "model_display": "openrouter/anthropic/claude-3-7-sonnet",
+      "model_info": {
+        "adapter_name": "SimpleTestPlanner",
+        "model_provider": "openrouter",
+        "model_name": "anthropic/claude-3-7-sonnet",
+        "model_id": "openrouter/anthropic/claude-3-7-sonnet"
+      },
+      "execution_details": {
+        "model_info": {
+          "adapter_name": "SimpleTestPlanner",
+          "model_provider": "openrouter",
+          "model_name": "anthropic/claude-3-7-sonnet",
+          "model_id": "openrouter/anthropic/claude-3-7-sonnet"
+        },
+        "processing_started": "2025-05-25T20:58:47.923415",
+        "system_prompt": "You are an expert hierarchical and recursive task decomposition agent. Your primary role is to break down complex goals into a sequence of **3 to 6 manageable, complementary, and largely mutually exclusive sub-tasks.** The overall aim is to achieve thoroughness without excessive, redundant granularity. 'SEARCH/EXECUTE' tasks must be highly specific.\n\n**Input Schema:**\n\nYou will receive input in JSON format with the following fields:\n\n*   `current_task_goal` (string, mandatory): The specific goal for this planning instance.\n*   `overall_objective` (string, mandatory): The ultimate high-level goal of the entire operation. This helps maintain alignment.\n*   `parent_task_goal` (string, optional): The goal of the immediate parent task that led to this decomposition. Null if this is the root task.\n*   `planning_depth` (integer, optional): Current recursion depth (e.g., 0 for initial, 1 for sub-tasks).\n*   `execution_history_and_context` (object, mandatory):\n    *   `prior_sibling_task_outputs` (array of objects, optional): Outputs from tasks at the same hierarchical level that executed before this planning step. Each object contains:\n        *   `task_goal` (string): Goal of the sibling task.\n        *   `outcome_summary` (string): Brief summary of what the sibling task achieved or produced.\n        *   `full_output_reference_id` (string, optional): ID to fetch the full output if needed.\n    *   `relevant_ancestor_outputs` (array of objects, optional): Key outputs from parent or higher-level tasks crucial for `current_task_goal`. Each object similar to sibling outputs.\n    *   `global_knowledge_base_summary` (string, optional): Brief summary/keywords of available global knowledge.\n*   `replan_request_details` (object, optional): If this is a re-plan, this object contains structured feedback. Null otherwise.\n    *   `failed_sub_goal` (string): The specific sub-goal related to `current_task_goal` that previously failed.\n    *   `reason_for_failure_or_replan` (string): Detailed explanation of the failure or re-plan need.\n    *   `previous_attempt_output_summary` (string, optional): Summary of the failed attempt's output.\n    *   `specific_guidance_for_replan` (string, optional): Concrete suggestions for the re-plan.\n*   `global_constraints_or_preferences` (array of strings, optional): E.g., \"Prioritize accuracy\", \"Maximum 3 sub-tasks\".\n\n**Core Task:**\n\n1.  Analyze the `current_task_goal` in the context of `overall_objective`, `parent_task_goal`, and available `execution_history_and_context`.\n2.  Decompose `current_task_goal` into a list of **3 to 6 granular sub-tasks.** If a goal is exceptionally complex and absolutely requires more than 6 sub-tasks to maintain clarity and avoid overly broad steps, you may slightly exceed this, but strive for conciseness. Aim for sub-tasks that represent meaningful, coherent units of work. While `EXECUTE` tasks should be specific, avoid breaking down a goal into excessively small pieces if a slightly larger, but still focused and directly actionable, `EXECUTE` task is feasible for a specialized agent. Prioritize clarity and manageability over maximum possible decomposition.\n3.  For each sub-task, define:\n    *   `goal` (string): The specific goal. Ensure sub-task goals are distinct and avoid significant overlap with sibling tasks in the current plan.\n    *   `task_type` (string): 'WRITE', 'THINK', or 'SEARCH'.\n    *   `node_type` (string): 'EXECUTE' (atomic) or 'PLAN' (needs more planning).\n    *   `depends_on_indices` (list of integers, optional): A list of 0-based indices of other sub-tasks *in the current list of sub-tasks you are generating* that this specific sub-task directly depends on. Example: If sub-task at index 2 depends on sub-task at index 0 and sub-task at index 1, this field would be `[0, 1]`. If a sub-task can start as soon as the parent plan is approved (i.e., it doesn't depend on any other sibling sub-tasks in *this* plan), this should be an empty list `[]`. Use this to define sequential dependencies when one sub-task in your plan needs the output of another sub-task from the *same* plan. Ensure indices are valid and refer to previously listed sub-tasks in your current plan.\n4.  **Task Ordering and Dependencies**:\n    *   List sub-tasks in a logical order.\n    *   Use `depends_on_indices` to explicitly state if a sub-task requires the completion of one or more *other sub-tasks from the current plan* before it can start.\n    *   If tasks are largely independent and can run in parallel, their `depends_on_indices` should be `[]`.\n\n**Re-planning Logic**: \n\nIf `replan_request_details` is provided:\n    *   Pay **critical attention** to `reason_for_failure_or_replan` and `specific_guidance_for_replan`.\n    *   Your new plan **MUST** address the failure by:\n        *   Being more granular for the `failed_sub_goal`.\n        *   Altering the approach (e.g., different `task_type`s).\n        *   Suggesting different information gathering if context was missing.\n        *   Modifying sub-task goals based on `specific_guidance_for_replan`.\n        *   Adjusting `depends_on_indices` if the previous dependency structure was flawed.\n    *   Ensure the new plan for `current_task_goal` explicitly mitigates the previous failure.\n\n**Planning Tips (Leveraging New Input):**\n\n1.  **Context is Key**: Use `prior_sibling_task_outputs` to build sequentially (if logically dependent) and avoid redundancy. Leverage `relevant_ancestor_outputs`.\n2.  **Mutual Exclusivity & Complementation**:\n    *   Strive for sub-tasks that cover different aspects of the `current_task_goal` without significant overlap. They should be complementary, together achieving the parent goal.\n    *   Before finalizing sub-tasks, review them as a set: Do they make sense together? Is there redundancy? Are there gaps? Are dependencies correctly defined using `depends_on_indices`?\n3.  **CRITICAL - Balanced Granularity for SEARCH Tasks**:\n    *   **`SEARCH/EXECUTE` Specificity**: A `SEARCH/EXECUTE` sub-task goal **MUST** be so specific that it typically targets a single fact, statistic, definition, or a very narrow aspect of a topic.\n        *   *Good `SEARCH/EXECUTE` examples*: \"Find the 2023 import tariff rate for Chinese-made solar panels in the US.\", \"List the main arguments for the Jones Act.\"\n        *   *Bad `SEARCH/EXECUTE` examples (these should be `SEARCH/PLAN` or broken down)*: \"Research US solar panel tariffs.\", \"Understand the Jones Act.\"\n    *   **Avoiding Over-Fragmentation**: While specificity is key, if multiple *very small, extremely closely related pieces of data* can be retrieved with a single, well-crafted, targeted search query (and an agent can easily parse them), you can group them into one `SEARCH/EXECUTE` task. Example: Instead of three tasks \"Find 2022 EV sales\", \"Find 2023 EV sales\", \"Find 2024 EV sales\", one task \"Find annual US EV sales figures for 2022, 2023, and 2024\" is acceptable if the search agent can handle it. However, do not combine distinct conceptual questions.\n    *   **When to use `SEARCH/PLAN`**: If a research sub-goal still requires investigating multiple *distinct conceptual areas* or is too broad for one or two highly targeted queries (even if slightly grouped as above), that sub-task **MUST** be `task_type: 'SEARCH'` and `node_type: 'PLAN'`. This ensures it gets further decomposed.\n    *   **Example of Balanced Research Breakdown:**\n        *   Initial Broad Goal: \"Write a report on US electric vehicle (EV) adoption.\"\n        *   Planner (Step 1) might create:\n            1. `{\"goal\": \"Research current US EV market penetration statistics (annual sales, market share) for the last 3-5 years.\", \"task_type\": \"SEARCH\", \"node_type\": \"EXECUTE\", \"depends_on_indices\": []}`\n            2. `{\"goal\": \"Identify and summarize key federal and prominent state-level (e.g., CA, NY, TX) government incentives for EV purchases.\", \"task_type\": \"SEARCH\", \"node_type\": \"PLAN\", \"depends_on_indices\": []}`\n            3. `{\"goal\": \"Investigate primary consumer adoption barriers for EVs (e.g., price, range, charging) based on recent surveys and industry reports.\", \"task_type\": \"SEARCH\", \"node_type\": \"PLAN\", \"depends_on_indices\": []}`\n            4. `{\"goal\": \"Outline the EV adoption report, incorporating planned research areas.\", \"task_type\": \"THINK\", \"node_type\": \"EXECUTE\", \"depends_on_indices\": [0, 1, 2]}` (Depends on prior research)\n            5. `{\"goal\": \"Write the EV adoption report.\", \"task_type\": \"WRITE\", \"node_type\": \"PLAN\", \"depends_on_indices\": [3]}` (Depends on the outline)\n4.  **Node Type Selection (Summary)**:\n    *   Use 'PLAN' if a sub-task requires further decomposition. This includes research goals covering multiple distinct conceptual areas or broad 'WRITE' tasks.\n    *   Prefer 'EXECUTE' for single, well-defined, actionable steps.\n\n**Example 1 (Initial Complex WRITE Goal - Revised for MECE and task limits):**\nInput:\n```json\n{\n  \"current_task_goal\": \"Write a comprehensive report on the recent state of US tariffs.\",\n  \"overall_objective\": \"Produce an publishable analysis of US tariff policy and its impacts.\",\n  \"parent_task_goal\": null,\n  \"planning_depth\": 0,\n  \"execution_history_and_context\": {\n    \"prior_sibling_task_outputs\": [],\n    \"relevant_ancestor_outputs\": [],\n    \"global_knowledge_base_summary\": \"Basic economic principles, trade agreement types.\"\n  },\n  \"replan_request_details\": null,\n  \"global_constraints_or_preferences\": [\"Focus on 2020-present data\"]\n}\n```\nPlanner Output (Revised for 3-6 tasks, MECE, dependencies, and appropriate PLAN nodes):\n```json\n[\n  {\"goal\": \"Identify key US tariff legislation, executive orders, and stated policy aims concerning major trade partners (e.g., China, EU) from 2020-present.\", \"task_type\": \"SEARCH\", \"node_type\": \"PLAN\", \"depends_on_indices\": []},\n  {\"goal\": \"Gather and synthesize data on the economic impacts of these recent US tariffs, focusing on 2-3 key affected domestic sectors (e.g., manufacturing, agriculture) and overall trade balance figures (2020-present).\", \"task_type\": \"SEARCH\", \"node_type\": \"PLAN\", \"depends_on_indices\": []},\n  {\"goal\": \"Analyze significant tariff-related disputes and retaliatory actions between the US and its major trade partners (limit to 1-2 key partners like China or EU if too broad) from 2020-present, noting resolutions or ongoing status.\", \"task_type\": \"SEARCH\", \"node_type\": \"PLAN\", \"depends_on_indices\": []},\n  {\"goal\": \"Develop a structured outline for the comprehensive tariff report, ensuring logical flow and coverage of findings from the planned research tasks.\", \"task_type\": \"THINK\", \"node_type\": \"EXECUTE\", \"depends_on_indices\": [0, 1, 2]},\n  {\"goal\": \"Draft the comprehensive US tariffs report based on the synthesized research and outline, ensuring clear sections for policy, impacts, and disputes.\", \"task_type\": \"WRITE\", \"node_type\": \"PLAN\", \"depends_on_indices\": [3]}\n]\n```\n\n**Example 2 (Re-plan request due to missing specific research for a WRITE task):**\n\nInput:\n```json\n{\n  \"current_task_goal\": \"Write a detailed history of early US tariffs (1789-1900), analyzing their economic impacts and political contexts.\",\n  \"overall_objective\": \"Complete Chapter 2 of the 'History of US Economic Policy' book.\",\n  \"parent_task_goal\": \"Draft Chapter 2: Early US Economic Policy (1789-1900)\",\n  \"planning_depth\": 1,\n  \"execution_history_and_context\": {\n    \"prior_sibling_task_outputs\": [],\n    \"relevant_ancestor_outputs\": [\n        {\"task_goal\": \"Develop outline for Chapter 2\", \"output_summary\": \"Outline includes section on tariffs, but details are sparse.\"}\n    ],\n    \"global_knowledge_base_summary\": null\n  },\n  \"replan_request_details\": {\n    \"failed_sub_goal\": \"Write a detailed history of early US tariffs (1789-1900), analyzing their economic impacts and political contexts.\",\n    \"reason_for_failure_or_replan\": \"<<NEEDS_REPLAN>> The previous attempt to write this history failed because it lacked specific research data. The executor agent reported: 'Cannot produce an accurate, comprehensive history without information on: 1) Major tariff legislation of the period, 2) Economic data showing impacts, 3) Political contexts for each major tariff change.'\",\n    \"previous_attempt_output_summary\": \"A very shallow draft was produced, lacking substance.\",\n    \"specific_guidance_for_replan\": \"The new plan must prioritize gathering the missing historical data *before* attempting to write the section. Break down the research into specific areas mentioned in the failure reason.\"\n  },\n  \"global_constraints_or_preferences\": [\"Ensure historical accuracy\", \"Cite primary sources where possible\"]\n}\n```\nPlanner Output (Good - addresses feedback by adding research steps and defining dependencies):\n```json\n[\n  {\"goal\": \"Research major US tariff legislation enacted between 1789 and 1900.\", \"task_type\": \"SEARCH\", \"node_type\": \"EXECUTE\", \"depends_on_indices\": []},\n  {\"goal\": \"Gather economic data and contemporary analyses regarding the impacts of key US tariff acts from the period 1789-1900.\", \"task_type\": \"SEARCH\", \"node_type\": \"EXECUTE\", \"depends_on_indices\": []},\n  {\"goal\": \"Investigate the political contexts, debates, and regional interests surrounding major US tariff changes from 1789-1900.\", \"task_type\": \"SEARCH\", \"node_type\": \"EXECUTE\", \"depends_on_indices\": []},\n  {\"goal\": \"Synthesize research findings on early US tariffs (1789-1900) covering legislation, economic impacts, and political contexts to create a consolidated knowledge base for writing.\", \"task_type\": \"THINK\", \"node_type\": \"EXECUTE\", \"depends_on_indices\": [0, 1, 2]},\n  {\"goal\": \"Write the detailed history of early US tariffs (1789-1900) based on the synthesized research, structured chronologically and thematically, adhering to historical accuracy and citation guidelines.\", \"task_type\": \"WRITE\", \"node_type\": \"EXECUTE\", \"depends_on_indices\": [3]}\n]\n```\n\n**Required Output Attributes per Sub-Task:**\n`goal`, `task_type` (string: 'WRITE', 'THINK', or 'SEARCH'), `node_type` (string: 'EXECUTE' or 'PLAN'), `depends_on_indices` (list of integers).\n\n**Output Format:**\n- Respond ONLY with a JSON list of sub-task objects.\n- Or an empty list if the `current_task_goal` cannot or should not be broken down further (e.g., it's already atomic enough given the context).\n",
+        "final_llm_input": "Overall Objective: write me a short 3 section report about recent US tariffs\n\nCurrent Task Goal: Research and gather information on key US tariff policies and changes from 2018-present, focusing on major trade partners affected.\n\nParent Task Goal: Write a concise report with three sections about recent United States tariff policies, including their implementation, economic impacts, and international responses.\n\nCurrent Planning Depth: 1\n\nExecution History & Context:\n\n  Relevant Ancestor Outputs:\n\n    - Task: Write a concise report with three sections about recent United States tariff policies, including their implementation, economic impacts, and international responses., Summary: Planned 5 sub-tasks.\n\n\nBased on the 'Current Task Goal' and other provided information, generate a plan to achieve it.",
+        "processing_completed": "2025-05-25T20:58:55.717761",
+        "success": true
+      }
+    },
+    "root.2": {
+      "task_id": "root.2",
+      "goal": "Research and compile comprehensive data on the economic impacts of recent US tariffs, specifically analyzing effects on: 1) domestic industries (jobs, production, profits), 2) consumer prices and purchasing power, and 3) overall US trade balance figures. Focus on tariffs implemented within the past 3-5 years.",
+      "task_type": "SEARCH",
+      "node_type": "PLAN",
+      "agent_name": null,
+      "status": "RUNNING",
+      "layer": 1,
+      "parent_node_id": "root",
+      "overall_objective": "write me a short 3 section report about recent US tariffs",
+      "output_summary": null,
+      "full_result": null,
+      "error": null,
+      "sub_graph_id": null,
+      "planned_sub_task_ids": [],
+      "input_payload_summary": "Input payload with keys: current_task_goal, overall_objective, parent_task_goal, planning_depth, execution_history_and_context, replan_request_details, global_constraints_or_preferences",
+      "input_context_sources": [],
+      "timestamp_created": "2025-05-25T20:58:43.318607",
+      "timestamp_updated": "2025-05-25T20:58:43.332438",
+      "timestamp_completed": null,
+      "model_display": "openrouter/anthropic/claude-3-7-sonnet",
+      "model_info": {
+        "adapter_name": "SimpleTestPlanner",
+        "model_provider": "openrouter",
+        "model_name": "anthropic/claude-3-7-sonnet",
+        "model_id": "openrouter/anthropic/claude-3-7-sonnet"
+      },
+      "execution_details": {
+        "model_info": {
+          "adapter_name": "SimpleTestPlanner",
+          "model_provider": "openrouter",
+          "model_name": "anthropic/claude-3-7-sonnet",
+          "model_id": "openrouter/anthropic/claude-3-7-sonnet"
+        },
+        "processing_started": "2025-05-25T20:58:54.119937",
+        "system_prompt": "You are an expert hierarchical and recursive task decomposition agent. Your primary role is to break down complex goals into a sequence of **3 to 6 manageable, complementary, and largely mutually exclusive sub-tasks.** The overall aim is to achieve thoroughness without excessive, redundant granularity. 'SEARCH/EXECUTE' tasks must be highly specific.\n\n**Input Schema:**\n\nYou will receive input in JSON format with the following fields:\n\n*   `current_task_goal` (string, mandatory): The specific goal for this planning instance.\n*   `overall_objective` (string, mandatory): The ultimate high-level goal of the entire operation. This helps maintain alignment.\n*   `parent_task_goal` (string, optional): The goal of the immediate parent task that led to this decomposition. Null if this is the root task.\n*   `planning_depth` (integer, optional): Current recursion depth (e.g., 0 for initial, 1 for sub-tasks).\n*   `execution_history_and_context` (object, mandatory):\n    *   `prior_sibling_task_outputs` (array of objects, optional): Outputs from tasks at the same hierarchical level that executed before this planning step. Each object contains:\n        *   `task_goal` (string): Goal of the sibling task.\n        *   `outcome_summary` (string): Brief summary of what the sibling task achieved or produced.\n        *   `full_output_reference_id` (string, optional): ID to fetch the full output if needed.\n    *   `relevant_ancestor_outputs` (array of objects, optional): Key outputs from parent or higher-level tasks crucial for `current_task_goal`. Each object similar to sibling outputs.\n    *   `global_knowledge_base_summary` (string, optional): Brief summary/keywords of available global knowledge.\n*   `replan_request_details` (object, optional): If this is a re-plan, this object contains structured feedback. Null otherwise.\n    *   `failed_sub_goal` (string): The specific sub-goal related to `current_task_goal` that previously failed.\n    *   `reason_for_failure_or_replan` (string): Detailed explanation of the failure or re-plan need.\n    *   `previous_attempt_output_summary` (string, optional): Summary of the failed attempt's output.\n    *   `specific_guidance_for_replan` (string, optional): Concrete suggestions for the re-plan.\n*   `global_constraints_or_preferences` (array of strings, optional): E.g., \"Prioritize accuracy\", \"Maximum 3 sub-tasks\".\n\n**Core Task:**\n\n1.  Analyze the `current_task_goal` in the context of `overall_objective`, `parent_task_goal`, and available `execution_history_and_context`.\n2.  Decompose `current_task_goal` into a list of **3 to 6 granular sub-tasks.** If a goal is exceptionally complex and absolutely requires more than 6 sub-tasks to maintain clarity and avoid overly broad steps, you may slightly exceed this, but strive for conciseness. Aim for sub-tasks that represent meaningful, coherent units of work. While `EXECUTE` tasks should be specific, avoid breaking down a goal into excessively small pieces if a slightly larger, but still focused and directly actionable, `EXECUTE` task is feasible for a specialized agent. Prioritize clarity and manageability over maximum possible decomposition.\n3.  For each sub-task, define:\n    *   `goal` (string): The specific goal. Ensure sub-task goals are distinct and avoid significant overlap with sibling tasks in the current plan.\n    *   `task_type` (string): 'WRITE', 'THINK', or 'SEARCH'.\n    *   `node_type` (string): 'EXECUTE' (atomic) or 'PLAN' (needs more planning).\n    *   `depends_on_indices` (list of integers, optional): A list of 0-based indices of other sub-tasks *in the current list of sub-tasks you are generating* that this specific sub-task directly depends on. Example: If sub-task at index 2 depends on sub-task at index 0 and sub-task at index 1, this field would be `[0, 1]`. If a sub-task can start as soon as the parent plan is approved (i.e., it doesn't depend on any other sibling sub-tasks in *this* plan), this should be an empty list `[]`. Use this to define sequential dependencies when one sub-task in your plan needs the output of another sub-task from the *same* plan. Ensure indices are valid and refer to previously listed sub-tasks in your current plan.\n4.  **Task Ordering and Dependencies**:\n    *   List sub-tasks in a logical order.\n    *   Use `depends_on_indices` to explicitly state if a sub-task requires the completion of one or more *other sub-tasks from the current plan* before it can start.\n    *   If tasks are largely independent and can run in parallel, their `depends_on_indices` should be `[]`.\n\n**Re-planning Logic**: \n\nIf `replan_request_details` is provided:\n    *   Pay **critical attention** to `reason_for_failure_or_replan` and `specific_guidance_for_replan`.\n    *   Your new plan **MUST** address the failure by:\n        *   Being more granular for the `failed_sub_goal`.\n        *   Altering the approach (e.g., different `task_type`s).\n        *   Suggesting different information gathering if context was missing.\n        *   Modifying sub-task goals based on `specific_guidance_for_replan`.\n        *   Adjusting `depends_on_indices` if the previous dependency structure was flawed.\n    *   Ensure the new plan for `current_task_goal` explicitly mitigates the previous failure.\n\n**Planning Tips (Leveraging New Input):**\n\n1.  **Context is Key**: Use `prior_sibling_task_outputs` to build sequentially (if logically dependent) and avoid redundancy. Leverage `relevant_ancestor_outputs`.\n2.  **Mutual Exclusivity & Complementation**:\n    *   Strive for sub-tasks that cover different aspects of the `current_task_goal` without significant overlap. They should be complementary, together achieving the parent goal.\n    *   Before finalizing sub-tasks, review them as a set: Do they make sense together? Is there redundancy? Are there gaps? Are dependencies correctly defined using `depends_on_indices`?\n3.  **CRITICAL - Balanced Granularity for SEARCH Tasks**:\n    *   **`SEARCH/EXECUTE` Specificity**: A `SEARCH/EXECUTE` sub-task goal **MUST** be so specific that it typically targets a single fact, statistic, definition, or a very narrow aspect of a topic.\n        *   *Good `SEARCH/EXECUTE` examples*: \"Find the 2023 import tariff rate for Chinese-made solar panels in the US.\", \"List the main arguments for the Jones Act.\"\n        *   *Bad `SEARCH/EXECUTE` examples (these should be `SEARCH/PLAN` or broken down)*: \"Research US solar panel tariffs.\", \"Understand the Jones Act.\"\n    *   **Avoiding Over-Fragmentation**: While specificity is key, if multiple *very small, extremely closely related pieces of data* can be retrieved with a single, well-crafted, targeted search query (and an agent can easily parse them), you can group them into one `SEARCH/EXECUTE` task. Example: Instead of three tasks \"Find 2022 EV sales\", \"Find 2023 EV sales\", \"Find 2024 EV sales\", one task \"Find annual US EV sales figures for 2022, 2023, and 2024\" is acceptable if the search agent can handle it. However, do not combine distinct conceptual questions.\n    *   **When to use `SEARCH/PLAN`**: If a research sub-goal still requires investigating multiple *distinct conceptual areas* or is too broad for one or two highly targeted queries (even if slightly grouped as above), that sub-task **MUST** be `task_type: 'SEARCH'` and `node_type: 'PLAN'`. This ensures it gets further decomposed.\n    *   **Example of Balanced Research Breakdown:**\n        *   Initial Broad Goal: \"Write a report on US electric vehicle (EV) adoption.\"\n        *   Planner (Step 1) might create:\n            1. `{\"goal\": \"Research current US EV market penetration statistics (annual sales, market share) for the last 3-5 years.\", \"task_type\": \"SEARCH\", \"node_type\": \"EXECUTE\", \"depends_on_indices\": []}`\n            2. `{\"goal\": \"Identify and summarize key federal and prominent state-level (e.g., CA, NY, TX) government incentives for EV purchases.\", \"task_type\": \"SEARCH\", \"node_type\": \"PLAN\", \"depends_on_indices\": []}`\n            3. `{\"goal\": \"Investigate primary consumer adoption barriers for EVs (e.g., price, range, charging) based on recent surveys and industry reports.\", \"task_type\": \"SEARCH\", \"node_type\": \"PLAN\", \"depends_on_indices\": []}`\n            4. `{\"goal\": \"Outline the EV adoption report, incorporating planned research areas.\", \"task_type\": \"THINK\", \"node_type\": \"EXECUTE\", \"depends_on_indices\": [0, 1, 2]}` (Depends on prior research)\n            5. `{\"goal\": \"Write the EV adoption report.\", \"task_type\": \"WRITE\", \"node_type\": \"PLAN\", \"depends_on_indices\": [3]}` (Depends on the outline)\n4.  **Node Type Selection (Summary)**:\n    *   Use 'PLAN' if a sub-task requires further decomposition. This includes research goals covering multiple distinct conceptual areas or broad 'WRITE' tasks.\n    *   Prefer 'EXECUTE' for single, well-defined, actionable steps.\n\n**Example 1 (Initial Complex WRITE Goal - Revised for MECE and task limits):**\nInput:\n```json\n{\n  \"current_task_goal\": \"Write a comprehensive report on the recent state of US tariffs.\",\n  \"overall_objective\": \"Produce an publishable analysis of US tariff policy and its impacts.\",\n  \"parent_task_goal\": null,\n  \"planning_depth\": 0,\n  \"execution_history_and_context\": {\n    \"prior_sibling_task_outputs\": [],\n    \"relevant_ancestor_outputs\": [],\n    \"global_knowledge_base_summary\": \"Basic economic principles, trade agreement types.\"\n  },\n  \"replan_request_details\": null,\n  \"global_constraints_or_preferences\": [\"Focus on 2020-present data\"]\n}\n```\nPlanner Output (Revised for 3-6 tasks, MECE, dependencies, and appropriate PLAN nodes):\n```json\n[\n  {\"goal\": \"Identify key US tariff legislation, executive orders, and stated policy aims concerning major trade partners (e.g., China, EU) from 2020-present.\", \"task_type\": \"SEARCH\", \"node_type\": \"PLAN\", \"depends_on_indices\": []},\n  {\"goal\": \"Gather and synthesize data on the economic impacts of these recent US tariffs, focusing on 2-3 key affected domestic sectors (e.g., manufacturing, agriculture) and overall trade balance figures (2020-present).\", \"task_type\": \"SEARCH\", \"node_type\": \"PLAN\", \"depends_on_indices\": []},\n  {\"goal\": \"Analyze significant tariff-related disputes and retaliatory actions between the US and its major trade partners (limit to 1-2 key partners like China or EU if too broad) from 2020-present, noting resolutions or ongoing status.\", \"task_type\": \"SEARCH\", \"node_type\": \"PLAN\", \"depends_on_indices\": []},\n  {\"goal\": \"Develop a structured outline for the comprehensive tariff report, ensuring logical flow and coverage of findings from the planned research tasks.\", \"task_type\": \"THINK\", \"node_type\": \"EXECUTE\", \"depends_on_indices\": [0, 1, 2]},\n  {\"goal\": \"Draft the comprehensive US tariffs report based on the synthesized research and outline, ensuring clear sections for policy, impacts, and disputes.\", \"task_type\": \"WRITE\", \"node_type\": \"PLAN\", \"depends_on_indices\": [3]}\n]\n```\n\n**Example 2 (Re-plan request due to missing specific research for a WRITE task):**\n\nInput:\n```json\n{\n  \"current_task_goal\": \"Write a detailed history of early US tariffs (1789-1900), analyzing their economic impacts and political contexts.\",\n  \"overall_objective\": \"Complete Chapter 2 of the 'History of US Economic Policy' book.\",\n  \"parent_task_goal\": \"Draft Chapter 2: Early US Economic Policy (1789-1900)\",\n  \"planning_depth\": 1,\n  \"execution_history_and_context\": {\n    \"prior_sibling_task_outputs\": [],\n    \"relevant_ancestor_outputs\": [\n        {\"task_goal\": \"Develop outline for Chapter 2\", \"output_summary\": \"Outline includes section on tariffs, but details are sparse.\"}\n    ],\n    \"global_knowledge_base_summary\": null\n  },\n  \"replan_request_details\": {\n    \"failed_sub_goal\": \"Write a detailed history of early US tariffs (1789-1900), analyzing their economic impacts and political contexts.\",\n    \"reason_for_failure_or_replan\": \"<<NEEDS_REPLAN>> The previous attempt to write this history failed because it lacked specific research data. The executor agent reported: 'Cannot produce an accurate, comprehensive history without information on: 1) Major tariff legislation of the period, 2) Economic data showing impacts, 3) Political contexts for each major tariff change.'\",\n    \"previous_attempt_output_summary\": \"A very shallow draft was produced, lacking substance.\",\n    \"specific_guidance_for_replan\": \"The new plan must prioritize gathering the missing historical data *before* attempting to write the section. Break down the research into specific areas mentioned in the failure reason.\"\n  },\n  \"global_constraints_or_preferences\": [\"Ensure historical accuracy\", \"Cite primary sources where possible\"]\n}\n```\nPlanner Output (Good - addresses feedback by adding research steps and defining dependencies):\n```json\n[\n  {\"goal\": \"Research major US tariff legislation enacted between 1789 and 1900.\", \"task_type\": \"SEARCH\", \"node_type\": \"EXECUTE\", \"depends_on_indices\": []},\n  {\"goal\": \"Gather economic data and contemporary analyses regarding the impacts of key US tariff acts from the period 1789-1900.\", \"task_type\": \"SEARCH\", \"node_type\": \"EXECUTE\", \"depends_on_indices\": []},\n  {\"goal\": \"Investigate the political contexts, debates, and regional interests surrounding major US tariff changes from 1789-1900.\", \"task_type\": \"SEARCH\", \"node_type\": \"EXECUTE\", \"depends_on_indices\": []},\n  {\"goal\": \"Synthesize research findings on early US tariffs (1789-1900) covering legislation, economic impacts, and political contexts to create a consolidated knowledge base for writing.\", \"task_type\": \"THINK\", \"node_type\": \"EXECUTE\", \"depends_on_indices\": [0, 1, 2]},\n  {\"goal\": \"Write the detailed history of early US tariffs (1789-1900) based on the synthesized research, structured chronologically and thematically, adhering to historical accuracy and citation guidelines.\", \"task_type\": \"WRITE\", \"node_type\": \"EXECUTE\", \"depends_on_indices\": [3]}\n]\n```\n\n**Required Output Attributes per Sub-Task:**\n`goal`, `task_type` (string: 'WRITE', 'THINK', or 'SEARCH'), `node_type` (string: 'EXECUTE' or 'PLAN'), `depends_on_indices` (list of integers).\n\n**Output Format:**\n- Respond ONLY with a JSON list of sub-task objects.\n- Or an empty list if the `current_task_goal` cannot or should not be broken down further (e.g., it's already atomic enough given the context).\n",
+        "final_llm_input": "Overall Objective: write me a short 3 section report about recent US tariffs\n\nCurrent Task Goal: Research and compile data on the economic impacts of recent US tariffs on domestic industries, consumers, and overall trade balance.\n\nParent Task Goal: Write a concise report with three sections about recent United States tariff policies, including their implementation, economic impacts, and international responses.\n\nCurrent Planning Depth: 1\n\nExecution History & Context:\n\n  Relevant Ancestor Outputs:\n\n    - Task: Write a concise report with three sections about recent United States tariff policies, including their implementation, economic impacts, and international responses., Summary: Planned 5 sub-tasks.\n\n\nBased on the 'Current Task Goal' and other provided information, generate a plan to achieve it.",
+        "processing_completed": "2025-05-25T20:58:50.999369",
+        "success": true
+      }
+    },
+    "root.3": {
+      "task_id": "root.3",
+      "goal": "Research and compile comprehensive data on the economic impacts of recent US tariffs, specifically analyzing effects on: 1) domestic industries (jobs, production, profits), 2) consumer prices and purchasing power, and 3) overall US trade balance figures. Focus on tariffs implemented within the past 3-5 years.",
+      "task_type": "SEARCH",
+      "node_type": "PLAN",
+      "agent_name": null,
+      "status": "RUNNING",
+      "layer": 1,
+      "parent_node_id": "root",
+      "overall_objective": "write me a short 3 section report about recent US tariffs",
+      "output_summary": null,
+      "full_result": null,
+      "error": null,
+      "sub_graph_id": null,
+      "planned_sub_task_ids": [],
+      "input_payload_summary": "Input payload with keys: current_task_goal, overall_objective, parent_task_goal, planning_depth, execution_history_and_context, replan_request_details, global_constraints_or_preferences",
+      "input_context_sources": [],
+      "timestamp_created": "2025-05-25T20:58:43.318840",
+      "timestamp_updated": "2025-05-25T20:58:43.348197",
+      "timestamp_completed": null,
+      "model_display": "openrouter/anthropic/claude-3-7-sonnet",
+      "model_info": {
+        "adapter_name": "SimpleTestPlanner",
+        "model_provider": "openrouter",
+        "model_name": "anthropic/claude-3-7-sonnet",
+        "model_id": "openrouter/anthropic/claude-3-7-sonnet"
+      },
+      "execution_details": {
+        "model_info": {
+          "adapter_name": "SimpleTestPlanner",
+          "model_provider": "openrouter",
+          "model_name": "anthropic/claude-3-7-sonnet",
+          "model_id": "openrouter/anthropic/claude-3-7-sonnet"
+        },
+        "processing_started": "2025-05-25T20:58:50.985046",
+        "system_prompt": "You are an expert hierarchical and recursive task decomposition agent. Your primary role is to break down complex goals into a sequence of **3 to 6 manageable, complementary, and largely mutually exclusive sub-tasks.** The overall aim is to achieve thoroughness without excessive, redundant granularity. 'SEARCH/EXECUTE' tasks must be highly specific.\n\n**Input Schema:**\n\nYou will receive input in JSON format with the following fields:\n\n*   `current_task_goal` (string, mandatory): The specific goal for this planning instance.\n*   `overall_objective` (string, mandatory): The ultimate high-level goal of the entire operation. This helps maintain alignment.\n*   `parent_task_goal` (string, optional): The goal of the immediate parent task that led to this decomposition. Null if this is the root task.\n*   `planning_depth` (integer, optional): Current recursion depth (e.g., 0 for initial, 1 for sub-tasks).\n*   `execution_history_and_context` (object, mandatory):\n    *   `prior_sibling_task_outputs` (array of objects, optional): Outputs from tasks at the same hierarchical level that executed before this planning step. Each object contains:\n        *   `task_goal` (string): Goal of the sibling task.\n        *   `outcome_summary` (string): Brief summary of what the sibling task achieved or produced.\n        *   `full_output_reference_id` (string, optional): ID to fetch the full output if needed.\n    *   `relevant_ancestor_outputs` (array of objects, optional): Key outputs from parent or higher-level tasks crucial for `current_task_goal`. Each object similar to sibling outputs.\n    *   `global_knowledge_base_summary` (string, optional): Brief summary/keywords of available global knowledge.\n*   `replan_request_details` (object, optional): If this is a re-plan, this object contains structured feedback. Null otherwise.\n    *   `failed_sub_goal` (string): The specific sub-goal related to `current_task_goal` that previously failed.\n    *   `reason_for_failure_or_replan` (string): Detailed explanation of the failure or re-plan need.\n    *   `previous_attempt_output_summary` (string, optional): Summary of the failed attempt's output.\n    *   `specific_guidance_for_replan` (string, optional): Concrete suggestions for the re-plan.\n*   `global_constraints_or_preferences` (array of strings, optional): E.g., \"Prioritize accuracy\", \"Maximum 3 sub-tasks\".\n\n**Core Task:**\n\n1.  Analyze the `current_task_goal` in the context of `overall_objective`, `parent_task_goal`, and available `execution_history_and_context`.\n2.  Decompose `current_task_goal` into a list of **3 to 6 granular sub-tasks.** If a goal is exceptionally complex and absolutely requires more than 6 sub-tasks to maintain clarity and avoid overly broad steps, you may slightly exceed this, but strive for conciseness. Aim for sub-tasks that represent meaningful, coherent units of work. While `EXECUTE` tasks should be specific, avoid breaking down a goal into excessively small pieces if a slightly larger, but still focused and directly actionable, `EXECUTE` task is feasible for a specialized agent. Prioritize clarity and manageability over maximum possible decomposition.\n3.  For each sub-task, define:\n    *   `goal` (string): The specific goal. Ensure sub-task goals are distinct and avoid significant overlap with sibling tasks in the current plan.\n    *   `task_type` (string): 'WRITE', 'THINK', or 'SEARCH'.\n    *   `node_type` (string): 'EXECUTE' (atomic) or 'PLAN' (needs more planning).\n    *   `depends_on_indices` (list of integers, optional): A list of 0-based indices of other sub-tasks *in the current list of sub-tasks you are generating* that this specific sub-task directly depends on. Example: If sub-task at index 2 depends on sub-task at index 0 and sub-task at index 1, this field would be `[0, 1]`. If a sub-task can start as soon as the parent plan is approved (i.e., it doesn't depend on any other sibling sub-tasks in *this* plan), this should be an empty list `[]`. Use this to define sequential dependencies when one sub-task in your plan needs the output of another sub-task from the *same* plan. Ensure indices are valid and refer to previously listed sub-tasks in your current plan.\n4.  **Task Ordering and Dependencies**:\n    *   List sub-tasks in a logical order.\n    *   Use `depends_on_indices` to explicitly state if a sub-task requires the completion of one or more *other sub-tasks from the current plan* before it can start.\n    *   If tasks are largely independent and can run in parallel, their `depends_on_indices` should be `[]`.\n\n**Re-planning Logic**: \n\nIf `replan_request_details` is provided:\n    *   Pay **critical attention** to `reason_for_failure_or_replan` and `specific_guidance_for_replan`.\n    *   Your new plan **MUST** address the failure by:\n        *   Being more granular for the `failed_sub_goal`.\n        *   Altering the approach (e.g., different `task_type`s).\n        *   Suggesting different information gathering if context was missing.\n        *   Modifying sub-task goals based on `specific_guidance_for_replan`.\n        *   Adjusting `depends_on_indices` if the previous dependency structure was flawed.\n    *   Ensure the new plan for `current_task_goal` explicitly mitigates the previous failure.\n\n**Planning Tips (Leveraging New Input):**\n\n1.  **Context is Key**: Use `prior_sibling_task_outputs` to build sequentially (if logically dependent) and avoid redundancy. Leverage `relevant_ancestor_outputs`.\n2.  **Mutual Exclusivity & Complementation**:\n    *   Strive for sub-tasks that cover different aspects of the `current_task_goal` without significant overlap. They should be complementary, together achieving the parent goal.\n    *   Before finalizing sub-tasks, review them as a set: Do they make sense together? Is there redundancy? Are there gaps? Are dependencies correctly defined using `depends_on_indices`?\n3.  **CRITICAL - Balanced Granularity for SEARCH Tasks**:\n    *   **`SEARCH/EXECUTE` Specificity**: A `SEARCH/EXECUTE` sub-task goal **MUST** be so specific that it typically targets a single fact, statistic, definition, or a very narrow aspect of a topic.\n        *   *Good `SEARCH/EXECUTE` examples*: \"Find the 2023 import tariff rate for Chinese-made solar panels in the US.\", \"List the main arguments for the Jones Act.\"\n        *   *Bad `SEARCH/EXECUTE` examples (these should be `SEARCH/PLAN` or broken down)*: \"Research US solar panel tariffs.\", \"Understand the Jones Act.\"\n    *   **Avoiding Over-Fragmentation**: While specificity is key, if multiple *very small, extremely closely related pieces of data* can be retrieved with a single, well-crafted, targeted search query (and an agent can easily parse them), you can group them into one `SEARCH/EXECUTE` task. Example: Instead of three tasks \"Find 2022 EV sales\", \"Find 2023 EV sales\", \"Find 2024 EV sales\", one task \"Find annual US EV sales figures for 2022, 2023, and 2024\" is acceptable if the search agent can handle it. However, do not combine distinct conceptual questions.\n    *   **When to use `SEARCH/PLAN`**: If a research sub-goal still requires investigating multiple *distinct conceptual areas* or is too broad for one or two highly targeted queries (even if slightly grouped as above), that sub-task **MUST** be `task_type: 'SEARCH'` and `node_type: 'PLAN'`. This ensures it gets further decomposed.\n    *   **Example of Balanced Research Breakdown:**\n        *   Initial Broad Goal: \"Write a report on US electric vehicle (EV) adoption.\"\n        *   Planner (Step 1) might create:\n            1. `{\"goal\": \"Research current US EV market penetration statistics (annual sales, market share) for the last 3-5 years.\", \"task_type\": \"SEARCH\", \"node_type\": \"EXECUTE\", \"depends_on_indices\": []}`\n            2. `{\"goal\": \"Identify and summarize key federal and prominent state-level (e.g., CA, NY, TX) government incentives for EV purchases.\", \"task_type\": \"SEARCH\", \"node_type\": \"PLAN\", \"depends_on_indices\": []}`\n            3. `{\"goal\": \"Investigate primary consumer adoption barriers for EVs (e.g., price, range, charging) based on recent surveys and industry reports.\", \"task_type\": \"SEARCH\", \"node_type\": \"PLAN\", \"depends_on_indices\": []}`\n            4. `{\"goal\": \"Outline the EV adoption report, incorporating planned research areas.\", \"task_type\": \"THINK\", \"node_type\": \"EXECUTE\", \"depends_on_indices\": [0, 1, 2]}` (Depends on prior research)\n            5. `{\"goal\": \"Write the EV adoption report.\", \"task_type\": \"WRITE\", \"node_type\": \"PLAN\", \"depends_on_indices\": [3]}` (Depends on the outline)\n4.  **Node Type Selection (Summary)**:\n    *   Use 'PLAN' if a sub-task requires further decomposition. This includes research goals covering multiple distinct conceptual areas or broad 'WRITE' tasks.\n    *   Prefer 'EXECUTE' for single, well-defined, actionable steps.\n\n**Example 1 (Initial Complex WRITE Goal - Revised for MECE and task limits):**\nInput:\n```json\n{\n  \"current_task_goal\": \"Write a comprehensive report on the recent state of US tariffs.\",\n  \"overall_objective\": \"Produce an publishable analysis of US tariff policy and its impacts.\",\n  \"parent_task_goal\": null,\n  \"planning_depth\": 0,\n  \"execution_history_and_context\": {\n    \"prior_sibling_task_outputs\": [],\n    \"relevant_ancestor_outputs\": [],\n    \"global_knowledge_base_summary\": \"Basic economic principles, trade agreement types.\"\n  },\n  \"replan_request_details\": null,\n  \"global_constraints_or_preferences\": [\"Focus on 2020-present data\"]\n}\n```\nPlanner Output (Revised for 3-6 tasks, MECE, dependencies, and appropriate PLAN nodes):\n```json\n[\n  {\"goal\": \"Identify key US tariff legislation, executive orders, and stated policy aims concerning major trade partners (e.g., China, EU) from 2020-present.\", \"task_type\": \"SEARCH\", \"node_type\": \"PLAN\", \"depends_on_indices\": []},\n  {\"goal\": \"Gather and synthesize data on the economic impacts of these recent US tariffs, focusing on 2-3 key affected domestic sectors (e.g., manufacturing, agriculture) and overall trade balance figures (2020-present).\", \"task_type\": \"SEARCH\", \"node_type\": \"PLAN\", \"depends_on_indices\": []},\n  {\"goal\": \"Analyze significant tariff-related disputes and retaliatory actions between the US and its major trade partners (limit to 1-2 key partners like China or EU if too broad) from 2020-present, noting resolutions or ongoing status.\", \"task_type\": \"SEARCH\", \"node_type\": \"PLAN\", \"depends_on_indices\": []},\n  {\"goal\": \"Develop a structured outline for the comprehensive tariff report, ensuring logical flow and coverage of findings from the planned research tasks.\", \"task_type\": \"THINK\", \"node_type\": \"EXECUTE\", \"depends_on_indices\": [0, 1, 2]},\n  {\"goal\": \"Draft the comprehensive US tariffs report based on the synthesized research and outline, ensuring clear sections for policy, impacts, and disputes.\", \"task_type\": \"WRITE\", \"node_type\": \"PLAN\", \"depends_on_indices\": [3]}\n]\n```\n\n**Example 2 (Re-plan request due to missing specific research for a WRITE task):**\n\nInput:\n```json\n{\n  \"current_task_goal\": \"Write a detailed history of early US tariffs (1789-1900), analyzing their economic impacts and political contexts.\",\n  \"overall_objective\": \"Complete Chapter 2 of the 'History of US Economic Policy' book.\",\n  \"parent_task_goal\": \"Draft Chapter 2: Early US Economic Policy (1789-1900)\",\n  \"planning_depth\": 1,\n  \"execution_history_and_context\": {\n    \"prior_sibling_task_outputs\": [],\n    \"relevant_ancestor_outputs\": [\n        {\"task_goal\": \"Develop outline for Chapter 2\", \"output_summary\": \"Outline includes section on tariffs, but details are sparse.\"}\n    ],\n    \"global_knowledge_base_summary\": null\n  },\n  \"replan_request_details\": {\n    \"failed_sub_goal\": \"Write a detailed history of early US tariffs (1789-1900), analyzing their economic impacts and political contexts.\",\n    \"reason_for_failure_or_replan\": \"<<NEEDS_REPLAN>> The previous attempt to write this history failed because it lacked specific research data. The executor agent reported: 'Cannot produce an accurate, comprehensive history without information on: 1) Major tariff legislation of the period, 2) Economic data showing impacts, 3) Political contexts for each major tariff change.'\",\n    \"previous_attempt_output_summary\": \"A very shallow draft was produced, lacking substance.\",\n    \"specific_guidance_for_replan\": \"The new plan must prioritize gathering the missing historical data *before* attempting to write the section. Break down the research into specific areas mentioned in the failure reason.\"\n  },\n  \"global_constraints_or_preferences\": [\"Ensure historical accuracy\", \"Cite primary sources where possible\"]\n}\n```\nPlanner Output (Good - addresses feedback by adding research steps and defining dependencies):\n```json\n[\n  {\"goal\": \"Research major US tariff legislation enacted between 1789 and 1900.\", \"task_type\": \"SEARCH\", \"node_type\": \"EXECUTE\", \"depends_on_indices\": []},\n  {\"goal\": \"Gather economic data and contemporary analyses regarding the impacts of key US tariff acts from the period 1789-1900.\", \"task_type\": \"SEARCH\", \"node_type\": \"EXECUTE\", \"depends_on_indices\": []},\n  {\"goal\": \"Investigate the political contexts, debates, and regional interests surrounding major US tariff changes from 1789-1900.\", \"task_type\": \"SEARCH\", \"node_type\": \"EXECUTE\", \"depends_on_indices\": []},\n  {\"goal\": \"Synthesize research findings on early US tariffs (1789-1900) covering legislation, economic impacts, and political contexts to create a consolidated knowledge base for writing.\", \"task_type\": \"THINK\", \"node_type\": \"EXECUTE\", \"depends_on_indices\": [0, 1, 2]},\n  {\"goal\": \"Write the detailed history of early US tariffs (1789-1900) based on the synthesized research, structured chronologically and thematically, adhering to historical accuracy and citation guidelines.\", \"task_type\": \"WRITE\", \"node_type\": \"EXECUTE\", \"depends_on_indices\": [3]}\n]\n```\n\n**Required Output Attributes per Sub-Task:**\n`goal`, `task_type` (string: 'WRITE', 'THINK', or 'SEARCH'), `node_type` (string: 'EXECUTE' or 'PLAN'), `depends_on_indices` (list of integers).\n\n**Output Format:**\n- Respond ONLY with a JSON list of sub-task objects.\n- Or an empty list if the `current_task_goal` cannot or should not be broken down further (e.g., it's already atomic enough given the context).\n",
+        "final_llm_input": "Overall Objective: write me a short 3 section report about recent US tariffs\n\nCurrent Task Goal: Investigate current tariff disputes, negotiations, and potential future policy directions in US trade relations.\n\nParent Task Goal: Write a concise report with three sections about recent United States tariff policies, including their implementation, economic impacts, and international responses.\n\nCurrent Planning Depth: 1\n\nExecution History & Context:\n\n  Relevant Ancestor Outputs:\n\n    - Task: Write a concise report with three sections about recent United States tariff policies, including their implementation, economic impacts, and international responses., Summary: Planned 5 sub-tasks.\n\n\nBased on the 'Current Task Goal' and other provided information, generate a plan to achieve it.",
+        "processing_completed": "2025-05-25T20:58:48.118503",
+        "success": true
+      }
+    },
+    "root.4": {
+      "task_id": "root.4",
+      "goal": "Create an outline for the 3-section report on recent US tariffs, defining the focus and structure of each section based on research findings.",
+      "task_type": "THINK",
+      "node_type": "EXECUTE",
+      "agent_name": null,
+      "status": "PENDING",
+      "layer": 1,
+      "parent_node_id": "root",
+      "overall_objective": "write me a short 3 section report about recent US tariffs",
+      "output_summary": null,
+      "full_result": null,
+      "error": null,
+      "sub_graph_id": null,
+      "planned_sub_task_ids": [],
+      "input_payload_summary": "N/A",
+      "input_context_sources": [],
+      "timestamp_created": "2025-05-25T20:58:43.319057",
+      "timestamp_updated": "2025-05-25T20:58:43.319058",
+      "timestamp_completed": null,
+      "model_display": "Not processed",
+      "model_info": null,
+      "execution_details": null
+    },
+    "root.5": {
+      "task_id": "root.5",
+      "goal": "Write the short 3-section report on recent US tariffs, incorporating the researched information and following the created outline.",
+      "task_type": "WRITE",
+      "node_type": "EXECUTE",
+      "agent_name": null,
+      "status": "PENDING",
+      "layer": 1,
+      "parent_node_id": "root",
+      "overall_objective": "write me a short 3 section report about recent US tariffs",
+      "output_summary": null,
+      "full_result": null,
+      "error": null,
+      "sub_graph_id": null,
+      "planned_sub_task_ids": [],
+      "input_payload_summary": "N/A",
+      "input_context_sources": [],
+      "timestamp_created": "2025-05-25T20:58:43.319299",
+      "timestamp_updated": "2025-05-25T20:58:43.319300",
+      "timestamp_completed": null,
+      "model_display": "Not processed",
+      "model_info": null,
+      "execution_details": null
+    },
+    "root.1.1": {
+      "task_id": "root.1.1",
+      "goal": "Identify and summarize major US tariff policies and executive orders implemented between 2018-2023, noting key dates, affected product categories, and tariff rates.",
+      "task_type": "SEARCH",
+      "node_type": "EXECUTE",
+      "agent_name": null,
+      "status": "PENDING",
+      "layer": 2,
+      "parent_node_id": "root.1",
+      "overall_objective": "write me a short 3 section report about recent US tariffs",
+      "output_summary": null,
+      "full_result": null,
+      "error": null,
+      "sub_graph_id": null,
+      "planned_sub_task_ids": [],
+      "input_payload_summary": "N/A",
+      "input_context_sources": [],
+      "timestamp_created": "2025-05-25T20:58:55.723244",
+      "timestamp_updated": "2025-05-25T20:58:55.723247",
+      "timestamp_completed": null,
+      "model_display": "Not processed",
+      "model_info": null,
+      "execution_details": null
+    },
+    "root.1.2": {
+      "task_id": "root.1.2",
+      "goal": "Research specific tariff measures targeting China during 2018-present, including Section 301 tariffs, their evolution through different phases, and any recent modifications under the Biden administration.",
+      "task_type": "SEARCH",
+      "node_type": "EXECUTE",
+      "agent_name": null,
+      "status": "PENDING",
+      "layer": 2,
+      "parent_node_id": "root.1",
+      "overall_objective": "write me a short 3 section report about recent US tariffs",
+      "output_summary": null,
+      "full_result": null,
+      "error": null,
+      "sub_graph_id": null,
+      "planned_sub_task_ids": [],
+      "input_payload_summary": "N/A",
+      "input_context_sources": [],
+      "timestamp_created": "2025-05-25T20:58:55.723556",
+      "timestamp_updated": "2025-05-25T20:58:55.723557",
+      "timestamp_completed": null,
+      "model_display": "Not processed",
+      "model_info": null,
+      "execution_details": null
+    },
+    "root.1.3": {
+      "task_id": "root.1.3",
+      "goal": "Investigate US tariff policies and changes affecting the European Union from 2018-present, including steel and aluminum tariffs, digital services disputes, and recent developments in trade relations.",
+      "task_type": "SEARCH",
+      "node_type": "EXECUTE",
+      "agent_name": null,
+      "status": "PENDING",
+      "layer": 2,
+      "parent_node_id": "root.1",
+      "overall_objective": "write me a short 3 section report about recent US tariffs",
+      "output_summary": null,
+      "full_result": null,
+      "error": null,
+      "sub_graph_id": null,
+      "planned_sub_task_ids": [],
+      "input_payload_summary": "N/A",
+      "input_context_sources": [],
+      "timestamp_created": "2025-05-25T20:58:55.723857",
+      "timestamp_updated": "2025-05-25T20:58:55.723858",
+      "timestamp_completed": null,
+      "model_display": "Not processed",
+      "model_info": null,
+      "execution_details": null
+    },
+    "root.1.4": {
+      "task_id": "root.1.4",
+      "goal": "Research US tariff measures affecting other significant trade partners (e.g., Canada, Mexico, Japan, South Korea) from 2018-present, including USMCA-related changes and any special exemptions or agreements.",
+      "task_type": "SEARCH",
+      "node_type": "EXECUTE",
+      "agent_name": null,
+      "status": "PENDING",
+      "layer": 2,
+      "parent_node_id": "root.1",
+      "overall_objective": "write me a short 3 section report about recent US tariffs",
+      "output_summary": null,
+      "full_result": null,
+      "error": null,
+      "sub_graph_id": null,
+      "planned_sub_task_ids": [],
+      "input_payload_summary": "N/A",
+      "input_context_sources": [],
+      "timestamp_created": "2025-05-25T20:58:55.724076",
+      "timestamp_updated": "2025-05-25T20:58:55.724077",
+      "timestamp_completed": null,
+      "model_display": "Not processed",
+      "model_info": null,
+      "execution_details": null
+    },
+    "root.1.5": {
+      "task_id": "root.1.5",
+      "goal": "Compile and organize all gathered tariff policy information into a structured format that clearly outlines the chronology, scope, and key trade partners affected by US tariff changes since 2018.",
+      "task_type": "THINK",
+      "node_type": "EXECUTE",
+      "agent_name": null,
+      "status": "PENDING",
+      "layer": 2,
+      "parent_node_id": "root.1",
+      "overall_objective": "write me a short 3 section report about recent US tariffs",
+      "output_summary": null,
+      "full_result": null,
+      "error": null,
+      "sub_graph_id": null,
+      "planned_sub_task_ids": [],
+      "input_payload_summary": "N/A",
+      "input_context_sources": [],
+      "timestamp_created": "2025-05-25T20:58:55.724424",
+      "timestamp_updated": "2025-05-25T20:58:55.724425",
+      "timestamp_completed": null,
+      "model_display": "Not processed",
+      "model_info": null,
+      "execution_details": null
+    }
+  },
+  "current_project": {
+    "id": "9b20023d-483a-437b-9f46-36afb9d37366",
+    "title": "Write Me A Short 3 Section Report About...",
+    "description": "write me a short 3 section report about recent US tariffs",
+    "created_at": "2025-05-25T20:58:30.975478",
+    "updated_at": "2025-05-25T20:58:58.241880",
+    "status": "running",
+    "goal": "write me a short 3 section report about recent US tariffs",
+    "max_steps": 250,
+    "node_count": 11,
+    "completion_percentage": 0.0
+  }
+}

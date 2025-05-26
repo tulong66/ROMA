@@ -1,0 +1,29 @@
+{
+  "projects": [
+    {
+      "id": "9b20023d-483a-437b-9f46-36afb9d37366",
+      "title": "Write Me A Short 3 Section Report About...",
+      "description": "write me a short 3 section report about recent US tariffs",
+      "created_at": "2025-05-25T20:58:30.975478",
+      "updated_at": "2025-05-25T20:59:05.533598",
+      "status": "failed",
+      "goal": "write me a short 3 section report about recent US tariffs",
+      "max_steps": 250,
+      "node_count": 11,
+      "completion_percentage": 0.0
+    },
+    {
+      "id": "b7db0737-6bae-47ee-adef-dafd25984611",
+      "title": "Write Me A 2 Section Report About Ai",
+      "description": "write me a 2 section report about AI",
+      "created_at": "2025-05-25T20:59:00.893814",
+      "updated_at": "2025-05-25T20:59:02.417785",
+      "status": "running",
+      "goal": "write me a 2 section report about AI",
+      "max_steps": 250,
+      "node_count": 1,
+      "completion_percentage": 0.0
+    }
+  ],
+  "current_project_id": "9b20023d-483a-437b-9f46-36afb9d37366"
+}
