@@ -3,10 +3,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { CheckCircle, XCircle, Edit, Clock, AlertTriangle, Loader2 } from 'lucide-react'
+import { CheckCircle, XCircle, Edit, Clock, AlertTriangle, Loader2, Target, Users, Calendar, FileText, CheckCircle2, ArrowRight } from 'lucide-react'
 import { useTaskGraphStore } from '@/stores/taskGraphStore'
 import { webSocketService } from '@/services/websocketService'
 import { Badge } from '@/components/ui/badge'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Separator } from '@/components/ui/separator'
 
 interface HITLRequest {
   checkpoint_name: string
@@ -140,14 +142,240 @@ export function HITLModal() {
     }
   }, [isOpen, hitlRequest, isWaitingForModification]);
 
-  const formatDataForDisplay = (data: any): string => {
-    if (!data) return 'No data provided'
-    
-    try {
-      return JSON.stringify(data, null, 2)
-    } catch {
-      return String(data)
+  const renderPlanData = (data: any) => {
+    if (!data) return <div className="text-muted-foreground">No data provided</div>
+
+    // Handle different types of HITL data structures
+    if (data.proposed_plan || data.proposed_modified_plan) {
+      return renderPlanStructure(data)
+    } else if (data.task_goal || data.goal) {
+      return renderTaskData(data)
+    } else {
+      return renderGenericData(data)
     }
+  }
+
+  const renderPlanStructure = (data: any) => {
+    const plan = data.proposed_plan || data.proposed_modified_plan
+    const taskGoal = data.task_goal || data.goal
+    const plannerInput = data.planner_input_summary
+    const modificationInstructions = data.user_modification_instructions
+    const replanReason = data.reason_for_current_replan
+
+    return (
+      <div className="space-y-6">
+        {/* Task Goal Section */}
+        {taskGoal && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Target className="w-5 h-5 text-blue-600" />
+                Task Goal
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm leading-relaxed">{taskGoal}</p>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Modification Context (if this is a replan) */}
+        {(modificationInstructions || replanReason) && (
+          <Card className="border-orange-200 bg-orange-50">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-lg text-orange-800">
+                <AlertTriangle className="w-5 h-5" />
+                Modification Context
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {modificationInstructions && (
+                <div>
+                  <h4 className="font-medium text-orange-800 mb-1">Your Previous Instructions:</h4>
+                  <p className="text-sm text-orange-700 bg-orange-100 p-3 rounded border">{modificationInstructions}</p>
+                </div>
+              )}
+              {replanReason && (
+                <div>
+                  <h4 className="font-medium text-orange-800 mb-1">Reason for Replan:</h4>
+                  <p className="text-sm text-orange-700">{replanReason}</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Project Context */}
+        {plannerInput && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <FileText className="w-5 h-5 text-green-600" />
+                Project Context
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {plannerInput.overall_objective && (
+                <div>
+                  <h4 className="font-medium text-gray-700 mb-1">Overall Objective:</h4>
+                  <p className="text-sm text-gray-600">{plannerInput.overall_objective}</p>
+                </div>
+              )}
+              {plannerInput.context_summary && (
+                <div>
+                  <h4 className="font-medium text-gray-700 mb-1">Context Summary:</h4>
+                  <p className="text-sm text-gray-600">{plannerInput.context_summary}</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Proposed Plan */}
+        {plan && (
+          <Card className="border-blue-200">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-lg text-blue-800">
+                <CheckCircle2 className="w-5 h-5" />
+                {data.proposed_modified_plan ? 'Modified Plan' : 'Proposed Plan'}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {renderPlan(plan)}
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    )
+  }
+
+  const renderPlan = (plan: any) => {
+    if (!plan) return <div className="text-muted-foreground">No plan data</div>
+
+    // Handle different plan structures
+    if (plan.subtasks && Array.isArray(plan.subtasks)) {
+      return (
+        <div className="space-y-4">
+          {plan.description && (
+            <div className="mb-4">
+              <h4 className="font-medium text-gray-700 mb-2">Plan Description:</h4>
+              <p className="text-sm text-gray-600 bg-gray-50 p-3 rounded">{plan.description}</p>
+            </div>
+          )}
+          
+          <div>
+            <h4 className="font-medium text-gray-700 mb-3">Subtasks ({plan.subtasks.length}):</h4>
+            <div className="space-y-3">
+              {plan.subtasks.map((subtask: any, index: number) => (
+                <div key={index} className="border rounded-lg p-4 bg-white">
+                  <div className="flex items-start gap-3">
+                    <div className="flex-shrink-0 w-6 h-6 bg-blue-100 text-blue-800 rounded-full flex items-center justify-center text-sm font-medium">
+                      {index + 1}
+                    </div>
+                    <div className="flex-1 space-y-2">
+                      <h5 className="font-medium text-gray-800">{subtask.goal || subtask.description || `Subtask ${index + 1}`}</h5>
+                      {subtask.description && subtask.goal !== subtask.description && (
+                        <p className="text-sm text-gray-600">{subtask.description}</p>
+                      )}
+                      {subtask.agent_name && (
+                        <div className="flex items-center gap-1 text-xs text-gray-500">
+                          <Users className="w-3 h-3" />
+                          Agent: {subtask.agent_name}
+                        </div>
+                      )}
+                      {subtask.expected_output && (
+                        <div className="text-xs text-gray-500">
+                          <span className="font-medium">Expected Output:</span> {subtask.expected_output}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )
+    }
+
+    // Handle simple plan structures or fallback
+    return renderGenericData(plan)
+  }
+
+  const renderTaskData = (data: any) => {
+    return (
+      <div className="space-y-4">
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Target className="w-5 h-5 text-blue-600" />
+              Task Information
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {data.task_goal && (
+              <div>
+                <h4 className="font-medium text-gray-700 mb-1">Goal:</h4>
+                <p className="text-sm text-gray-600">{data.task_goal}</p>
+              </div>
+            )}
+            {data.agent_name && (
+              <div>
+                <h4 className="font-medium text-gray-700 mb-1">Agent:</h4>
+                <p className="text-sm text-gray-600">{data.agent_name}</p>
+              </div>
+            )}
+            {data.task_type && (
+              <div>
+                <h4 className="font-medium text-gray-700 mb-1">Task Type:</h4>
+                <Badge variant="outline">{data.task_type}</Badge>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+        
+        {/* Show other fields if present */}
+        {Object.keys(data).some(key => !['task_goal', 'agent_name', 'task_type', 'task_id'].includes(key)) && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg">Additional Details</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {renderGenericData(Object.fromEntries(
+                Object.entries(data).filter(([key]) => !['task_goal', 'agent_name', 'task_type', 'task_id'].includes(key))
+              ))}
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    )
+  }
+
+  const renderGenericData = (data: any) => {
+    if (!data || typeof data !== 'object') {
+      return <pre className="text-sm text-gray-600 whitespace-pre-wrap">{String(data)}</pre>
+    }
+
+    return (
+      <div className="space-y-3">
+        {Object.entries(data).map(([key, value]) => (
+          <div key={key} className="border-b border-gray-100 pb-2 last:border-b-0">
+            <h4 className="font-medium text-gray-700 mb-1 capitalize">
+              {key.replace(/_/g, ' ')}:
+            </h4>
+            <div className="text-sm text-gray-600">
+              {typeof value === 'object' && value !== null ? (
+                <pre className="bg-gray-50 p-2 rounded text-xs overflow-x-auto">
+                  {JSON.stringify(value, null, 2)}
+                </pre>
+              ) : (
+                <span>{String(value)}</span>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    )
   }
 
   const getActionIcon = (action: string) => {
@@ -218,14 +446,14 @@ export function HITLModal() {
                     </div>
                   )}
 
-                  {/* Data for Review */}
+                  {/* Data for Review - Now with improved rendering */}
                   <div>
-                    <h3 className="font-medium mb-2">Data for Review</h3>
-                    <div className="border rounded-lg bg-gray-50">
-                      <ScrollArea className="h-[300px]">
-                        <pre className="p-4 text-sm whitespace-pre-wrap font-mono text-gray-800">
-                          {formatDataForDisplay(request?.data_for_review)}
-                        </pre>
+                    <h3 className="font-medium mb-4">Plan Review</h3>
+                    <div className="border rounded-lg bg-white">
+                      <ScrollArea className="max-h-[400px]">
+                        <div className="p-4">
+                          {renderPlanData(request?.data_for_review)}
+                        </div>
                       </ScrollArea>
                     </div>
                   </div>
