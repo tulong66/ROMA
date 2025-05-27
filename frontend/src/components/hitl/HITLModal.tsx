@@ -57,6 +57,36 @@ export function HITLModal() {
     console.log(`🚪 Modal ${isOpen ? 'OPENED' : 'CLOSED'}`)
   }, [isOpen])
 
+  // Add this effect to detect when modification is complete
+  useEffect(() => {
+    if (isWaitingForModification && request) {
+      // Listen for task graph changes that indicate modification is complete
+      const unsubscribe = useTaskGraphStore.subscribe(
+        (state) => state.nodes,
+        (nodes, prevNodes) => {
+          const nodeCount = Object.keys(nodes).length
+          const prevNodeCount = Object.keys(prevNodes || {}).length
+          
+          // If we're waiting for modification and new nodes appeared, modification is complete
+          if (nodeCount > prevNodeCount && nodeCount > 1) {
+            console.log('✅ Modification complete - new nodes detected:', { 
+              prevCount: prevNodeCount, 
+              newCount: nodeCount,
+              requestId: request.request_id 
+            })
+            
+            setIsWaitingForModification(false)
+            clearHITLRequest()
+            setSelectedAction(null)
+            setModificationInstructions('')
+          }
+        }
+      )
+      
+      return unsubscribe
+    }
+  }, [isWaitingForModification, request, clearHITLRequest])
+
   const handleClose = () => {
     console.log('🚪 User attempting to close modal:', { isSubmitting, isWaitingForModification })
     if (!isSubmitting && !isWaitingForModification) {
@@ -79,7 +109,7 @@ export function HITLModal() {
       await webSocketService.sendHITLResponse({
         request_id: hitlRequest.request_id,
         action,
-        feedback: feedback || ''
+        modification_instructions: feedback || ''
       });
 
       if (action === 'modify') {
