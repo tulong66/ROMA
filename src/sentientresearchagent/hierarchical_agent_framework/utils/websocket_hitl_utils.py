@@ -82,16 +82,17 @@ async def websocket_human_review(
         _socketio_instance.emit('hitl_request', hitl_request)
         logger.info("✅ HITL request emitted successfully")
         
-        # Wait for response with timeout
+        # Wait for response with a longer timeout (no auto-approval)
         try:
-            response = await asyncio.wait_for(response_future, timeout=300.0)  # 5 minute timeout
+            logger.info(f"⏳ Waiting for user response to HITL request {request_id}...")
+            response = await asyncio.wait_for(response_future, timeout=1800.0)  # 30 minute timeout
             logger.info(f"✅ Received HITL response: {response}")
             return response
         except asyncio.TimeoutError:
-            logger.warning(f"⏰ HITL request {request_id} timed out, auto-approving")
+            logger.warning(f"⏰ HITL request {request_id} timed out after 30 minutes, auto-approving")
             return {
                 "user_choice": "approved",
-                "message": f"Auto-approved checkpoint '{checkpoint_name}' (timeout)",
+                "message": f"Auto-approved checkpoint '{checkpoint_name}' (30 minute timeout)",
                 "modification_instructions": None
             }
         

@@ -111,10 +111,10 @@ def create_node_processor_config_from_main_config(main_config: SentientConfig) -
         if main_config.execution.hitl_root_plan_only:
             # NEW: Root plan only mode - only enable plan generation for root nodes
             node_config.enable_hitl_after_plan_generation = True  # Will be filtered by layer in HITLCoordinator
-            node_config.enable_hitl_after_modified_plan = False
+            node_config.enable_hitl_after_modified_plan = True  # FIXED: Keep this enabled for modification loop
             node_config.enable_hitl_after_atomizer = False
             node_config.enable_hitl_before_execute = False
-            logger.debug("HITL configured for root plan only")
+            logger.debug("HITL configured for root plan only (with modification reviews)")
         else:
             # Normal HITL mode - use all configured checkpoints
             node_config.enable_hitl_after_plan_generation = main_config.execution.hitl_after_plan_generation

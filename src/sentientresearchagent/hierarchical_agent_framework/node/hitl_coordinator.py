@@ -169,6 +169,11 @@ class HITLCoordinator:
         if not self.config.enable_hitl_after_modified_plan:
             return {"status": "approved", "message": "HITL for modified plan skipped by configuration."}
 
+        # NEW: Check for root plan only mode (same as in review_plan_generation)
+        if hasattr(self.config, 'hitl_root_plan_only') and self.config.hitl_root_plan_only:
+            if node.layer != 0:  # Only review root node (layer 0) plans
+                return {"status": "approved", "message": "HITL for modified plan skipped (root plan only mode, non-root node)."}
+
         checkpoint_name = f"PostModifiedPlanReview_Attempt_{replan_attempt_count}"
         hitl_context_msg = (
             f"Review modified plan for task '{node.task_id}' (Replan Attempt {replan_attempt_count}). "
@@ -183,7 +188,6 @@ class HITLCoordinator:
         if isinstance(original_modification_request, PlanOutput): # Safety check if aux_data stores the model
             original_modification_request = "User provided new plan directly (details in original plan)."
 
-
         hitl_data = {
             "task_id": node.task_id,
             "task_goal": node.goal,
@@ -196,9 +200,9 @@ class HITLCoordinator:
         # Adding a more specific instruction for the user during this review
         context_message_for_user = (
             f"{hitl_context_msg}\n\n"
-            "The plan has been modified based on previous feedback (if any). Please review the new 'proposed_modified_plan'.\n"
-            "You can 'approve' it, or 'request_modification' again with new instructions in the 'modification instructions' field. "
-            "If you 'request_modification', the system will attempt to revise this proposed plan."
+            "The plan has been modified based on your previous feedback. Please review the new 'proposed_modified_plan'.\n"
+            "You can 'approve' it, or 'request_modification' again with new instructions. "
+            "If you 'request_modification', the system will attempt to revise this proposed plan again."
         )
 
         return await self._call_hitl_interface(
