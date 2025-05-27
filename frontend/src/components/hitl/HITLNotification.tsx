@@ -5,25 +5,37 @@ import { Badge } from '@/components/ui/badge'
 import { X } from 'lucide-react'
 
 const HITLNotification: React.FC = () => {
-  const { currentHITLRequest, setHITLRequest } = useTaskGraphStore()
+  const { currentHITLRequest } = useTaskGraphStore()
   const [isVisible, setIsVisible] = useState(false)
+  const [notificationRequest, setNotificationRequest] = useState<any>(null)
 
   useEffect(() => {
-    if (currentHITLRequest) {
+    if (currentHITLRequest && currentHITLRequest !== notificationRequest) {
+      // New HITL request - show notification
+      setNotificationRequest(currentHITLRequest)
       setIsVisible(true)
       console.log('🤔 HITL Notification: Showing request', currentHITLRequest)
       
-      // Auto-hide after 5 seconds
+      // Auto-hide notification after 5 seconds (but don't clear the actual HITL request)
       const timer = setTimeout(() => {
         setIsVisible(false)
-        setTimeout(() => setHITLRequest(undefined), 300) // Allow fade out
+        // Only clear the notification's local state, not the global HITL request
+        setTimeout(() => setNotificationRequest(null), 300)
       }, 5000)
       
       return () => clearTimeout(timer)
     }
-  }, [currentHITLRequest, setHITLRequest])
+  }, [currentHITLRequest, notificationRequest])
 
-  if (!currentHITLRequest || !isVisible) {
+  // Hide notification if the global HITL request is cleared
+  useEffect(() => {
+    if (!currentHITLRequest && isVisible) {
+      setIsVisible(false)
+      setTimeout(() => setNotificationRequest(null), 300)
+    }
+  }, [currentHITLRequest, isVisible])
+
+  if (!notificationRequest || !isVisible) {
     return null
   }
 
@@ -38,31 +50,32 @@ const HITLNotification: React.FC = () => {
                   🤔 HITL Checkpoint
                 </Badge>
                 <Badge variant="outline" className="text-xs">
-                  {currentHITLRequest.current_attempt}
+                  {notificationRequest.current_attempt}
                 </Badge>
               </div>
               
               <h4 className="font-medium text-sm text-blue-900 mb-1">
-                {currentHITLRequest.checkpoint_name}
+                {notificationRequest.checkpoint_name}
               </h4>
               
               <p className="text-xs text-blue-700 mb-2">
-                Node: {currentHITLRequest.node_id}
+                Node: {notificationRequest.node_id}
               </p>
               
               <p className="text-xs text-gray-600 line-clamp-2">
-                {currentHITLRequest.context_message}
+                {notificationRequest.context_message}
               </p>
               
-              <div className="mt-2 text-xs text-green-600">
-                ✅ Auto-approved (WebSocket HITL in development)
+              <div className="mt-2 text-xs text-blue-600">
+                💬 Review required - Check the modal for details
               </div>
             </div>
             
             <button
               onClick={() => {
                 setIsVisible(false)
-                setTimeout(() => setHITLRequest(undefined), 300)
+                // Only hide the notification, don't clear the global HITL request
+                setTimeout(() => setNotificationRequest(null), 300)
               }}
               className="text-gray-400 hover:text-gray-600"
             >

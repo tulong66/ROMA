@@ -31,6 +31,22 @@ def set_hitl_timeout(timeout_seconds: float):
     _hitl_timeout_seconds = timeout_seconds
     logger.info(f"WebSocket HITL: timeout set to {timeout_seconds} seconds")
 
+def check_connected_clients():
+    """Check if there are any connected clients"""
+    global _socketio_instance
+    if not _socketio_instance:
+        return 0
+    
+    try:
+        if hasattr(_socketio_instance.server, 'manager') and hasattr(_socketio_instance.server.manager, 'rooms'):
+            rooms = _socketio_instance.server.manager.rooms
+            if '/' in rooms:
+                return len(rooms['/'])
+        return 0
+    except Exception as e:
+        logger.error(f"Error checking connected clients: {e}")
+        return 0
+
 async def websocket_human_review(
     checkpoint_name: str,
     context_message: str,
@@ -53,22 +69,13 @@ async def websocket_human_review(
             "modification_instructions": None
         }
     
-    # Debug: Check if socketio is available and connected clients
-    logger.info(f"🔍 DEBUG: socketio object exists: {_socketio_instance is not None}")
-    if _socketio_instance:
-        try:
-            # Get connected clients count
-            connected_clients = len(_socketio_instance.server.manager.rooms.get('/', {}).keys()) if hasattr(_socketio_instance.server, 'manager') else 0
-            logger.info(f"🔍 DEBUG: Connected clients: {connected_clients}")
-            
-            # List all rooms
-            if hasattr(_socketio_instance.server, 'manager') and hasattr(_socketio_instance.server.manager, 'rooms'):
-                rooms = _socketio_instance.server.manager.rooms
-                logger.info(f"🔍 DEBUG: All rooms: {list(rooms.keys())}")
-                if '/' in rooms:
-                    logger.info(f"🔍 DEBUG: Clients in default room: {list(rooms['/'].keys())}")
-        except Exception as e:
-            logger.error(f"🔍 DEBUG: Error checking socketio state: {e}")
+    # Check if there are connected clients
+    connected_clients = check_connected_clients()
+    logger.info(f"🔍 Connected clients: {connected_clients}")
+    
+    if connected_clients == 0:
+        logger.warning("⚠️ No connected clients, but proceeding with HITL request")
+        # Don't auto-approve, still send the request in case client reconnects
     
     # Create HITL request
     request_id = str(uuid.uuid4())
@@ -91,19 +98,48 @@ async def websocket_human_review(
         _socketio_instance.emit('hitl_request', hitl_request)
         logger.info("✅ HITL request emitted successfully")
         
-        # Wait for response with configured timeout (NO AUTO-APPROVAL ON TIMEOUT)
+        # Wait for response with configured timeout
+        # Use a much longer timeout to prevent auto-approval
+        actual_timeout = max(_hitl_timeout_seconds, 3600)  # At least 1 hour
+        
         try:
-            logger.info(f"⏳ Waiting for user response to HITL request {request_id} (timeout: {_hitl_timeout_seconds}s)...")
-            response = await asyncio.wait_for(response_future, timeout=_hitl_timeout_seconds)
-            logger.info(f"✅ Received HITL response: {response}")
-            return response
+            logger.info(f"⏳ Waiting for user response to HITL request {request_id} (timeout: {actual_timeout}s)...")
+            
+            # Periodically re-emit the request in case of connection drops
+            async def periodic_reemit():
+                emit_count = 0
+                while not response_future.done():
+                    await asyncio.sleep(30)  # Re-emit every 30 seconds
+                    if not response_future.done():
+                        emit_count += 1
+                        current_clients = check_connected_clients()
+                        logger.info(f"🔄 Re-emitting HITL request {request_id} (attempt {emit_count}, clients: {current_clients})")
+                        try:
+                            _socketio_instance.emit('hitl_request', hitl_request)
+                        except Exception as e:
+                            logger.error(f"Error re-emitting HITL request: {e}")
+            
+            # Start the periodic re-emit task
+            reemit_task = asyncio.create_task(periodic_reemit())
+            
+            try:
+                response = await asyncio.wait_for(response_future, timeout=actual_timeout)
+                logger.info(f"✅ Received HITL response: {response}")
+                return response
+            finally:
+                # Cancel the re-emit task
+                reemit_task.cancel()
+                try:
+                    await reemit_task
+                except asyncio.CancelledError:
+                    pass
+                    
         except asyncio.TimeoutError:
-            logger.warning(f"⏰ HITL request {request_id} timed out after {_hitl_timeout_seconds} seconds")
-            # Instead of auto-approving, we should raise an exception or return a timeout status
-            # This prevents the modal from disappearing due to auto-approval
+            logger.warning(f"⏰ HITL request {request_id} timed out after {actual_timeout} seconds")
+            # Still don't auto-approve, return timeout status
             return {
                 "user_choice": "timeout",
-                "message": f"HITL request timed out after {_hitl_timeout_seconds} seconds",
+                "message": f"HITL request timed out after {actual_timeout} seconds",
                 "modification_instructions": None
             }
         

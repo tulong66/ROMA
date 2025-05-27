@@ -70,48 +70,39 @@ export function HITLModal() {
     }
   }
 
-  const handleSubmit = async () => {
-    if (!request || !selectedAction) return
+  const handleResponse = async (action: 'approve' | 'modify' | 'abort', feedback?: string) => {
+    if (!hitlRequest) return;
 
-    setIsSubmitting(true)
-
+    console.log('📤 Sending HITL response:', { action, feedback, requestId: hitlRequest.request_id });
+    
     try {
-      const response = {
-        request_id: request.request_id,
-        checkpoint_name: request.checkpoint_name,
-        node_id: request.node_id,
-        action: selectedAction,
-        modification_instructions: selectedAction === 'modify' ? modificationInstructions : null,
-        timestamp: new Date().toISOString()
-      }
+      await webSocketService.sendHITLResponse({
+        request_id: hitlRequest.request_id,
+        action,
+        feedback: feedback || ''
+      });
 
-      console.log('📤 Sending HITL response:', response)
-      webSocketService.sendHITLResponse(response)
-
-      // If user selected modify, show waiting state instead of closing
-      if (selectedAction === 'modify') {
-        setIsWaitingForModification(true)
-        setSelectedAction(null)
-        setModificationInstructions('')
-        console.log('⏳ Waiting for modified plan to be generated...')
+      if (action === 'modify') {
+        console.log('⏳ Waiting for modified plan to be generated...');
+        setIsWaitingForModification(true);
+        // Don't clear the request - wait for the new plan
       } else {
-        // Close modal for approve/abort actions
-        handleClose()
+        // Only clear for approve/abort
+        clearHITLRequest();
+        setIsWaitingForModification(false);
       }
     } catch (error) {
-      console.error('❌ Error sending HITL response:', error)
-    } finally {
-      setIsSubmitting(false)
+      console.error('Failed to send HITL response:', error);
     }
-  }
+  };
 
-  // Reset waiting state when a new request comes in
+  // Clear HITL request when modal closes (only for non-modify cases)
   useEffect(() => {
-    if (request && isWaitingForModification) {
-      setIsWaitingForModification(false)
-      console.log('✅ New HITL request received, showing updated plan')
+    if (!isOpen && hitlRequest && !isWaitingForModification) {
+      console.log('❌ HITL request cleared');
+      clearHITLRequest();
     }
-  }, [request?.request_id])
+  }, [isOpen, hitlRequest, isWaitingForModification]);
 
   const formatDataForDisplay = (data: any): string => {
     if (!data) return 'No data provided'
@@ -253,7 +244,7 @@ export function HITLModal() {
                   Cancel
                 </Button>
                 <Button 
-                  onClick={handleSubmit} 
+                  onClick={() => handleResponse(selectedAction as 'approve' | 'modify' | 'abort', selectedAction === 'modify' ? modificationInstructions : undefined)} 
                   disabled={!selectedAction || isSubmitting || (selectedAction === 'modify' && !modificationInstructions.trim())}
                   type="button"
                 >

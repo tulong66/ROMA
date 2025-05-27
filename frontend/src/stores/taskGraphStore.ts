@@ -182,18 +182,30 @@ export const useTaskGraphStore = create<TaskGraphState>()(
       console.log('  Actually different:', actuallyDifferent)
       console.log('  Node count changed:', prevNodeCount !== newNodeCount)
       
+      // Preserve current HITL request during updates
+      const currentHITLRequest = get().hitlRequest
+      const shouldPreserveHITL = currentHITLRequest !== null
+      
+      if (shouldPreserveHITL) {
+        console.log('🔒 STORE: Preserving active HITL request during task graph update:', currentHITLRequest?.request_id)
+      }
+      
       // Force update by creating completely new objects
       const newState = {
         nodes: { ...newNodes }, // Shallow copy to ensure new reference
         graphs: { ...(data.graphs || {}) },
         overallProjectGoal: data.overall_project_goal,
         isLoading: newNodeCount === 0 ? prevState.isLoading : false,
+        hitlRequest: shouldPreserveHITL ? currentHITLRequest : null,
+        currentHITLRequest: shouldPreserveHITL ? currentHITLRequest : undefined,
+        isHITLModalOpen: shouldPreserveHITL ? prevState.isHITLModalOpen : false,
       }
       
       console.log('🏪 STORE: Setting new state:', {
         nodeCount: Object.keys(newState.nodes).length,
         nodeIds: Object.keys(newState.nodes).slice(0, 3),
-        isLoading: newState.isLoading
+        isLoading: newState.isLoading,
+        hitlPreserved: !!newState.hitlRequest
       })
       
       // Update store
@@ -216,7 +228,14 @@ export const useTaskGraphStore = create<TaskGraphState>()(
     },
     
     setConnectionStatus: (status: boolean) => {
+      const currentRequest = get().hitlRequest
       console.log('🔌 Store: Connection status changed:', status)
+      
+      // Keep HITL request even when connection drops
+      if (!status && currentRequest) {
+        console.log('🔒 Preserving HITL request during connection drop')
+      }
+      
       set({ isConnected: status })
     },
     
@@ -533,39 +552,20 @@ export const useTaskGraphStore = create<TaskGraphState>()(
     
     // HITL Actions
     setHITLRequest: (request: HITLRequest | null) => {
-      const currentRequest = get().hitlRequest
+      const current = get().hitlRequest
       console.log('🏪 Store: Setting HITL request:', {
-        previous: currentRequest?.request_id || 'none',
+        previous: current?.request_id || 'none',
         new: request?.request_id || 'none',
         checkpoint: request?.checkpoint_name || 'none',
         attempt: request?.current_attempt || 'none'
       })
       
-      // If we're replacing an existing request, log it
-      if (currentRequest && request && currentRequest.request_id !== request.request_id) {
-        console.warn('⚠️ Replacing existing HITL request!', {
-          old: currentRequest.request_id,
-          new: request.request_id
-        })
-      }
-      
-      set({ 
-        hitlRequest: request,
-        currentHITLRequest: request,
-        isHITLModalOpen: request !== null
-      })
+      set({ hitlRequest: request })
     },
     
     clearHITLRequest: () => {
-      const currentRequest = get().hitlRequest
-      console.log('🏪 Store: Clearing HITL request:', {
-        cleared: currentRequest?.request_id || 'none'
-      })
-      set({ 
-        hitlRequest: null,
-        currentHITLRequest: undefined,
-        isHITLModalOpen: false
-      })
+      console.log('🏪 Store: Explicitly clearing HITL request')
+      set({ hitlRequest: null })
     },
     
     respondToHITL: (response: HITLResponse) => {

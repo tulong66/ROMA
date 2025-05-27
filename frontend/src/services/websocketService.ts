@@ -5,14 +5,15 @@ import type { APIResponse, HITLRequest, HITLResponse } from '@/types'
 class WebSocketService {
   private socket: Socket | null = null
   private reconnectAttempts = 0
-  private maxReconnectAttempts = 5
+  private maxReconnectAttempts = 10
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private isConnecting = false
   private lastUpdateTime = 0
   private updateCount = 0
+  private connectionStableTimer: ReturnType<typeof setTimeout> | null = null
 
   connect() {
-    if (this.isConnecting || this.socket?.connected) {
+    if (this.isConnecting || this.isConnected()) {
       console.log('⚠️ Already connecting or connected')
       return
     }
@@ -27,13 +28,11 @@ class WebSocketService {
 
     this.socket = io('http://localhost:5000', {
       transports: ['websocket', 'polling'],
-      autoConnect: true,
-      forceNew: false,
-      timeout: 10000,
-      reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 3000,
+      timeout: 20000,
+      forceNew: true,
+      reconnection: false,
+      upgrade: true,
+      rememberUpgrade: true
     })
 
     this.setupEventListeners()
@@ -54,6 +53,10 @@ class WebSocketService {
         clearTimeout(this.reconnectTimer)
         this.reconnectTimer = null
       }
+
+      this.connectionStableTimer = setTimeout(() => {
+        console.log('🔒 WebSocket connection stabilized')
+      }, 10000)
     })
 
     this.socket.on('disconnect', (reason) => {
@@ -61,7 +64,15 @@ class WebSocketService {
       this.isConnecting = false
       useTaskGraphStore.getState().setConnectionStatus(false)
       
-      if (reason === 'io server disconnect' || reason === 'transport close') {
+      if (this.connectionStableTimer) {
+        clearTimeout(this.connectionStableTimer)
+        this.connectionStableTimer = null
+      }
+      
+      if (reason === 'io server disconnect' || 
+          reason === 'transport close' || 
+          reason === 'transport error' ||
+          reason === 'ping timeout') {
         console.log('🔄 Server disconnected, attempting reconnection...')
         this.handleReconnect()
       }
@@ -144,7 +155,7 @@ class WebSocketService {
 
     if (this.reconnectAttempts < this.maxReconnectAttempts) {
       this.reconnectAttempts++
-      const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts - 1), 5000)
+      const delay = Math.min(1000 * Math.pow(1.5, this.reconnectAttempts - 1), 10000)
       
       console.log(`🔄 Attempting to reconnect... (${this.reconnectAttempts}/${this.maxReconnectAttempts}) in ${delay}ms`)
       

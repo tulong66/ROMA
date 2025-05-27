@@ -24,7 +24,7 @@ from sentientresearchagent.hierarchical_agent_framework.node.node_configs import
 from sentientresearchagent.hierarchical_agent_framework.node.hitl_coordinator import HITLCoordinator
 
 # NEW: Import WebSocket HITL utilities
-from sentientresearchagent.hierarchical_agent_framework.utils.websocket_hitl_utils import set_socketio_instance, set_hitl_timeout
+from sentientresearchagent.hierarchical_agent_framework.utils.websocket_hitl_utils import set_socketio_instance, set_hitl_timeout, handle_hitl_response
 
 # NEW: Import our new systems
 from sentientresearchagent.config import load_config, create_sample_config
