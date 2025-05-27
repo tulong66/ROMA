@@ -23,6 +23,9 @@ from sentientresearchagent.hierarchical_agent_framework.graph.execution_engine i
 from sentientresearchagent.hierarchical_agent_framework.node.node_configs import NodeProcessorConfig
 from sentientresearchagent.hierarchical_agent_framework.node.hitl_coordinator import HITLCoordinator
 
+# NEW: Import WebSocket HITL utilities
+from sentientresearchagent.hierarchical_agent_framework.utils.websocket_hitl_utils import set_socketio_instance, set_hitl_timeout
+
 # NEW: Import our new systems
 from sentientresearchagent.config import load_config, create_sample_config
 from sentientresearchagent.config_utils import auto_load_config, validate_config
@@ -43,25 +46,24 @@ logging.basicConfig(level=logging.DEBUG)
 # Add this near the top of the file, after imports
 os.environ['SENTIENT_USE_WEBSOCKET_HITL'] = 'true'
 
-# --- Create Flask App ---
+# Create the Flask app and SocketIO instance first
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your-secret-key-here'
-CORS(app, origins=["http://localhost:3000"], methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"], allow_headers=["Content-Type", "Authorization"], supports_credentials=True)
 
-# Initialize SocketIO with better error handling
+# Enable CORS for all routes
+CORS(app, origins=["http://localhost:3000", "http://127.0.0.1:3000"])
+
 socketio = SocketIO(
-    app, 
-    cors_allowed_origins="http://localhost:3000", 
+    app,
+    cors_allowed_origins="*",
     async_mode='threading',
     logger=True,
     engineio_logger=True
 )
 
-# After socketio is created, register it for HITL
-from sentientresearchagent.hierarchical_agent_framework.utils.websocket_hitl_utils import set_socketio_instance
+# Set up WebSocket HITL instance (but don't set timeout yet - need config first)
 set_socketio_instance(socketio)
 
-# NEW: Initialize all systems with proper integration
 def initialize_sentient_systems():
     """Initialize all Sentient systems with proper integration."""
     try:
@@ -165,7 +167,7 @@ def initialize_sentient_systems():
         
         sys.exit(1)
 
-# Initialize all systems
+# NOW initialize all systems
 systems = initialize_sentient_systems()
 
 # Extract components for global use (for compatibility)
@@ -176,6 +178,10 @@ live_hitl_coordinator = systems['hitl_coordinator']
 live_node_processor = systems['node_processor']
 live_execution_engine = systems['execution_engine']
 sentient_config = systems['config']
+
+# NOW set the WebSocket HITL timeout from config
+set_hitl_timeout(sentient_config.execution.hitl_timeout_seconds)
+print(f"✅ WebSocket HITL initialized with {sentient_config.execution.hitl_timeout_seconds}s timeout")
 
 # NEW: Initialize project manager
 project_manager = ProjectManager()

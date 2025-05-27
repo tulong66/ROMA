@@ -533,7 +533,22 @@ export const useTaskGraphStore = create<TaskGraphState>()(
     
     // HITL Actions
     setHITLRequest: (request: HITLRequest | null) => {
-      console.log('🏪 Store: Setting HITL request:', request)
+      const currentRequest = get().hitlRequest
+      console.log('🏪 Store: Setting HITL request:', {
+        previous: currentRequest?.request_id || 'none',
+        new: request?.request_id || 'none',
+        checkpoint: request?.checkpoint_name || 'none',
+        attempt: request?.current_attempt || 'none'
+      })
+      
+      // If we're replacing an existing request, log it
+      if (currentRequest && request && currentRequest.request_id !== request.request_id) {
+        console.warn('⚠️ Replacing existing HITL request!', {
+          old: currentRequest.request_id,
+          new: request.request_id
+        })
+      }
+      
       set({ 
         hitlRequest: request,
         currentHITLRequest: request,
@@ -542,7 +557,10 @@ export const useTaskGraphStore = create<TaskGraphState>()(
     },
     
     clearHITLRequest: () => {
-      console.log('🏪 Store: Clearing HITL request')
+      const currentRequest = get().hitlRequest
+      console.log('🏪 Store: Clearing HITL request:', {
+        cleared: currentRequest?.request_id || 'none'
+      })
       set({ 
         hitlRequest: null,
         currentHITLRequest: undefined,

@@ -28,14 +28,45 @@ export function HITLModal() {
   const isOpen = hitlRequest !== null
   const request = hitlRequest as HITLRequest | null
 
-  console.log('🤔 HITLModal render:', { isOpen, hasRequest: !!request, requestId: request?.request_id })
+  console.log('🤔 HITLModal render:', { 
+    isOpen, 
+    hasRequest: !!request, 
+    requestId: request?.request_id,
+    checkpoint: request?.checkpoint_name,
+    attempt: request?.current_attempt,
+    isSubmitting,
+    isWaitingForModification
+  })
+
+  // Add effect to track when requests change
+  useEffect(() => {
+    if (request) {
+      console.log('🆕 New HITL request received:', {
+        requestId: request.request_id,
+        checkpoint: request.checkpoint_name,
+        attempt: request.current_attempt,
+        timestamp: request.timestamp
+      })
+    } else {
+      console.log('❌ HITL request cleared')
+    }
+  }, [request?.request_id])
+
+  // Add effect to track when modal opens/closes
+  useEffect(() => {
+    console.log(`🚪 Modal ${isOpen ? 'OPENED' : 'CLOSED'}`)
+  }, [isOpen])
 
   const handleClose = () => {
+    console.log('🚪 User attempting to close modal:', { isSubmitting, isWaitingForModification })
     if (!isSubmitting && !isWaitingForModification) {
+      console.log('✅ Closing modal and clearing request')
       clearHITLRequest()
       setSelectedAction(null)
       setModificationInstructions('')
       setIsWaitingForModification(false)
+    } else {
+      console.log('❌ Cannot close modal - operation in progress')
     }
   }
 

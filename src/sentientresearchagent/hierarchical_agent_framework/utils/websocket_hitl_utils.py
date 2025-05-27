@@ -16,11 +16,20 @@ _socketio_instance = None
 # Global storage for pending HITL requests
 _pending_requests = {}
 
+# Global timeout setting (will be set by the system)
+_hitl_timeout_seconds = 1800.0  # Default 30 minutes, but will be overridden
+
 def set_socketio_instance(socketio):
     """Set the global socketio instance for HITL communication"""
     global _socketio_instance
     _socketio_instance = socketio
     logger.info("WebSocket HITL: socketio instance registered")
+
+def set_hitl_timeout(timeout_seconds: float):
+    """Set the HITL timeout from configuration"""
+    global _hitl_timeout_seconds
+    _hitl_timeout_seconds = timeout_seconds
+    logger.info(f"WebSocket HITL: timeout set to {timeout_seconds} seconds")
 
 async def websocket_human_review(
     checkpoint_name: str,
@@ -32,7 +41,7 @@ async def websocket_human_review(
     """
     WebSocket-based human review that broadcasts HITL requests to frontend
     """
-    global _socketio_instance, _pending_requests
+    global _socketio_instance, _pending_requests, _hitl_timeout_seconds
     
     logger.info(f"🤔 HITL WebSocket: Broadcasting checkpoint '{checkpoint_name}' for node {node_id}")
     
@@ -82,25 +91,27 @@ async def websocket_human_review(
         _socketio_instance.emit('hitl_request', hitl_request)
         logger.info("✅ HITL request emitted successfully")
         
-        # Wait for response with a longer timeout (no auto-approval)
+        # Wait for response with configured timeout (NO AUTO-APPROVAL ON TIMEOUT)
         try:
-            logger.info(f"⏳ Waiting for user response to HITL request {request_id}...")
-            response = await asyncio.wait_for(response_future, timeout=1800.0)  # 30 minute timeout
+            logger.info(f"⏳ Waiting for user response to HITL request {request_id} (timeout: {_hitl_timeout_seconds}s)...")
+            response = await asyncio.wait_for(response_future, timeout=_hitl_timeout_seconds)
             logger.info(f"✅ Received HITL response: {response}")
             return response
         except asyncio.TimeoutError:
-            logger.warning(f"⏰ HITL request {request_id} timed out after 30 minutes, auto-approving")
+            logger.warning(f"⏰ HITL request {request_id} timed out after {_hitl_timeout_seconds} seconds")
+            # Instead of auto-approving, we should raise an exception or return a timeout status
+            # This prevents the modal from disappearing due to auto-approval
             return {
-                "user_choice": "approved",
-                "message": f"Auto-approved checkpoint '{checkpoint_name}' (30 minute timeout)",
+                "user_choice": "timeout",
+                "message": f"HITL request timed out after {_hitl_timeout_seconds} seconds",
                 "modification_instructions": None
             }
         
     except Exception as e:
         logger.error(f"❌ Error during HITL request: {e}")
         return {
-            "user_choice": "approved",
-            "message": f"Auto-approved checkpoint '{checkpoint_name}' (error: {e})",
+            "user_choice": "error",
+            "message": f"Error during HITL request: {e}",
             "modification_instructions": None
         }
     finally:
