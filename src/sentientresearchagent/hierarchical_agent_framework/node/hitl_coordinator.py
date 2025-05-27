@@ -80,8 +80,15 @@ class HITLCoordinator:
     async def review_plan_generation(
         self, node: TaskNode, plan_output: PlanOutput, planner_input: Union[PlannerInput, PlanModifierInput], is_replan: bool = False
     ) -> Dict[str, Any]:
-        if not (self.config.enable_hitl_after_plan_generation and node.layer == 0):
-            return {"status": "approved", "message": "HITL for plan generation skipped by configuration or node layer."}
+        # NEW: Check for root plan only mode
+        if hasattr(self.config, 'hitl_root_plan_only') and self.config.hitl_root_plan_only:
+            # In root plan only mode, only review root node (layer 0) initial plans
+            if not (self.config.enable_hitl_after_plan_generation and node.layer == 0 and not is_replan):
+                return {"status": "approved", "message": "HITL for plan generation skipped - root plan only mode (non-root or replan)."}
+        else:
+            # Original logic - review based on configuration and layer
+            if not (self.config.enable_hitl_after_plan_generation and node.layer == 0):
+                return {"status": "approved", "message": "HITL for plan generation skipped by configuration or node layer."}
 
         hitl_context_msg = f"Review {'re-generated plan' if is_replan else 'initial plan'} for task '{node.task_id}'. Goal: {node.goal}"
         plan_for_review = plan_output.model_dump(mode='json') if plan_output else {}

@@ -6,6 +6,8 @@ import asyncio
 import time
 import traceback
 import sys
+import uuid
+from datetime import datetime
 from agno.exceptions import StopAgentRun 
 from typing import Dict, Any
 
@@ -29,6 +31,9 @@ from sentientresearchagent.exceptions import SentientError, handle_exception
 
 # NEW: Import project manager
 from sentientresearchagent.project_manager import ProjectManager
+
+# NEW: Import the Simple API with updated interface
+from sentientresearchagent.simple_api import SimpleSentientAgent, quick_research, quick_analysis, quick_execute, FRAMEWORK_AVAILABLE, create_node_processor_config_from_main_config
 
 # Enable debug logging
 import logging
@@ -94,29 +99,22 @@ def initialize_sentient_systems():
         live_knowledge_store = KnowledgeStore()
         live_state_manager = StateManager(live_task_graph)
         
-        # Use new configuration system for node processor
-        node_processor_config = NodeProcessorConfig()
-        
-        # Configure HITL based on main config
-        if hasattr(config, 'execution') and hasattr(config.execution, 'enable_hitl'):
-            if config.execution.enable_hitl:
-                node_processor_config.enable_hitl_after_plan_generation = True
-                node_processor_config.enable_hitl_after_modified_plan = True
-                print(f"🎮 HITL enabled globally")
+        # 🔥 FIX: Use centralized config approach
+        node_processor_config = create_node_processor_config_from_main_config(config)
         
         live_hitl_coordinator = HITLCoordinator(config=node_processor_config)
         live_node_processor = NodeProcessor(
             task_graph=live_task_graph,
             knowledge_store=live_knowledge_store,
-            config=config,  # NEW: Pass main config
-            node_processor_config=node_processor_config  # Keep old config for compatibility
+            config=config,
+            node_processor_config=node_processor_config
         )
         live_execution_engine = ExecutionEngine(
             task_graph=live_task_graph,
             state_manager=live_state_manager,
             knowledge_store=live_knowledge_store,
             hitl_coordinator=live_hitl_coordinator,
-            config=config,  # NEW: Pass main config
+            config=config,
             node_processor=live_node_processor
         )
         
@@ -127,8 +125,12 @@ def initialize_sentient_systems():
         print(f"📊 Cache: {config.cache.cache_type} backend, {cache_stats['current_size']} items")
         print(f"⚙️  Execution: max {config.execution.max_concurrent_nodes} concurrent nodes")
         print(f"🔗 LLM: {config.llm.provider}/{config.llm.model}")
-        if hasattr(config.execution, 'enable_hitl'):
-            print(f"🎮 HITL: {'Enabled' if config.execution.enable_hitl else 'Disabled'}")
+        print(f"🎮 HITL Master: {'Enabled' if config.execution.enable_hitl else 'Disabled'}")
+        if config.execution.enable_hitl:
+            print(f"   - Plan Generation: {getattr(config.execution, 'hitl_after_plan_generation', True)}")
+            print(f"   - Modified Plan: {getattr(config.execution, 'hitl_after_modified_plan', True)}")
+            print(f"   - Atomizer: {getattr(config.execution, 'hitl_after_atomizer', False)}")
+            print(f"   - Before Execute: {getattr(config.execution, 'hitl_before_execute', False)}")
         
         return {
             'config': config,
@@ -173,6 +175,23 @@ project_manager = ProjectManager()
 # Store project-specific task graphs
 project_graphs: Dict[str, Any] = {}
 project_execution_engines: Dict[str, Any] = {}
+
+# NEW: Initialize a global simple agent instance for reuse
+simple_agent_instance = None
+
+def get_simple_agent():
+    """Get or create a SimpleSentientAgent instance optimized for API use"""
+    global simple_agent_instance
+    if simple_agent_instance is None:
+        try:
+            # 🔥 FIX: Create Simple API agent with HITL disabled for API endpoints
+            # This allows the API to work without human intervention by default
+            simple_agent_instance = SimpleSentientAgent.create(enable_hitl=False)
+            print(f"✅ SimpleSentientAgent initialized for API endpoints (HITL: disabled for automation)")
+        except Exception as e:
+            print(f"❌ Failed to initialize SimpleSentientAgent: {e}")
+            return None
+    return simple_agent_instance
 
 def sync_project_to_display(project_id: str):
     """Sync a project's current state to the display graph and broadcast"""
@@ -241,25 +260,14 @@ def get_or_create_project_graph(project_id: str):
         from sentientresearchagent.hierarchical_agent_framework.graph.state_manager import StateManager
         from sentientresearchagent.hierarchical_agent_framework.graph.execution_engine import ExecutionEngine
         from sentientresearchagent.hierarchical_agent_framework.node.node_processor import NodeProcessor
-        from sentientresearchagent.hierarchical_agent_framework.node.node_configs import NodeProcessorConfig
         from sentientresearchagent.hierarchical_agent_framework.node.hitl_coordinator import HITLCoordinator
         
         # Create project-specific components
         project_task_graph = TaskGraph()
         project_state_manager = StateManager(project_task_graph)
         
-        # Create node processor config with HITL settings based on main config
-        node_processor_config = NodeProcessorConfig()
-        
-        # If the main config has HITL enabled, enable the specific HITL checkpoints
-        if hasattr(sentient_config, 'execution') and hasattr(sentient_config.execution, 'enable_hitl'):
-            if sentient_config.execution.enable_hitl:
-                # These are the actual fields in NodeProcessorConfig
-                node_processor_config.enable_hitl_after_plan_generation = True
-                node_processor_config.enable_hitl_after_atomizer = False  # Usually keep this off
-                node_processor_config.enable_hitl_before_execute = False  # Usually keep this off
-                node_processor_config.enable_hitl_after_modified_plan = True
-                print(f"🎮 HITL enabled for project {project_id}")
+        # 🔥 FIX: Use centralized config approach for projects too
+        node_processor_config = create_node_processor_config_from_main_config(sentient_config)
         
         project_hitl_coordinator = HITLCoordinator(config=node_processor_config)
         
@@ -292,7 +300,7 @@ def get_or_create_project_graph(project_id: str):
             'update_callback': update_callback
         }
         
-        print(f"✅ Created new execution environment for project {project_id}")
+        print(f"✅ Created new execution environment for project {project_id} (HITL: {'enabled' if sentient_config.execution.enable_hitl else 'disabled'})")
     
     return project_graphs[project_id]
 
@@ -1158,12 +1166,242 @@ def delete_project(project_id: str):
             error_handler.handle_error(e, component="delete_project", reraise=False)
         return jsonify({"error": str(e)}), 500
 
+# --- NEW: Simple API Integration Endpoints ---
+
+@app.route('/api/simple/execute', methods=['POST'])
+def simple_execute():
+    """Simple API endpoint for direct goal execution"""
+    try:
+        if not FRAMEWORK_AVAILABLE:
+            return jsonify({"error": "Framework components not available"}), 500
+            
+        data = request.get_json()
+        if not data or 'goal' not in data:
+            return jsonify({"error": "goal is required"}), 400
+        
+        goal = data['goal']
+        options = data.get('options', {})
+        
+        # 🔥 FIX: Default to HITL disabled for Simple API unless explicitly requested
+        enable_hitl = data.get('enable_hitl', False)  # Default to False
+        if enable_hitl:
+            options['enable_hitl'] = True
+        
+        # Get simple agent instance (which has HITL disabled by default)
+        agent = get_simple_agent()
+        if not agent:
+            return jsonify({"error": "Failed to initialize SimpleSentientAgent"}), 500
+        
+        print(f"🎯 Simple API execution: {goal[:100]}... (HITL: {enable_hitl})")
+        
+        # Execute using simple API
+        result = agent.execute(goal, **options)
+        
+        # Add timestamp for tracking
+        result['timestamp'] = datetime.now().isoformat()
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        error_handler = get_error_handler()
+        if error_handler:
+            error_handler.handle_error(e, component="simple_execute", reraise=False)
+        return jsonify({
+            "execution_id": f"error_{uuid.uuid4().hex[:8]}",
+            "goal": data.get('goal', 'unknown') if 'data' in locals() else 'unknown',
+            "status": "failed",
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }), 500
+
+@app.route('/api/simple/research', methods=['POST'])
+def simple_research():
+    """Convenience endpoint for quick research tasks"""
+    try:
+        if not FRAMEWORK_AVAILABLE:
+            return jsonify({"error": "Framework components not available"}), 500
+            
+        data = request.get_json()
+        if not data or 'topic' not in data:
+            return jsonify({"error": "topic is required"}), 400
+        
+        topic = data['topic']
+        options = data.get('options', {})
+        # 🔥 FIX: Default to HITL disabled for Simple API
+        enable_hitl = data.get('enable_hitl', False)  # Default to False
+        
+        print(f"🔍 Simple research: {topic[:100]}... (HITL: {enable_hitl})")
+        
+        # Use the convenience function
+        result = quick_research(topic, enable_hitl=enable_hitl, **options)
+        
+        return jsonify({
+            "topic": topic,
+            "result": result,
+            "timestamp": datetime.now().isoformat(),
+            "status": "completed",
+            "hitl_enabled": enable_hitl
+        })
+        
+    except Exception as e:
+        error_handler = get_error_handler()
+        if error_handler:
+            error_handler.handle_error(e, component="simple_research", reraise=False)
+        return jsonify({
+            "topic": data.get('topic', 'unknown') if 'data' in locals() else 'unknown',
+            "status": "failed",
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }), 500
+
+@app.route('/api/simple/analysis', methods=['POST'])
+def simple_analysis():
+    """Convenience endpoint for quick analysis tasks"""
+    try:
+        if not FRAMEWORK_AVAILABLE:
+            return jsonify({"error": "Framework components not available"}), 500
+            
+        data = request.get_json()
+        if not data or 'data_description' not in data:
+            return jsonify({"error": "data_description is required"}), 400
+        
+        data_description = data['data_description']
+        options = data.get('options', {})
+        # 🔥 FIX: Default to HITL disabled for Simple API
+        enable_hitl = data.get('enable_hitl', False)  # Default to False
+        
+        print(f"📊 Simple analysis: {data_description[:100]}... (HITL: {enable_hitl})")
+        
+        # Use the convenience function
+        result = quick_analysis(data_description, enable_hitl=enable_hitl, **options)
+        
+        return jsonify({
+            "data_description": data_description,
+            "result": result,
+            "timestamp": datetime.now().isoformat(),
+            "status": "completed",
+            "hitl_enabled": enable_hitl
+        })
+        
+    except Exception as e:
+        error_handler = get_error_handler()
+        if error_handler:
+            error_handler.handle_error(e, component="simple_analysis", reraise=False)
+        return jsonify({
+            "data_description": data.get('data_description', 'unknown') if 'data' in locals() else 'unknown',
+            "status": "failed",
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }), 500
+
+@app.route('/api/simple/status', methods=['GET'])
+def simple_api_status():
+    """Get status of the Simple API system"""
+    try:
+        agent = get_simple_agent()
+        
+        return jsonify({
+            "framework_available": FRAMEWORK_AVAILABLE,
+            "simple_agent_ready": agent is not None,
+            "config_loaded": sentient_config is not None,
+            "endpoints": [
+                "/api/simple/execute",
+                "/api/simple/research", 
+                "/api/simple/analysis",
+                "/api/simple/stream"
+            ],
+            "timestamp": datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "framework_available": FRAMEWORK_AVAILABLE,
+            "simple_agent_ready": False,
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }), 500
+
+# --- NEW: WebSocket Events for Simple API Streaming ---
+
+@socketio.on('simple_execute_stream')
+def handle_simple_execute_stream(data):
+    """WebSocket handler for streaming simple API execution"""
+    print(f"🌊 Received simple_execute_stream: {data}")
+    try:
+        if not FRAMEWORK_AVAILABLE:
+            emit('simple_execution_error', {'message': 'Framework components not available'})
+            return
+            
+        goal = data.get('goal')
+        if not goal:
+            emit('simple_execution_error', {'message': 'goal not provided'})
+            return
+        
+        options = data.get('options', {})
+        
+        # Start streaming execution in background thread
+        thread = threading.Thread(
+            target=run_simple_streaming_execution, 
+            args=(goal, options)
+        )
+        thread.daemon = True
+        thread.start()
+        
+        emit('simple_execution_started', {
+            'message': f"Simple execution started: {goal[:50]}...",
+            'goal': goal
+        })
+        
+    except Exception as e:
+        error_handler = get_error_handler()
+        if error_handler:
+            error_handler.handle_error(e, component="simple_execute_stream", reraise=False)
+        emit('simple_execution_error', {'message': f'Error: {str(e)}'})
+
+def run_simple_streaming_execution(goal: str, options: Dict[str, Any]):
+    """Run simple API execution with streaming updates"""
+    try:
+        agent = get_simple_agent()
+        if not agent:
+            socketio.emit('simple_execution_error', {'message': 'Failed to get SimpleSentientAgent'})
+            return
+        
+        print(f"🌊 Starting streaming execution: {goal}")
+        
+        # Use the streaming method from SimpleSentientAgent
+        for update in agent.stream_execution(goal, **options):
+            socketio.emit('simple_execution_update', update)
+            time.sleep(0.1)  # Small delay to prevent overwhelming the client
+        
+        print(f"✅ Streaming execution completed: {goal}")
+        
+    except Exception as e:
+        error_handler = get_error_handler()
+        if error_handler:
+            error_handler.handle_error(e, component="simple_streaming", reraise=False)
+        socketio.emit('simple_execution_error', {
+            'message': f'Streaming execution failed: {str(e)}',
+            'goal': goal
+        })
+
 # --- Main Entry Point ---
 if __name__ == '__main__':
     print("🚀 Starting Sentient Research Agent Server...")
     print("📡 WebSocket: http://localhost:5000")
     print("🌐 Frontend: http://localhost:3000")
     print("📊 System Info: http://localhost:5000/api/system-info")
+    print("")
+    print("🎯 Simple API Endpoints:")
+    print("   POST /api/simple/execute - Execute any goal")
+    print("   POST /api/simple/research - Quick research tasks")
+    print("   POST /api/simple/analysis - Quick analysis tasks")
+    print("   GET  /api/simple/status - Simple API status")
+    print("   WebSocket: simple_execute_stream - Streaming execution")
+    print("")
+    print("📚 Example usage:")
+    print("   curl -X POST http://localhost:5000/api/simple/research \\")
+    print("        -H 'Content-Type: application/json' \\")
+    print("        -d '{\"topic\": \"quantum computing applications\"}'")
     
     try:
         socketio.run(app, debug=False, host='0.0.0.0', port=5000, use_reloader=False)

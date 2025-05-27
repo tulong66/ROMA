@@ -136,7 +136,8 @@ class ExecutionEngine:
 
     async def run_project_flow(self, root_goal: str, root_task_type: TaskType = TaskType.WRITE, max_steps: int = 250):
         """
-        Complete project flow: Initializes project, performs HITL on root node, then runs execution cycle.
+        Complete project flow: Initializes project, then runs execution cycle.
+        HITL will only occur after root node planning, not immediately after initialization.
         This is intended to be the primary entry point for running a project.
         """
         logger.info(f"ExecutionEngine: Starting project flow with root goal: '{root_goal}'")
@@ -151,19 +152,10 @@ class ExecutionEngine:
             logger.error("ExecutionEngine: Root node not created by initializer. Cannot proceed.")
             return None
 
-        await self.hitl_coordinator.review_initial_project_goal(
-            root_node=root_node, # type: ignore
-            task_graph=self.task_graph,
-            knowledge_store=self.knowledge_store
-        )
+        # REMOVED: The unwanted HITL call after initialization
+        # await self.hitl_coordinator.review_initial_project_goal(...)
         
-        current_root_node_status = self.task_graph.get_node("root").status # Re-fetch status after HITL
-        if current_root_node_status in [TaskStatus.CANCELLED, TaskStatus.FAILED]: # type: ignore
-            logger.warning(f"ExecutionEngine: Root node processing halted (status: {current_root_node_status.name}) after initial HITL review. Full execution cycle will not run.") # type: ignore
-            self._log_final_statuses() 
-            return self.task_graph.get_node("root").result # type: ignore
-
-        logger.info("ExecutionEngine: Root goal review complete. Proceeding to execution cycle.")
+        logger.info("ExecutionEngine: Project initialized. Proceeding directly to execution cycle.")
         return await self.run_cycle(max_steps)
 
     async def run_cycle(self, max_steps: Optional[int] = None):

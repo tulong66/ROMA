@@ -22,6 +22,15 @@ execution:
   max_execution_steps: 500  # More steps for deep reasoning
   enable_hitl: true
   hitl_timeout_seconds: 600.0  # 10 minutes for human review
+  
+  # NEW: Root plan only option - only review the initial high-level plan
+  hitl_root_plan_only: false  # Set to true to only review root node's plan
+  
+  # These are ignored when hitl_root_plan_only is true
+  hitl_after_plan_generation: true
+  hitl_after_modified_plan: true
+  hitl_after_atomizer: false
+  hitl_before_execute: false
 
 # Logging (for debugging your complex agents)
 logging:

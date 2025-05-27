@@ -64,8 +64,19 @@ class ExecutionConfig(BaseModel):
     retry_delay_seconds: float = 5.0
     rate_limit_rpm: int = 60  # requests per minute
     max_execution_steps: int = 250
-    enable_hitl: bool = True  # Human in the loop
+    
+    # HITL (Human-in-the-Loop) Configuration - Centralized
+    enable_hitl: bool = True  # Master HITL switch
     hitl_timeout_seconds: float = 300.0  # 5 minutes
+    
+    # NEW: Root plan only option - review only the initial high-level plan
+    hitl_root_plan_only: bool = False  # Only review root node's initial plan
+    
+    # Specific HITL Checkpoints (when enable_hitl is True and hitl_root_plan_only is False)
+    hitl_after_plan_generation: bool = True   # Review plans after generation
+    hitl_after_modified_plan: bool = True     # Review modified plans
+    hitl_after_atomizer: bool = False         # Review atomizer decisions (usually off)
+    hitl_before_execute: bool = False         # Review before execution (usually off)
     
     @validator('max_concurrent_nodes')
     def validate_concurrency(cls, v):
@@ -73,6 +84,22 @@ class ExecutionConfig(BaseModel):
             raise ValueError('max_concurrent_nodes must be at least 1')
         if v > 20:
             logger.warning(f'High concurrency ({v}) may overwhelm LLM APIs')
+        return v
+    
+    @validator('hitl_after_plan_generation', 'hitl_after_modified_plan', 'hitl_after_atomizer', 'hitl_before_execute')
+    def validate_hitl_checkpoints(cls, v, values):
+        """HITL checkpoints only matter if master HITL is enabled and root_plan_only is False"""
+        if not values.get('enable_hitl', True) and v:
+            logger.warning("HITL checkpoint enabled but master enable_hitl is False")
+        if values.get('hitl_root_plan_only', False) and v:
+            logger.info("HITL checkpoint will be ignored due to hitl_root_plan_only=True")
+        return v
+    
+    @validator('hitl_root_plan_only')
+    def validate_root_plan_only(cls, v, values):
+        """Root plan only requires master HITL to be enabled"""
+        if v and not values.get('enable_hitl', True):
+            logger.warning("hitl_root_plan_only enabled but master enable_hitl is False")
         return v
 
 class AgentConfig(BaseModel):
