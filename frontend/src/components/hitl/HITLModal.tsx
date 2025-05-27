@@ -24,6 +24,7 @@ export function HITLModal() {
   const [modificationInstructions, setModificationInstructions] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isWaitingForModification, setIsWaitingForModification] = useState(false)
+  const [lastProcessedRequestId, setLastProcessedRequestId] = useState<string | null>(null)
 
   const isOpen = hitlRequest !== null
   const request = hitlRequest as HITLRequest | null
@@ -35,7 +36,8 @@ export function HITLModal() {
     checkpoint: request?.checkpoint_name,
     attempt: request?.current_attempt,
     isSubmitting,
-    isWaitingForModification
+    isWaitingForModification,
+    lastProcessedRequestId
   })
 
   // Add effect to track when requests change
@@ -57,24 +59,39 @@ export function HITLModal() {
     console.log(`🚪 Modal ${isOpen ? 'OPENED' : 'CLOSED'}`)
   }, [isOpen])
 
-  // Add this effect to detect when modification is complete
+  // Enhanced effect to detect when modification is complete
   useEffect(() => {
     if (isWaitingForModification && request) {
-      // Check if we received a new HITL request with a different checkpoint
-      // This indicates the modification is complete and we have a new plan to review
-      if (request.checkpoint_name.includes('PostModifiedPlanReview')) {
-        console.log('✅ Modification complete - received modified plan review request:', { 
+      // Check if we received a NEW HITL request (different request_id)
+      // AND it's a modified plan review checkpoint
+      const isNewRequest = request.request_id !== lastProcessedRequestId
+      const isModifiedPlanReview = request.checkpoint_name.includes('PostModifiedPlanReview') || 
+                                   request.checkpoint_name.includes('PostInitialPlanGeneration')
+      
+      if (isNewRequest && isModifiedPlanReview) {
+        console.log('✅ Modification complete - received new plan review request:', { 
           checkpoint: request.checkpoint_name,
-          requestId: request.request_id 
+          requestId: request.request_id,
+          lastProcessedId: lastProcessedRequestId,
+          isNewRequest,
+          isModifiedPlanReview
         })
         
         setIsWaitingForModification(false)
         setSelectedAction(null)
         setModificationInstructions('')
+        setLastProcessedRequestId(request.request_id)
         // Don't clear the HITL request - we need to show the modified plan
       }
     }
-  }, [isWaitingForModification, request?.checkpoint_name, request?.request_id])
+  }, [isWaitingForModification, request?.checkpoint_name, request?.request_id, lastProcessedRequestId])
+
+  // Track when we start processing a new request
+  useEffect(() => {
+    if (request && !isWaitingForModification) {
+      setLastProcessedRequestId(request.request_id)
+    }
+  }, [request?.request_id, isWaitingForModification])
 
   const handleClose = () => {
     console.log('🚪 User attempting to close modal:', { isSubmitting, isWaitingForModification })

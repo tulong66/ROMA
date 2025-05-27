@@ -330,12 +330,19 @@ class NeedsReplanNodeHandler(INodeHandler):
         logger.info(f"  NeedsReplanNodeHandler: Handling NEEDS_REPLAN node {node.task_id} (Blueprint: {blueprint_name_log}, Replan Attempts: {node.replan_attempts}, Goal: '{node.goal[:30]}...', Original Agent Name at Entry: {agent_name_at_entry})")
 
         try:
-            if node.replan_attempts >= context.config.max_replan_attempts:
+            # Check if this is a user-requested modification
+            is_user_modification = node.aux_data.get('user_modification_instructions') is not None
+            
+            # Only check max attempts for system-triggered replans, not user modifications
+            if not is_user_modification and node.replan_attempts >= context.config.max_replan_attempts:
                 logger.warning(f"    Node {node.task_id}: Max replan attempts ({context.config.max_replan_attempts}) reached. Marking as FAILED.")
                 node.update_status(TaskStatus.FAILED, error_msg="Max replan attempts reached.")
                 return
 
-            node.replan_attempts += 1 
+            # Only increment replan_attempts for system-triggered replans
+            if not is_user_modification:
+                node.replan_attempts += 1 
+            
             node.update_status(TaskStatus.RUNNING)
             node.node_type = NodeType.PLAN 
 
