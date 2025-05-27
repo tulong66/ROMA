@@ -24,7 +24,7 @@ execution:
   hitl_timeout_seconds: 600.0  # 10 minutes for human review
   
   # NEW: Root plan only option - only review the initial high-level plan
-  hitl_root_plan_only: false  # Set to true to only review root node's plan
+  hitl_root_plan_only: true  # Set to true to only review root node's plan
   
   # These are ignored when hitl_root_plan_only is true
   hitl_after_plan_generation: true
