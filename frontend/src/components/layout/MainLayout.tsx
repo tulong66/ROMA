@@ -9,8 +9,10 @@ import NodeDetailsPanel from '@/components/panels/NodeDetailsPanel'
 import ComparisonPanel from '@/components/panels/ComparisonPanel'
 import MultiSelectToolbar from '@/components/panels/MultiSelectToolbar'
 import ProjectInput from '@/components/project/ProjectInput'
-import HITLModal from '@/components/hitl/HITLModal'
+import { HITLModal } from '@/components/hitl/HITLModal'
 import ConnectionStatus from '@/components/status/ConnectionStatus'
+import HITLLog from '@/components/hitl/HITLLog'
+import HITLNotification from '@/components/hitl/HITLNotification'
 
 const MainLayout: React.FC = () => {
   const { 
@@ -165,8 +167,16 @@ const MainLayout: React.FC = () => {
         {/* Status Components */}
         <ConnectionStatus />
         
-        {/* HITL Modal */}
-        {isHITLModalOpen && <HITLModal />}
+        {/* HITL Modal - Always render, it handles its own visibility */}
+        <HITLModal />
+        
+        {/* Add HITL Log in a fixed position */}
+        <div className="absolute top-4 right-4 z-10">
+          <HITLLog />
+        </div>
+        
+        {/* Add HITL Notification */}
+        <HITLNotification />
       </div>
     </div>
   )

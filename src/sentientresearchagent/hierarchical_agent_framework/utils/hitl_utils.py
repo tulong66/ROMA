@@ -1,8 +1,9 @@
 import asyncio
 from typing import Any, Callable, Dict, Optional
+import json
+import os
 
 from agno.exceptions import StopAgentRun
-from agno.tools import tool # For the Agno tool decorator
 from rich.console import Console
 from rich.prompt import Prompt
 from rich.pretty import pprint
@@ -44,10 +45,14 @@ async def async_human_confirmation_hook(
         
         if current_data_for_review: # Show the current plan/data
             hitl_console.print("\n[bold blue]Current Data for Review:[/bold blue]")
-            sub_console = Console(width=hitl_console.width - 4)
-            with sub_console.capture() as capture:
-                sub_console.print(current_data_for_review)
-            hitl_console.print(capture.get())
+            try:
+                if isinstance(current_data_for_review, (dict, list)):
+                    json_str = json.dumps(current_data_for_review, indent=2, ensure_ascii=False)
+                    hitl_console.print(json_str, highlight=False, markup=False)
+                else:
+                    hitl_console.print(str(current_data_for_review), highlight=False, markup=False)
+            except Exception:
+                hitl_console.print(str(current_data_for_review), highlight=False, markup=False)
 
         prompt_message = "Action (Approve[a], Modify[m], Abort[x])"
         choices = ["a", "m", "x"]
@@ -117,47 +122,45 @@ async def async_human_confirmation_hook(
             return output_payload
 
 
-@tool(tool_hooks=[async_human_confirmation_hook])
-async def trigger_human_review_tool(
-    checkpoint_name: str, 
-    context_message: str, 
-    data_for_review: Optional[Any] = None
-) -> Dict[str, Any]:
-    """
-    A simple Agno tool that primarily serves to trigger the async_human_confirmation_hook.
-    The actual user interaction happens in the hook.
-
-    Args:
-        checkpoint_name (str): A name for this review point (e.g., "PostAtomizerCheck", "PlanReview").
-        context_message (str): A message to display to the user.
-        data_for_review (Optional[Any]): Structured data for the user to review.
-
-    Returns:
-        Dict[str, Any]: A dictionary containing the outcome, augmented by the hook.
-                         The hook will add 'hitl_user_choice', 'hitl_user_message'.
-    """
-    logger.info(f"HITL Agno Tool: trigger_human_review_tool executed for checkpoint: {checkpoint_name}.")
-    return {
-        "tool_name": "trigger_human_review_tool",
-        "checkpoint_name": checkpoint_name,
-        "status": "Tool execution completed, review handled by hook."
-    }
+def should_use_websocket_hitl():
+    """Check if we should use WebSocket HITL instead of console"""
+    # Enable WebSocket HITL when running the visualization server
+    return os.getenv('SENTIENT_USE_WEBSOCKET_HITL', 'false').lower() == 'true'
 
 
 async def request_human_review(
     checkpoint_name: str,
     context_message: str,
-    data_for_review: Optional[Any] = None, # This will be the current plan
+    data_for_review: Optional[Any] = None,
     node_id: Optional[str] = "N/A",
-    current_attempt: int = 1 # Pass current attempt for display
+    current_attempt: int = 1
 ) -> Dict[str, Any]:
     logger.info(f"Node {node_id}: Requesting human review for checkpoint: {checkpoint_name}, Attempt: {current_attempt}")
     
+    # Check if we should use WebSocket HITL
+    if os.getenv('SENTIENT_USE_WEBSOCKET_HITL', 'false').lower() == 'true':
+        try:
+            # Import the WebSocket function from the utils module
+            from sentientresearchagent.hierarchical_agent_framework.utils.websocket_hitl_utils import websocket_human_review
+            logger.info(f"🌐 Using WebSocket HITL for checkpoint: {checkpoint_name}")
+            return await websocket_human_review(
+                checkpoint_name=checkpoint_name,
+                context_message=context_message,
+                data_for_review=data_for_review,
+                node_id=node_id,
+                current_attempt=current_attempt
+            )
+        except ImportError as e:
+            logger.warning(f"WebSocket HITL not available ({e}), falling back to console")
+        except Exception as e:
+            logger.error(f"WebSocket HITL error ({e}), falling back to console")
+    
+    # Original console-based implementation continues here...
     args_for_hook_and_action = {
         "checkpoint_name": checkpoint_name,
         "context_message": context_message,
-        "data_for_review": data_for_review, # Pass current data to the hook
-        "_hitl_attempt": current_attempt # For display in the hook
+        "data_for_review": data_for_review,
+        "_hitl_attempt": current_attempt
     }
 
     async def hitl_action_on_approval(**kwargs) -> Dict[str, Any]:

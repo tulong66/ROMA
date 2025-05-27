@@ -98,10 +98,26 @@ class WebSocketService {
     this.socket.on('hitl_request', (request: HITLRequest) => {
       console.log('🤔 Received HITL request:', request)
       try {
+        // Add to HITL logs
+        useTaskGraphStore.getState().addHITLLog({
+          checkpoint_name: request.checkpoint_name,
+          context_message: request.context_message,
+          node_id: request.node_id,
+          current_attempt: request.current_attempt,
+          timestamp: request.timestamp || new Date().toISOString(),
+          request_id: request.request_id || Math.random().toString(36)
+        })
+        
+        // Also set for modal (when we implement it)
         useTaskGraphStore.getState().setHITLRequest(request)
       } catch (error) {
         console.error('❌ Error processing HITL request:', error)
       }
+    })
+
+    // Add test event handler for debugging
+    this.socket.on('hitl_test', (data) => {
+      console.log('🧪 Received HITL test event:', data)
     })
 
     this.socket.on('project_started', (data) => {

@@ -1,17 +1,17 @@
 {
   "projects": [
     {
-      "id": "11060c83-bd4b-41ac-a938-430aa69347a1",
+      "id": "c15beada-5c75-45a3-bdd5-168e727a5135",
       "title": "Write Me A Detailed Report About The Recent...",
       "description": "Write me a detailed report about the recent U.S. trade tariffs and their effect on the global economy",
-      "created_at": "2025-05-27T13:06:51.227254",
-      "updated_at": "2025-05-27T13:07:25.601790",
+      "created_at": "2025-05-27T16:02:09.590139",
+      "updated_at": "2025-05-27T16:02:27.684320",
       "status": "running",
       "goal": "Write me a detailed report about the recent U.S. trade tariffs and their effect on the global economy",
       "max_steps": 250,
-      "node_count": 29,
+      "node_count": 1,
       "completion_percentage": 0.0
     }
   ],
-  "current_project_id": "11060c83-bd4b-41ac-a938-430aa69347a1"
+  "current_project_id": "c15beada-5c75-45a3-bdd5-168e727a5135"
 }

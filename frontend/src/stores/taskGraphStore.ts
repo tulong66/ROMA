@@ -13,6 +13,15 @@ interface GraphFilters {
   showOnlySelected: boolean
 }
 
+interface HITLLog {
+  checkpoint_name: string
+  context_message: string
+  node_id: string
+  current_attempt: number
+  timestamp: string
+  request_id: string
+}
+
 interface TaskGraphState {
   // Data
   nodes: Record<string, TaskNode>
@@ -40,8 +49,11 @@ interface TaskGraphState {
   isComparisonPanelOpen: boolean
   
   // HITL State
-  currentHITLRequest?: HITLRequest
+  currentHITLRequest: HITLRequest | undefined
   isHITLModalOpen: boolean
+  
+  // HITL Logs
+  hitlLogs: HITLLog[]
   
   // Actions
   setData: (data: APIResponse) => void
@@ -95,9 +107,17 @@ interface TaskGraphState {
   }
   
   // HITL Actions
-  setHITLRequest: (request?: HITLRequest) => void
+  setHITLRequest: (request: HITLRequest | null) => void
+  clearHITLRequest: () => void
   respondToHITL: (response: HITLResponse) => void
   closeHITLModal: () => void
+  
+  // HITL Logs Actions
+  addHITLLog: (log: HITLLog) => void
+  clearHITLLogs: () => void
+  
+  // New properties
+  hitlRequest: HITLRequest | null
 }
 
 const defaultFilters: GraphFilters = {
@@ -137,6 +157,9 @@ export const useTaskGraphStore = create<TaskGraphState>()(
     
     currentHITLRequest: undefined,
     isHITLModalOpen: false,
+    
+    // HITL Logs
+    hitlLogs: [],
     
     // Actions
     setData: (data: APIResponse) => {
@@ -509,10 +532,23 @@ export const useTaskGraphStore = create<TaskGraphState>()(
     },
     
     // HITL Actions
-    setHITLRequest: (request?: HITLRequest) => set({
-      currentHITLRequest: request,
-      isHITLModalOpen: !!request,
-    }),
+    setHITLRequest: (request: HITLRequest | null) => {
+      console.log('🏪 Store: Setting HITL request:', request)
+      set({ 
+        hitlRequest: request,
+        currentHITLRequest: request,
+        isHITLModalOpen: request !== null
+      })
+    },
+    
+    clearHITLRequest: () => {
+      console.log('🏪 Store: Clearing HITL request')
+      set({ 
+        hitlRequest: null,
+        currentHITLRequest: undefined,
+        isHITLModalOpen: false
+      })
+    },
     
     respondToHITL: (response: HITLResponse) => {
       const { currentHITLRequest } = get()
@@ -529,5 +565,19 @@ export const useTaskGraphStore = create<TaskGraphState>()(
       currentHITLRequest: undefined,
       isHITLModalOpen: false,
     }),
+    
+    // HITL Logs Actions
+    addHITLLog: (log: HITLLog) => {
+      set((state) => ({
+        hitlLogs: [...state.hitlLogs, log].slice(-20) // Keep last 20 logs
+      }))
+    },
+    
+    clearHITLLogs: () => {
+      set({ hitlLogs: [] })
+    },
+    
+    // New properties
+    hitlRequest: null,
   }))
 ) 

@@ -9,7 +9,8 @@ import sys
 import uuid
 from datetime import datetime
 from agno.exceptions import StopAgentRun 
-from typing import Dict, Any
+from typing import Dict, Any, Optional
+import os
 
 # NEW: Import from our consolidated systems
 from sentientresearchagent.hierarchical_agent_framework.graph.task_graph import TaskGraph
@@ -39,6 +40,9 @@ from sentientresearchagent.simple_api import SimpleSentientAgent, quick_research
 import logging
 logging.basicConfig(level=logging.DEBUG)
 
+# Add this near the top of the file, after imports
+os.environ['SENTIENT_USE_WEBSOCKET_HITL'] = 'true'
+
 # --- Create Flask App ---
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your-secret-key-here'
@@ -52,6 +56,10 @@ socketio = SocketIO(
     logger=True,
     engineio_logger=True
 )
+
+# After socketio is created, register it for HITL
+from sentientresearchagent.hierarchical_agent_framework.utils.websocket_hitl_utils import set_socketio_instance
+set_socketio_instance(socketio)
 
 # NEW: Initialize all systems with proper integration
 def initialize_sentient_systems():
@@ -1671,6 +1679,13 @@ def get_project_config(project_id: str):
         if error_handler:
             error_handler.handle_error(e, component="get_project_config", reraise=False)
         return jsonify({"error": str(e)}), 500
+
+# Add WebSocket event handler for HITL responses
+@socketio.on('hitl_response')
+def handle_hitl_response_event(data):
+    """Handle HITL response from frontend"""
+    print(f"📥 Received HITL response: {data}")
+    handle_hitl_response(data)
 
 # --- Main Entry Point ---
 if __name__ == '__main__':
