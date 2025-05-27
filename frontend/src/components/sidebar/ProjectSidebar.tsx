@@ -29,10 +29,12 @@ import {
   Activity,
   ChevronLeft,
   ChevronRight,
-  Loader2
+  Loader2,
+  Settings
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from '@/components/ui/use-toast'
+import ProjectConfigPanel, { ProjectConfig } from '@/components/project/ProjectConfigPanel'
 
 const ProjectSidebar: React.FC = () => {
   const {
@@ -55,6 +57,37 @@ const ProjectSidebar: React.FC = () => {
   const [newProjectGoal, setNewProjectGoal] = useState('')
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [loadingProjectId, setLoadingProjectId] = useState<string | null>(null)
+  const [showConfigDialog, setShowConfigDialog] = useState(false)
+  const [newProjectConfig, setNewProjectConfig] = useState<ProjectConfig>({
+    llm: {
+      provider: 'openai',
+      model: 'gpt-4',
+      temperature: 0.7,
+      timeout: 30,
+      max_retries: 3
+    },
+    execution: {
+      max_concurrent_nodes: 3,
+      max_execution_steps: 250,
+      enable_hitl: true,
+      hitl_root_plan_only: false,
+      hitl_timeout_seconds: 300,
+      hitl_after_plan_generation: true,
+      hitl_after_modified_plan: true,
+      hitl_after_atomizer: false,
+      hitl_before_execute: false
+    },
+    cache: {
+      enabled: true,
+      ttl_seconds: 3600,
+      max_size: 1000,
+      cache_type: 'memory'
+    },
+    project: {
+      goal: '',
+      max_steps: 250
+    }
+  })
 
   // Load projects on mount
   useEffect(() => {
@@ -83,11 +116,50 @@ const ProjectSidebar: React.FC = () => {
 
     setCreatingProject(true)
     try {
-      const result = await projectService.createProject(newProjectGoal.trim())
+      const result = await projectService.createProjectWithConfig(
+        newProjectGoal.trim(),
+        {
+          ...newProjectConfig,
+          project: {
+            ...newProjectConfig.project,
+            goal: newProjectGoal.trim()
+          }
+        }
+      )
       addProject(result.project)
       setNewProjectGoal('')
       setIsDialogOpen(false)
       setLoading(true) // Start loading state for graph
+      
+      toast({
+        title: "Project Created",
+        description: result.message,
+      })
+    } catch (error) {
+      console.error('Failed to create project:', error)
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to create project",
+        variant: "destructive",
+      })
+    } finally {
+      setCreatingProject(false)
+    }
+  }
+
+  const handleConfiguredCreate = async () => {
+    if (!newProjectConfig.project.goal.trim()) return
+
+    setCreatingProject(true)
+    try {
+      const result = await projectService.createProjectWithConfig(
+        newProjectConfig.project.goal.trim(),
+        newProjectConfig
+      )
+      addProject(result.project)
+      setNewProjectConfig(prev => ({ ...prev, project: { ...prev.project, goal: '' } }))
+      setShowConfigDialog(false)
+      setLoading(true)
       
       toast({
         title: "Project Created",
@@ -235,6 +307,21 @@ const ProjectSidebar: React.FC = () => {
                       Cancel
                     </Button>
                     <Button
+                      variant="outline"
+                      onClick={() => {
+                        setNewProjectConfig(prev => ({
+                          ...prev,
+                          project: { ...prev.project, goal: newProjectGoal }
+                        }))
+                        setShowConfigDialog(true)
+                        setIsDialogOpen(false)
+                      }}
+                      disabled={!newProjectGoal.trim() || isCreatingProject}
+                    >
+                      <Settings className="h-4 w-4 mr-2" />
+                      Configure
+                    </Button>
+                    <Button
                       onClick={handleCreateProject}
                       disabled={!newProjectGoal.trim() || isCreatingProject}
                     >
@@ -244,7 +331,7 @@ const ProjectSidebar: React.FC = () => {
                           Creating...
                         </>
                       ) : (
-                        'Create Project'
+                        'Quick Create'
                       )}
                     </Button>
                   </div>
@@ -252,6 +339,22 @@ const ProjectSidebar: React.FC = () => {
               </DialogContent>
             </Dialog>
           </div>
+
+          {/* Configuration Dialog */}
+          <Dialog open={showConfigDialog} onOpenChange={setShowConfigDialog}>
+            <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Configure Project</DialogTitle>
+              </DialogHeader>
+              <ProjectConfigPanel
+                config={newProjectConfig}
+                onChange={setNewProjectConfig}
+                onSubmit={handleConfiguredCreate}
+                onCancel={() => setShowConfigDialog(false)}
+                isCreating={isCreatingProject}
+              />
+            </DialogContent>
+          </Dialog>
 
           {/* Current Project */}
           {currentProject && (

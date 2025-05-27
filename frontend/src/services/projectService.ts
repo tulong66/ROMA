@@ -1,4 +1,5 @@
 import type { Project } from '@/stores/projectStore'
+import type { ProjectConfig } from '@/components/project/ProjectConfigPanel'
 
 class ProjectService {
   private baseUrl = 'http://localhost:5000/api'
@@ -23,6 +24,27 @@ class ProjectService {
     if (!response.ok) {
       const error = await response.json()
       throw new Error(error.error || 'Failed to create project')
+    }
+    
+    return response.json()
+  }
+
+  async createProjectWithConfig(goal: string, config: ProjectConfig): Promise<{ project: Project, message: string }> {
+    const response = await fetch(`${this.baseUrl}/projects/configured`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ 
+        goal, 
+        config,
+        max_steps: config.project.max_steps 
+      }),
+    })
+    
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || 'Failed to create configured project')
     }
     
     return response.json()

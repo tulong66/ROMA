@@ -179,6 +179,9 @@ project_execution_engines: Dict[str, Any] = {}
 # NEW: Initialize a global simple agent instance for reuse
 simple_agent_instance = None
 
+# Add this near the top with other global variables
+project_configs: Dict[str, Any] = {}  # Store per-project configurations
+
 def get_simple_agent():
     """Get or create a SimpleSentientAgent instance optimized for API use"""
     global simple_agent_instance
@@ -255,6 +258,9 @@ def create_project_update_callback(project_id: str):
 def get_or_create_project_graph(project_id: str):
     """Get or create a project-specific task graph and execution engine"""
     if project_id not in project_graphs:
+        # Check if we have a custom config for this project
+        custom_config = project_configs.get(project_id, sentient_config)
+        
         # Create new instances for this project
         from sentientresearchagent.hierarchical_agent_framework.graph.task_graph import TaskGraph
         from sentientresearchagent.hierarchical_agent_framework.graph.state_manager import StateManager
@@ -266,8 +272,8 @@ def get_or_create_project_graph(project_id: str):
         project_task_graph = TaskGraph()
         project_state_manager = StateManager(project_task_graph)
         
-        # 🔥 FIX: Use centralized config approach for projects too
-        node_processor_config = create_node_processor_config_from_main_config(sentient_config)
+        # Use the custom config (or default if no custom config)
+        node_processor_config = create_node_processor_config_from_main_config(custom_config)
         
         project_hitl_coordinator = HITLCoordinator(config=node_processor_config)
         
@@ -277,7 +283,7 @@ def get_or_create_project_graph(project_id: str):
         project_node_processor = NodeProcessor(
             task_graph=project_task_graph,
             knowledge_store=live_knowledge_store,
-            config=sentient_config,
+            config=custom_config,  # Use custom config
             node_processor_config=node_processor_config
         )
         
@@ -286,7 +292,7 @@ def get_or_create_project_graph(project_id: str):
             state_manager=project_state_manager,
             knowledge_store=live_knowledge_store,
             hitl_coordinator=project_hitl_coordinator,
-            config=sentient_config,
+            config=custom_config,  # Use custom config
             node_processor=project_node_processor
         )
         
@@ -297,10 +303,12 @@ def get_or_create_project_graph(project_id: str):
             'execution_engine': project_execution_engine,
             'node_processor': project_node_processor,
             'hitl_coordinator': project_hitl_coordinator,
-            'update_callback': update_callback
+            'update_callback': update_callback,
+            'config': custom_config  # Store the config used
         }
         
-        print(f"✅ Created new execution environment for project {project_id} (HITL: {'enabled' if sentient_config.execution.enable_hitl else 'disabled'})")
+        config_type = "custom" if project_id in project_configs else "default"
+        print(f"✅ Created new execution environment for project {project_id} ({config_type} config, HITL: {'enabled' if custom_config.execution.enable_hitl else 'disabled'})")
     
     return project_graphs[project_id]
 
@@ -1383,6 +1391,286 @@ def run_simple_streaming_execution(goal: str, options: Dict[str, Any]):
             'message': f'Streaming execution failed: {str(e)}',
             'goal': goal
         })
+
+# Add this new endpoint after the existing create_project endpoint
+
+@app.route('/api/projects/configured', methods=['POST'])
+def create_configured_project():
+    """Create a new project with custom configuration"""
+    try:
+        data = request.get_json()
+        if not data or 'goal' not in data or 'config' not in data:
+            return jsonify({"error": "goal and config are required"}), 400
+        
+        goal = data['goal']
+        config_data = data['config']
+        max_steps = data.get('max_steps', sentient_config.execution.max_execution_steps)
+        
+        # Create a custom config for this project
+        project_config = create_project_config(config_data)
+        
+        # Create project
+        project = project_manager.create_project(goal, max_steps)
+        
+        # Store the custom config for this project
+        project_configs[project.id] = project_config
+        
+        # Start project execution with custom config in background
+        thread = threading.Thread(
+            target=run_configured_project_in_thread, 
+            args=(project.id, goal, max_steps, project_config)
+        )
+        thread.daemon = True
+        thread.start()
+        
+        return jsonify({
+            "project": project.to_dict(),
+            "message": "Configured project created and started",
+            "config_applied": True
+        }), 201
+        
+    except Exception as e:
+        error_handler = get_error_handler()
+        if error_handler:
+            error_handler.handle_error(e, component="create_configured_project", reraise=False)
+        return jsonify({"error": str(e)}), 500
+
+def create_project_config(config_data: Dict[str, Any]) -> 'SentientConfig':
+    """Create a SentientConfig from frontend configuration data"""
+    from sentientresearchagent.config import SentientConfig, LLMConfig, ExecutionConfig, CacheConfig
+    
+    try:
+        # Create config components
+        llm_config = LLMConfig(
+            provider=config_data['llm']['provider'],
+            model=config_data['llm']['model'],
+            temperature=config_data['llm']['temperature'],
+            max_tokens=config_data['llm'].get('max_tokens'),
+            timeout=config_data['llm']['timeout'],
+            max_retries=config_data['llm']['max_retries']
+        )
+        
+        execution_config = ExecutionConfig(
+            max_concurrent_nodes=config_data['execution']['max_concurrent_nodes'],
+            max_execution_steps=config_data['execution']['max_execution_steps'],
+            enable_hitl=config_data['execution']['enable_hitl'],
+            hitl_root_plan_only=config_data['execution']['hitl_root_plan_only'],
+            hitl_timeout_seconds=config_data['execution']['hitl_timeout_seconds'],
+            hitl_after_plan_generation=config_data['execution']['hitl_after_plan_generation'],
+            hitl_after_modified_plan=config_data['execution']['hitl_after_modified_plan'],
+            hitl_after_atomizer=config_data['execution']['hitl_after_atomizer'],
+            hitl_before_execute=config_data['execution']['hitl_before_execute']
+        )
+        
+        cache_config = CacheConfig(
+            enabled=config_data['cache']['enabled'],
+            ttl_seconds=config_data['cache']['ttl_seconds'],
+            max_size=config_data['cache']['max_size'],
+            cache_type=config_data['cache']['cache_type']
+        )
+        
+        # Create the main config
+        project_config = SentientConfig(
+            llm=llm_config,
+            execution=execution_config,
+            cache=cache_config,
+            logging=sentient_config.logging,  # Keep existing logging config
+            environment=sentient_config.environment
+        )
+        
+        print(f"✅ Created custom project config: {llm_config.provider}/{llm_config.model}, HITL: {execution_config.enable_hitl}")
+        return project_config
+        
+    except Exception as e:
+        print(f"❌ Failed to create project config: {e}")
+        # Fallback to default config
+        return sentient_config
+
+def run_configured_project_in_thread(project_id: str, goal: str, max_steps: int, config: 'SentientConfig'):
+    """Thread wrapper for async execution with custom configuration"""
+    print(f"🧵 Thread started for configured project: {project_id}")
+    try:
+        # Create new event loop for this thread
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(run_configured_project_cycle_async(project_id, goal, max_steps, config))
+    except Exception as e:
+        error_handler = get_error_handler()
+        if error_handler:
+            error_handler.handle_error(e, component="configured_project_thread", reraise=False)
+        else:
+            print(f"❌ Configured project thread error: {e}")
+            traceback.print_exc()
+    finally:
+        print(f"🏁 Configured project thread finished: {project_id}")
+
+async def run_configured_project_cycle_async(project_id: str, goal: str, max_steps: int, config: 'SentientConfig'):
+    """Run the project cycle with custom configuration"""
+    print(f"🎯 Initializing configured project: {project_id} - {goal}")
+    print(f"🔧 Using config: {config.llm.provider}/{config.llm.model}, temp={config.llm.temperature}, HITL={config.execution.enable_hitl}")
+    
+    try:
+        # Create project-specific components with custom config
+        from sentientresearchagent.hierarchical_agent_framework.graph.task_graph import TaskGraph
+        from sentientresearchagent.hierarchical_agent_framework.graph.state_manager import StateManager
+        from sentientresearchagent.hierarchical_agent_framework.graph.execution_engine import ExecutionEngine
+        from sentientresearchagent.hierarchical_agent_framework.node.node_processor import NodeProcessor
+        from sentientresearchagent.hierarchical_agent_framework.node.hitl_coordinator import HITLCoordinator
+        
+        project_task_graph = TaskGraph()
+        project_state_manager = StateManager(project_task_graph)
+        
+        # Use the custom config for this project
+        node_processor_config = create_node_processor_config_from_main_config(config)
+        
+        project_hitl_coordinator = HITLCoordinator(config=node_processor_config)
+        
+        # Create update callback for real-time sync
+        update_callback = create_project_update_callback(project_id)
+        
+        project_node_processor = NodeProcessor(
+            task_graph=project_task_graph,
+            knowledge_store=live_knowledge_store,
+            config=config,  # Use custom config
+            node_processor_config=node_processor_config
+        )
+        
+        project_execution_engine = ExecutionEngine(
+            task_graph=project_task_graph,
+            state_manager=project_state_manager,
+            knowledge_store=live_knowledge_store,
+            hitl_coordinator=project_hitl_coordinator,
+            config=config,  # Use custom config
+            node_processor=project_node_processor
+        )
+        
+        # Store the project-specific components with custom config
+        project_graphs[project_id] = {
+            'task_graph': project_task_graph,
+            'state_manager': project_state_manager,
+            'execution_engine': project_execution_engine,
+            'node_processor': project_node_processor,
+            'hitl_coordinator': project_hitl_coordinator,
+            'update_callback': update_callback,
+            'config': config  # Store the config used
+        }
+        
+        # Create real-time wrapper
+        realtime_engine = RealtimeExecutionWrapper(
+            project_id, 
+            project_execution_engine, 
+            update_callback
+        )
+        
+        # Check if this should be the current project
+        current_project = project_manager.get_current_project()
+        if not current_project:
+            project_manager.set_current_project(project_id)
+            should_display = True
+        else:
+            should_display = (current_project.id == project_id)
+        
+        # Update project status
+        project_manager.update_project(project_id, status='running')
+        
+        # Only sync to display if this is the current project
+        if should_display:
+            sync_project_to_display(project_id)
+        
+        # Run the complete project flow with custom config
+        print("🚀 Starting configured project flow...")
+        start_time = time.time()
+        
+        await realtime_engine.run_project_flow(root_goal=goal, max_steps=max_steps)
+        
+        total_time = time.time() - start_time
+        print(f"⏱️ Configured project execution took {total_time:.2f} seconds")
+        
+        # Update project status
+        project_manager.update_project(project_id, status='completed')
+        
+        # Final sync only if current project
+        if project_manager.get_current_project() and project_manager.get_current_project().id == project_id:
+            sync_project_to_display(project_id)
+        
+        # Always save final state
+        if hasattr(project_task_graph, 'to_visualization_dict'):
+            data = project_task_graph.to_visualization_dict()
+        else:
+            from sentientresearchagent.hierarchical_agent_framework.graph.graph_serializer import GraphSerializer
+            serializer = GraphSerializer(project_task_graph)
+            data = serializer.to_visualization_dict()
+        project_manager.save_project_state(project_id, data)
+        
+        print(f"✅ Configured project {project_id} completed")
+        
+    except Exception as e:
+        # Update project status to failed
+        project_manager.update_project(project_id, status='failed')
+        
+        error_handler = get_error_handler()
+        if error_handler:
+            error_handler.handle_error(e, component="configured_project_execution", reraise=False)
+        else:
+            print(f"❌ Configured project error: {e}")
+            traceback.print_exc()
+        
+        try:
+            # Sync error state only if current project
+            if project_manager.get_current_project() and project_manager.get_current_project().id == project_id:
+                sync_project_to_display(project_id)
+        except:
+            print("❌ Failed to broadcast error state")
+
+# Also add an endpoint to get project configuration
+@app.route('/api/projects/<project_id>/config', methods=['GET'])
+def get_project_config(project_id: str):
+    """Get the configuration used for a specific project"""
+    try:
+        if project_id not in project_configs:
+            return jsonify({"error": "Project configuration not found"}), 404
+        
+        config = project_configs[project_id]
+        
+        # Convert config to dictionary for JSON response
+        config_dict = {
+            "llm": {
+                "provider": config.llm.provider,
+                "model": config.llm.model,
+                "temperature": config.llm.temperature,
+                "max_tokens": config.llm.max_tokens,
+                "timeout": config.llm.timeout,
+                "max_retries": config.llm.max_retries
+            },
+            "execution": {
+                "max_concurrent_nodes": config.execution.max_concurrent_nodes,
+                "max_execution_steps": config.execution.max_execution_steps,
+                "enable_hitl": config.execution.enable_hitl,
+                "hitl_root_plan_only": config.execution.hitl_root_plan_only,
+                "hitl_timeout_seconds": config.execution.hitl_timeout_seconds,
+                "hitl_after_plan_generation": config.execution.hitl_after_plan_generation,
+                "hitl_after_modified_plan": config.execution.hitl_after_modified_plan,
+                "hitl_after_atomizer": config.execution.hitl_after_atomizer,
+                "hitl_before_execute": config.execution.hitl_before_execute
+            },
+            "cache": {
+                "enabled": config.cache.enabled,
+                "ttl_seconds": config.cache.ttl_seconds,
+                "max_size": config.cache.max_size,
+                "cache_type": config.cache.cache_type
+            }
+        }
+        
+        return jsonify({
+            "project_id": project_id,
+            "config": config_dict
+        })
+        
+    except Exception as e:
+        error_handler = get_error_handler()
+        if error_handler:
+            error_handler.handle_error(e, component="get_project_config", reraise=False)
+        return jsonify({"error": str(e)}), 500
 
 # --- Main Entry Point ---
 if __name__ == '__main__':
