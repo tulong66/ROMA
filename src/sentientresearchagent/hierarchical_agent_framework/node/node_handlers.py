@@ -458,8 +458,24 @@ class NeedsReplanNodeHandler(INodeHandler):
                     planner_input=input_for_replan, is_replan=True 
                 )
 
-            if hitl_outcome_replan["status"] != "approved":
-                logger.info(f"Node {node.task_id}: Replan not approved by user. Status: {node.status}")
+            if hitl_outcome_replan["status"] == "approved":
+                # Plan approved, proceed with applying the plan
+                pass
+            elif hitl_outcome_replan["status"] == "request_modification":
+                # User requested another modification - update the node for another replan cycle
+                logger.info(f"Node {node.task_id}: User requested another modification.")
+                modification_instructions = hitl_outcome_replan.get('modification_instructions', 'User requested modification.')
+                
+                # Update the node for another modification cycle
+                node.aux_data['original_plan_for_modification'] = new_plan_output
+                node.aux_data['user_modification_instructions'] = modification_instructions
+                node.replan_reason = f"User requested modification: {modification_instructions[:100]}..."
+                node.update_status(TaskStatus.NEEDS_REPLAN)
+                node.output_summary = "Plan requires user modification."
+                return
+            else:
+                # Handle other statuses (aborted, error, etc.)
+                logger.info(f"Node {node.task_id}: Replan not approved by user. Status: {hitl_outcome_replan['status']}")
                 if node.status not in [TaskStatus.FAILED, TaskStatus.CANCELLED, TaskStatus.NEEDS_REPLAN]:
                      node.update_status(TaskStatus.FAILED, error_msg="Replanning not approved by user.")
                 return
