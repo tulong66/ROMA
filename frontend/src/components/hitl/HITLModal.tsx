@@ -60,32 +60,21 @@ export function HITLModal() {
   // Add this effect to detect when modification is complete
   useEffect(() => {
     if (isWaitingForModification && request) {
-      // Listen for task graph changes that indicate modification is complete
-      const unsubscribe = useTaskGraphStore.subscribe(
-        (state) => state.nodes,
-        (nodes, prevNodes) => {
-          const nodeCount = Object.keys(nodes).length
-          const prevNodeCount = Object.keys(prevNodes || {}).length
-          
-          // If we're waiting for modification and new nodes appeared, modification is complete
-          if (nodeCount > prevNodeCount && nodeCount > 1) {
-            console.log('✅ Modification complete - new nodes detected:', { 
-              prevCount: prevNodeCount, 
-              newCount: nodeCount,
-              requestId: request.request_id 
-            })
-            
-            setIsWaitingForModification(false)
-            clearHITLRequest()
-            setSelectedAction(null)
-            setModificationInstructions('')
-          }
-        }
-      )
-      
-      return unsubscribe
+      // Check if we received a new HITL request with a different checkpoint
+      // This indicates the modification is complete and we have a new plan to review
+      if (request.checkpoint_name.includes('PostModifiedPlanReview')) {
+        console.log('✅ Modification complete - received modified plan review request:', { 
+          checkpoint: request.checkpoint_name,
+          requestId: request.request_id 
+        })
+        
+        setIsWaitingForModification(false)
+        setSelectedAction(null)
+        setModificationInstructions('')
+        // Don't clear the HITL request - we need to show the modified plan
+      }
     }
-  }, [isWaitingForModification, request, clearHITLRequest])
+  }, [isWaitingForModification, request?.checkpoint_name, request?.request_id])
 
   const handleClose = () => {
     console.log('🚪 User attempting to close modal:', { isSubmitting, isWaitingForModification })

@@ -436,10 +436,20 @@ class NeedsReplanNodeHandler(INodeHandler):
                 node.update_status(TaskStatus.FAILED, error_msg=f"{'PlanModifier' if is_modifier_agent else 'Planner'} failed to produce new plan.")
                 return
 
-            hitl_outcome_replan = await context.hitl_coordinator.review_plan_generation(
-                node=node, plan_output=new_plan_output,
-                planner_input=input_for_replan, is_replan=True 
-            )
+            # Check if this replan was triggered by user modification
+            is_user_modification = node.aux_data.get('user_modification_instructions') is not None
+
+            if is_user_modification:
+                # Use review_modified_plan for user-requested modifications
+                hitl_outcome_replan = await context.hitl_coordinator.review_modified_plan(
+                    node=node, modified_plan=new_plan_output, replan_attempt_count=node.replan_attempts
+                )
+            else:
+                # Use review_plan_generation for system-triggered replans
+                hitl_outcome_replan = await context.hitl_coordinator.review_plan_generation(
+                    node=node, plan_output=new_plan_output,
+                    planner_input=input_for_replan, is_replan=True 
+                )
 
             if hitl_outcome_replan["status"] != "approved":
                 logger.info(f"Node {node.task_id}: Replan not approved by user. Status: {node.status}")
