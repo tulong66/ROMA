@@ -215,25 +215,28 @@ class ReadyNodeHandler(INodeHandler):
             logger.info(f"Node {node.task_id} processing halted after atomizer/HITL attempt (atomizer returned None). Current node status: {node.status}")
             return
 
-        current_node_type_value = node.node_type 
-        if isinstance(current_node_type_value, str):
-            try:
-                node.node_type = NodeType[current_node_type_value.upper()] 
-                logger.debug(f"    ReadyNodeHandler: Coerced node.node_type from string '{current_node_type_value}' to enum {node.node_type}")
-            except KeyError:
-                logger.error(f"    ReadyNodeHandler: Invalid string value '{current_node_type_value}' for node.node_type. Cannot convert. Node {node.task_id} will fail.")
-                node.update_status(TaskStatus.FAILED, error_msg=f"Invalid node.node_type string: {current_node_type_value}")
+        # Update the node type based on atomizer's decision
+        if isinstance(action_to_take_after_atomizer, NodeType):
+            if node.node_type != action_to_take_after_atomizer:
+                logger.info(f"    ReadyNodeHandler: Updating node.node_type from {node.node_type} to {action_to_take_after_atomizer} based on atomizer decision")
+            node.node_type = action_to_take_after_atomizer
+        else:
+            # Handle edge cases where node_type might be a string
+            current_node_type_value = node.node_type 
+            if isinstance(current_node_type_value, str):
+                try:
+                    node.node_type = NodeType[current_node_type_value.upper()] 
+                    logger.debug(f"    ReadyNodeHandler: Coerced node.node_type from string '{current_node_type_value}' to enum {node.node_type}")
+                except KeyError:
+                    logger.error(f"    ReadyNodeHandler: Invalid string value '{current_node_type_value}' for node.node_type. Cannot convert. Node {node.task_id} will fail.")
+                    node.update_status(TaskStatus.FAILED, error_msg=f"Invalid node.node_type string: {current_node_type_value}")
+                    return
+            elif not isinstance(current_node_type_value, NodeType):
+                logger.error(f"    ReadyNodeHandler: node.node_type for {node.task_id} is not string or NodeType: {type(current_node_type_value)}. Node will fail.")
+                node.update_status(TaskStatus.FAILED, error_msg=f"Invalid node.node_type type: {type(current_node_type_value)}")
                 return
-        elif not isinstance(current_node_type_value, NodeType):
-             logger.warning(f"    ReadyNodeHandler: node.node_type for {node.task_id} is not string or NodeType: {type(current_node_type_value)}. Using atomizer's suggestion.")
-             if isinstance(action_to_take_after_atomizer, NodeType): 
-                 node.node_type = action_to_take_after_atomizer
-                 logger.info(f"    Set node.node_type to atomizer's suggestion: {node.node_type}")
-             else: 
-                 logger.error(f"    Atomizer's suggestion is also not a NodeType enum: {type(action_to_take_after_atomizer)}. Failing node {node.task_id}.")
-                 node.update_status(TaskStatus.FAILED, error_msg=f"Invalid node.node_type {type(current_node_type_value)} and atomizer suggestion {type(action_to_take_after_atomizer)}")
-                 return
         
+        # Check max planning depth
         if node.node_type == NodeType.PLAN and node.layer >= context.config.max_planning_layer:
             logger.warning(f"    ReadyNodeHandler: Max planning depth ({context.config.max_planning_layer}) reached for {node.task_id}. Forcing EXECUTE.")
             node.node_type = NodeType.EXECUTE 
