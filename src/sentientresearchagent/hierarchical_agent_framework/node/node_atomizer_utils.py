@@ -26,9 +26,10 @@ class NodeAtomizer:
     ) -> Optional[NodeType]:
         """
         Calls the Atomizer agent to determine if the node's goal is atomic.
-        Updates node.goal and node.node_type based on atomizer output.
-        Handles HITL after atomization if enabled.
         Returns the NodeType to proceed with (PLAN or EXECUTE), or None if HITL caused an abort/error.
+        
+        NOTE: The atomizer may suggest a refined goal, but we do NOT modify the original
+        node's goal to preserve the planner's intent and avoid convergence of similar goals.
         """
         knowledge_store = context.knowledge_store 
         task_graph = context.task_graph       
@@ -87,16 +88,22 @@ class NodeAtomizer:
                     return None
 
                 original_goal_for_hitl = atomizer_input_model.current_goal 
+                
+                # Log the atomizer's suggestion but DON'T modify the node's goal
                 if atomizer_output.updated_goal != node.goal:
-                    logger.info(f"    Atomizer updated goal for {node.task_id}: '{node.goal[:50]}...' -> '{atomizer_output.updated_goal[:50]}...'")
-                    node.goal = atomizer_output.updated_goal
+                    logger.info(f"    Atomizer suggested goal refinement for {node.task_id}: '{node.goal[:50]}...' -> '{atomizer_output.updated_goal[:50]}...'")
+                    logger.debug(f"    NOTE: Preserving original goal to maintain planner's intent")
+                
+                # Use the atomizer's suggested goal for HITL review, but don't apply it to the node
+                suggested_goal_for_hitl = atomizer_output.updated_goal
                 
                 action_to_take = NodeType.EXECUTE if atomizer_output.is_atomic else NodeType.PLAN
-                logger.info(f"    Atomizer proposed {node.task_id} as {action_to_take.name}.")
+                logger.info(f"    Atomizer determined {node.task_id} as {action_to_take.name}.")
 
                 hitl_outcome_atomizer = await self.hitl_coordinator.review_atomizer_output(
                     node=node, original_goal=original_goal_for_hitl,
-                    updated_goal=node.goal, is_atomic=atomizer_output.is_atomic, 
+                    updated_goal=suggested_goal_for_hitl,  # Show what atomizer suggested, but don't apply it
+                    is_atomic=atomizer_output.is_atomic, 
                     proposed_next_action=action_to_take.value, 
                     context_summary=get_context_summary(atomizer_input_model.relevant_context_items)
                 )

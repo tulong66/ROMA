@@ -1,17 +1,17 @@
 {
   "projects": [
     {
-      "id": "31c9013e-6b96-4347-8ebd-527a5fe7aa91",
-      "title": "Write Me A Detailed Report About The Recent...",
-      "description": "Write me a detailed report about the recent U.S. trade tariffs and their effect on the global economy",
-      "created_at": "2025-05-27T19:19:44.498004",
-      "updated_at": "2025-05-27T19:20:40.796720",
-      "status": "running",
-      "goal": "Write me a detailed report about the recent U.S. trade tariffs and their effect on the global economy",
+      "id": "5f729b6b-f8de-4a3c-921a-891dda607b95",
+      "title": "Give Me A Full Overview Of Sentient Foundation...",
+      "description": "give me a full overview of Sentient Foundation / Sentient Labs, the $1.2 billion start-up. i need info on founders, employees, sentiment on reddit, x, and other forums, what people are saying, and pro...",
+      "created_at": "2025-05-28T18:25:34.191260",
+      "updated_at": "2025-05-28T18:27:23.164247",
+      "status": "completed",
+      "goal": "give me a full overview of Sentient Foundation / Sentient Labs, the $1.2 billion start-up. i need info on founders, employees, sentiment on reddit, x, and other forums, what people are saying, and projected evaluation after TGE",
       "max_steps": 250,
-      "node_count": 1,
+      "node_count": 7,
       "completion_percentage": 0.0
     }
   ],
-  "current_project_id": "31c9013e-6b96-4347-8ebd-527a5fe7aa91"
+  "current_project_id": "5f729b6b-f8de-4a3c-921a-891dda607b95"
 }

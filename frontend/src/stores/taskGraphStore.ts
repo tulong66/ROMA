@@ -174,6 +174,39 @@ export const useTaskGraphStore = create<TaskGraphState>()(
       const newNodeCount = Object.keys(newNodes).length
       const newNodeIds = Object.keys(newNodes).sort()
       
+      // ENHANCED LOGGING: Log each node's goal
+      console.log('🏪 STORE: Node goals comparison:')
+      newNodeIds.forEach(id => {
+        const prevGoal = prevNodes[id]?.goal
+        const newGoal = newNodes[id]?.goal
+        if (prevGoal !== newGoal) {
+          console.log(`  📝 Node ${id} goal changed:`)
+          console.log(`     OLD: "${prevGoal}"`)
+          console.log(`     NEW: "${newGoal}"`)
+        } else if (newGoal) {
+          console.log(`  ✓ Node ${id} goal unchanged: "${newGoal?.substring(0, 50)}..."`)
+        }
+      })
+      
+      // Check for duplicate goals
+      const goalCounts = new Map<string, string[]>()
+      Object.entries(newNodes).forEach(([id, node]) => {
+        const goal = node.goal
+        if (!goalCounts.has(goal)) {
+          goalCounts.set(goal, [])
+        }
+        goalCounts.get(goal)!.push(id)
+      })
+      
+      console.log('🏪 STORE: Goal duplication check:')
+      goalCounts.forEach((nodeIds, goal) => {
+        if (nodeIds.length > 1) {
+          console.warn(`  ⚠️ DUPLICATE GOAL DETECTED: ${nodeIds.length} nodes have the same goal:`)
+          console.warn(`     Goal: "${goal?.substring(0, 100)}..."`)
+          console.warn(`     Nodes: ${nodeIds.join(', ')}`)
+        }
+      })
+      
       const actuallyDifferent = JSON.stringify(prevNodeIds) !== JSON.stringify(newNodeIds)
       
       console.log('🏪 STORE: Detailed comparison:')
