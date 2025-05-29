@@ -9,6 +9,10 @@ __pycache__/
 .agent_projects/*
 .agent_cache/*
 
+**/__pycache__/
+**/.agent_cache/
+**/.agent_projects/
+
 # Distribution / packaging
 .Python
 build/
