@@ -108,44 +108,79 @@ class AggregatorAdapter(LlmApiAdapter[AgentTaskInput, str]): # Output is typical
     """Adapter for Agno agents performing aggregation of sub-task results."""
 
     def _format_context_for_prompt(self, context_items: List[ContextItem]) -> str:
-        logger.debug(f"  AggregatorAdapter ({self.agent_name}): Formatting context with custom (less/no truncation) logic.")
-        if not context_items:
-            return "No relevant context (child task outputs) was provided."
-
-        context_parts = ["Context from Child Tasks (Results):"]
-        for i, item in enumerate(context_items):
-            content_str = ""
-            if isinstance(item.content, CustomSearcherOutput): # Example of specific handling
-                content_str = item.content.output_text_with_citations # Get the richest text part
-            elif isinstance(item.content, str):
-                content_str = item.content
-            elif hasattr(item.content, 'model_dump_json'): # For other Pydantic models
-                try:
-                    # Try to get a clean text representation if available
-                    if hasattr(item.content, "text_content_for_llm"):
-                         content_str = item.content.text_content_for_llm()
-                    elif hasattr(item.content, "text"): # common attribute name
-                         content_str = item.content.text
-                    else: # Fallback to JSON
-                         content_str = item.content.model_dump_json(indent=2) 
-                except Exception:
-                    content_str = str(item.content) # Fallback
-            else:
-                content_str = str(item.content)
-
-            # For Aggregator, drastically increase or remove individual item truncation
-            # MAX_LEN_AGGREGATOR_ITEM = 100000 # Or even higher, or remove truncation
-            # if len(content_str) > MAX_LEN_AGGREGATOR_ITEM:
-            #     logger.warning(f"    AggregatorAdapter: Context item from '{item.source_task_id}' for '{self.agent_name}' still truncated from {len(content_str)} to {MAX_LEN_AGGREGATOR_ITEM} chars.")
-            #     content_str = content_str[:MAX_LEN_AGGREGATOR_ITEM] + f"... (truncated, original length {len(content_str)})"
-            
-            # No individual truncation, but be wary of total prompt size for the LLM
-            
-            context_parts.append(f"--- Child Task Result {i+1} (Source: '{item.source_task_id}', Goal: {item.source_task_goal[:100]}{'...' if len(item.source_task_goal)>100 else ''}) ---")
-            context_parts.append(content_str)
-            context_parts.append(f"--- End Child Task Result {i+1} ---")
+        """Enhanced formatting that handles full content intelligently."""
+        logger.debug(f"  AggregatorAdapter ({self.agent_name}): Formatting {len(context_items)} child results with enhanced logic.")
         
-        return "\n\n".join(context_parts)
+        if not context_items:
+            return "No child task results were provided."
+
+        context_parts = ["Child Task Results:"]
+        
+        # Group by processing method for better organization
+        full_content_items = []
+        summarized_items = []
+        
+        for item in context_items:
+            if "full" in item.content_type_description:
+                full_content_items.append(item)
+            else:
+                summarized_items.append(item)
+        
+        # Process full content items first (most detailed)
+        if full_content_items:
+            context_parts.append(f"\n=== Complete Results ({len(full_content_items)} items) ===")
+            for i, item in enumerate(full_content_items):
+                content_str = self._extract_content_string(item.content)
+                
+                context_parts.extend([
+                    f"\n--- Child Task {i+1}: {item.source_task_goal[:100]}{'...' if len(item.source_task_goal) > 100 else ''} ---",
+                    f"Task ID: {item.source_task_id}",
+                    f"Content ({len(content_str)} chars):",
+                    content_str,
+                    f"--- End Child Task {i+1} ---"
+                ])
+        
+        # Process summarized items
+        if summarized_items:
+            context_parts.append(f"\n=== Detailed Summaries ({len(summarized_items)} items) ===")
+            for i, item in enumerate(summarized_items):
+                content_str = self._extract_content_string(item.content)
+                
+                context_parts.extend([
+                    f"\n--- Child Task Summary {i+1}: {item.source_task_goal[:100]}{'...' if len(item.source_task_goal) > 100 else ''} ---",
+                    f"Task ID: {item.source_task_id}",
+                    f"Detailed Summary ({len(content_str)} chars):",
+                    content_str,
+                    f"--- End Summary {i+1} ---"
+                ])
+        
+        # Add synthesis guidance
+        context_parts.extend([
+            "\n=== Synthesis Instructions ===",
+            "You have received the complete or detailed results from all child tasks.",
+            "Synthesize these into a coherent, comprehensive response that fulfills your parent goal.",
+            "Preserve important details, data, and insights from the child results.",
+            "Create a well-structured, professional output appropriate for your task type."
+        ])
+        
+        return "\n".join(context_parts)
+
+    def _extract_content_string(self, content: Any) -> str:
+        """Extract string content from various content types."""
+        if isinstance(content, str):
+            return content
+        elif hasattr(content, 'model_dump_json'):
+            try:
+                if hasattr(content, "text_content_for_llm"):
+                    return content.text_content_for_llm()
+                elif hasattr(content, "text"):
+                    return content.text
+                else:
+                    return content.model_dump_json(indent=2)
+            except Exception:
+                return str(content)
+        else:
+            return str(content)
 
     async def process(self, node: TaskNode, agent_task_input: AgentTaskInput) -> str:
         """
