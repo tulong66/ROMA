@@ -13,6 +13,7 @@ from sentientresearchagent.hierarchical_agent_framework.context.planner_context_
 from pydantic import BaseModel
 
 from .inode_handler import INodeHandler, ProcessorContext
+from ..context.enhanced_context_builder import resolve_context_for_agent_with_parents
 
 
 class ReadyPlanHandler(INodeHandler):
@@ -52,13 +53,25 @@ class ReadyPlanHandler(INodeHandler):
             adapter_used_name = getattr(planner_adapter, 'agent_name', type(planner_adapter).__name__)
             logger.info(f"    ReadyPlanHandler: Using PLAN adapter '{adapter_used_name}' for node {node.task_id}")
 
-            current_planner_input_model = resolve_input_for_planner_agent(
-                current_task_id=node.task_id, knowledge_store=context.knowledge_store,
-                overall_objective=current_overall_objective, planning_depth=node.layer,
-                replan_details=None, global_constraints=getattr(context.task_graph, 'global_constraints', [])
+            context_builder_agent_name = agent_name_at_entry
+            if context.current_agent_blueprint and node.task_type:
+                specific_executor_name = context.current_agent_blueprint.executor_adapter_names.get(node.task_type)
+                if specific_executor_name:
+                    context_builder_agent_name = specific_executor_name
+                elif not context_builder_agent_name and context.current_agent_blueprint.default_node_agent_name_prefix:
+                    context_builder_agent_name = f"{context.current_agent_blueprint.default_node_agent_name_prefix}Executor"
+            
+            agent_task_input_model = resolve_context_for_agent_with_parents(
+                current_task_id=node.task_id,
+                current_goal=node.goal,
+                current_task_type=node.task_type.value,
+                knowledge_store=context.knowledge_store,
+                agent_name=context_builder_agent_name,
+                overall_project_goal=context.task_graph.overall_project_goal
             )
-            node.input_payload_dict = current_planner_input_model.model_dump()
-            plan_output: Optional[PlanOutput] = await planner_adapter.process(node, current_planner_input_model)
+            formatted_context = agent_task_input_model.formatted_full_context
+            node.input_payload_dict = agent_task_input_model.model_dump()
+            plan_output: Optional[PlanOutput] = await planner_adapter.process(node, agent_task_input_model)
 
             if plan_output is None or not plan_output.sub_tasks:
                 if node.status not in [TaskStatus.CANCELLED, TaskStatus.FAILED]:
@@ -73,7 +86,7 @@ class ReadyPlanHandler(INodeHandler):
                 return
 
             hitl_outcome_plan = await context.hitl_coordinator.review_plan_generation(
-                node=node, plan_output=plan_output, planner_input=current_planner_input_model
+                node=node, plan_output=plan_output, planner_input=agent_task_input_model
             )
 
             if hitl_outcome_plan["status"] == "request_modification":
@@ -120,10 +133,12 @@ class ReadyExecuteHandler(INodeHandler):
                 elif not context_builder_agent_name and context.current_agent_blueprint.default_node_agent_name_prefix:
                     context_builder_agent_name = f"{context.current_agent_blueprint.default_node_agent_name_prefix}Executor"
             
-            agent_task_input_model = resolve_context_for_agent(
-                current_task_id=node.task_id, current_goal=node.goal,
+            agent_task_input_model = resolve_context_for_agent_with_parents(
+                current_task_id=node.task_id, 
+                current_goal=node.goal,
                 current_task_type=node.task_type.value if isinstance(node.task_type, TaskType) else str(node.task_type),
-                knowledge_store=context.knowledge_store, agent_name=context_builder_agent_name or "default_executor",
+                knowledge_store=context.knowledge_store, 
+                agent_name=context_builder_agent_name or "default_executor",
                 overall_project_goal=context.task_graph.overall_project_goal
             )
             node.input_payload_dict = agent_task_input_model.model_dump()

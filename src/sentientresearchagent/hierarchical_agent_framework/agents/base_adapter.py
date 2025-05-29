@@ -91,6 +91,17 @@ class LlmApiAdapter(BaseAdapter, Generic[InputType, OutputType]):
         
         return "\n\n".join(context_parts)
 
+    def _get_task_specific_instructions(self, task_type: str) -> str:
+        """Get specific instructions based on task type."""
+        instructions = {
+            "PLAN": "Generate a detailed plan with sub-tasks. Each sub-task should have a clear goal, appropriate task_type, and node_type.",
+            "WRITE": "Write comprehensive, well-structured content that addresses the goal. Include relevant examples and citations when appropriate.",
+            "SEARCH": "Conduct thorough research using available tools. Provide detailed findings with sources and verification.",
+            "THINK": "Perform deep analysis and reasoning. Present logical conclusions with supporting evidence.",
+            "AGGREGATE": "Synthesize information from all provided sources into a coherent summary. Highlight key insights and connections."
+        }
+        return instructions.get(task_type.upper(), "Complete the task according to the specified goal and requirements.")
+
     def _prepare_agno_run_arguments(self, agent_task_input: InputType) -> str:
         """
         Prepares the user message string for self.agno_agent.arun()
@@ -147,19 +158,38 @@ class LlmApiAdapter(BaseAdapter, Generic[InputType, OutputType]):
             return formatted_user_message_string
 
         elif isinstance(agent_task_input, AgentTaskInput):
-            prompt_template_to_use = INPUT_PROMPT
-            if "aggregator" in self.agent_name.lower():
-                prompt_template_to_use = AGGREGATOR_PROMPT
+            # 🔥 USE THE ENHANCED FORMATTED CONTEXT!
+            if hasattr(agent_task_input, 'formatted_full_context') and agent_task_input.formatted_full_context:
+                # Use the new enhanced hierarchical context
+                logger.info(f"🔥 Using enhanced hierarchical context for {self.agent_name}")
+                
+                prompt_template_to_use = INPUT_PROMPT
+                if "aggregator" in self.agent_name.lower():
+                    prompt_template_to_use = AGGREGATOR_PROMPT
 
-            text_context_str = self._format_context_for_prompt(agent_task_input.relevant_context_items)
-            overall_goal_for_template = agent_task_input.overall_project_goal or "Not specified"
+                overall_goal_for_template = agent_task_input.overall_project_goal or "Not specified"
+                
+                main_user_message_content = prompt_template_to_use.format(
+                    input_goal=agent_task_input.current_goal,
+                    context_str=agent_task_input.formatted_full_context,  # 🔥 USE THE NEW CONTEXT!
+                    overall_project_goal=overall_goal_for_template
+                )
+            else:
+                # Fallback to old method if no enhanced context
+                logger.info(f"🔥 Falling back to old context method for {self.agent_name}")
+                prompt_template_to_use = INPUT_PROMPT
+                if "aggregator" in self.agent_name.lower():
+                    prompt_template_to_use = AGGREGATOR_PROMPT
+
+                text_context_str = self._format_context_for_prompt(agent_task_input.relevant_context_items)
+                overall_goal_for_template = agent_task_input.overall_project_goal or "Not specified"
+                
+                main_user_message_content = prompt_template_to_use.format(
+                    input_goal=agent_task_input.current_goal,
+                    context_str=text_context_str,
+                    overall_project_goal=overall_goal_for_template
+                )
             
-            main_user_message_content = prompt_template_to_use.format(
-                input_goal=agent_task_input.current_goal,
-                context_str=text_context_str,
-                overall_project_goal=overall_goal_for_template
-            )
-            # logger.debug(f"    Adapter '{self.agent_name}': FINAL PROMPT being sent to Agno Agent:\n{main_user_message_content}") # Keep logging minimal here
             return main_user_message_content
         
         elif isinstance(agent_task_input, PlanModifierInput):

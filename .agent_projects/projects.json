@@ -1,17 +1,17 @@
 {
   "projects": [
     {
-      "id": "a46efc72-202e-44b4-afc5-a4f1594964e6",
+      "id": "34878872-e7fa-4ec2-8ecb-f54048034ac2",
       "title": "Give Me A Full Overview Of Sentient Foundation...",
       "description": "give me a full overview of Sentient Foundation / Sentient Labs, the $1.2 billion start-up. i need info on founders, employees, sentiment on reddit, x, and other forums, what people are saying, and pro...",
-      "created_at": "2025-05-28T18:37:34.883812",
-      "updated_at": "2025-05-28T18:39:05.846006",
+      "created_at": "2025-05-28T20:04:59.326733",
+      "updated_at": "2025-05-28T20:06:35.189187",
       "status": "running",
       "goal": "give me a full overview of Sentient Foundation / Sentient Labs, the $1.2 billion start-up. i need info on founders, employees, sentiment on reddit, x, and other forums, what people are saying, and projected evaluation after TGE",
       "max_steps": 250,
-      "node_count": 36,
+      "node_count": 41,
       "completion_percentage": 0.0
     }
   ],
-  "current_project_id": "a46efc72-202e-44b4-afc5-a4f1594964e6"
+  "current_project_id": "34878872-e7fa-4ec2-8ecb-f54048034ac2"
 }

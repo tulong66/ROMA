@@ -39,6 +39,33 @@ class ContextItem(BaseModel):
     # timestamp_created: Optional[datetime] = None # When the context item was generated
     # modality: Optional[str] = None # For future multi-modal: 'text', 'image', 'audio'
 
+class ParentContextNode(BaseModel):
+    """Represents context from a parent node in the hierarchy."""
+    task_id: str
+    goal: str
+    layer: int
+    task_type: str
+    
+    # Key outputs and reasoning from parent
+    result_summary: Optional[str] = None
+    key_insights: Optional[str] = None
+    constraints_identified: Optional[str] = None
+    requirements_specified: Optional[str] = None
+    
+    # Planning context if parent was a PLAN node
+    planning_reasoning: Optional[str] = None
+    coordination_notes: Optional[str] = None
+    
+    timestamp_completed: Optional[str] = None
+
+class ParentHierarchyContext(BaseModel):
+    """Structured context from parent hierarchy, formatted for LLM consumption."""
+    current_position: str = Field(..., description="Description of where this task sits in the hierarchy")
+    parent_chain: List[ParentContextNode] = Field(default_factory=list, description="Ordered list from immediate parent to root")
+    formatted_context: str = Field(..., description="LLM-friendly formatted text of the parent context")
+    priority_level: str = Field(default="medium", description="Priority level: critical, high, medium, low")
+
+# Enhanced AgentTaskInput
 class AgentTaskInput(BaseModel):
     """Structured input provided to an agent for processing a task."""
     current_task_id: str
@@ -47,6 +74,12 @@ class AgentTaskInput(BaseModel):
     
     overall_project_goal: Optional[str] = None
     relevant_context_items: List[ContextItem] = Field(default_factory=list)
+    
+    # 🔥 NEW: Parent hierarchy context for downward flow
+    parent_hierarchy_context: Optional[ParentHierarchyContext] = None
+    
+    # Enhanced context formatting
+    formatted_full_context: Optional[str] = Field(None, description="Complete formatted context for LLM")
     
     # Configuration or agent-specific parameters can also be passed here
     # agent_config: Optional[Dict[str, Any]] = None
