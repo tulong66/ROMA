@@ -25,7 +25,7 @@ try:
 
     # Import configuration system
     from .config import load_config, SentientConfig
-    from .config_utils import auto_load_config, validate_config
+    from .config_utils import auto_load_config, validate_config, find_config_file
 
     # Import supporting systems
     from .cache.cache_manager import init_cache_manager
@@ -38,38 +38,6 @@ except ImportError as e:
     logger.error(f"Framework components not available: {e}")
     FRAMEWORK_AVAILABLE = False
 
-
-def find_config_file() -> Optional[Path]:
-    """
-    Find configuration file using comprehensive search paths.
-    
-    Search order:
-    1. ./sentient.yaml (primary)
-    2. ./config.yaml (common alternative)
-    3. ./sentient.yml
-    4. ~/.sentient/config.yaml
-    5. ~/.sentient/config.yml
-    6. /etc/sentient/config.yaml
-    
-    Returns:
-        Path to configuration file if found, None otherwise
-    """
-    search_paths = [
-        Path("./sentient.yaml"),      # Primary config file
-        Path("./config.yaml"),        # Common alternative
-        Path("./sentient.yml"),
-        Path.home() / ".sentient" / "config.yaml",
-        Path.home() / ".sentient" / "config.yml",
-        Path("/etc/sentient/config.yaml"),
-    ]
-    
-    for path in search_paths:
-        if path.exists() and path.is_file():
-            logger.info(f"Found configuration file: {path}")
-            return path
-    
-    logger.warning("No configuration file found, will use environment variables and defaults")
-    return None
 
 
 def load_unified_config(config_path: Optional[Union[str, Path]] = None) -> SentientConfig:

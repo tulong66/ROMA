@@ -11,18 +11,22 @@ from sentientresearchagent.config import SentientConfig, load_config
 
 def find_config_file() -> Optional[Path]:
     """
-    Find configuration file using standard search paths:
-    1. ./sentient.yaml
-    2. ./sentient.yml  
-    3. ~/.sentient/config.yaml
-    4. ~/.sentient/config.yml
-    5. /etc/sentient/config.yaml
+    Find configuration file using comprehensive search paths.
+    
+    Search order:
+    1. ./sentient.yaml (primary)
+    2. ./config.yaml (common alternative)
+    3. ./sentient.yml
+    4. ~/.sentient/config.yaml
+    5. ~/.sentient/config.yml
+    6. /etc/sentient/config.yaml
     
     Returns:
         Path to configuration file if found, None otherwise
     """
     search_paths = [
-        Path("./sentient.yaml"),
+        Path("./sentient.yaml"),      # Primary config file
+        Path("./config.yaml"),        # Common alternative
         Path("./sentient.yml"),
         Path.home() / ".sentient" / "config.yaml",
         Path.home() / ".sentient" / "config.yml",
@@ -34,6 +38,7 @@ def find_config_file() -> Optional[Path]:
             logger.info(f"Found configuration file: {path}")
             return path
     
+    logger.warning("No configuration file found, will use environment variables and defaults")
     return None
 
 def auto_load_config() -> SentientConfig:
