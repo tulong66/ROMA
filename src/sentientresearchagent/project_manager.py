@@ -177,6 +177,14 @@ class ProjectManager:
             return self.projects.get(self.current_project_id)
         return None
     
+    def get_current_project_id(self) -> Optional[str]:
+        """Get the current active project ID"""
+        return self.current_project_id
+    
+    def switch_project(self, project_id: str) -> bool:
+        """Switch to a different project (alias for set_current_project)"""
+        return self.set_current_project(project_id)
+    
     def save_project_state(self, project_id: str, task_graph_data: Dict[str, Any]):
         """Save the current task graph state for a project"""
         try:

@@ -30,7 +30,12 @@ import {
   ChevronLeft,
   ChevronRight,
   Loader2,
-  Settings
+  Settings,
+  Download,
+  FileText,
+  Save,
+  Clock,
+  Play
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from '@/components/ui/use-toast'
@@ -52,12 +57,13 @@ const ProjectSidebar: React.FC = () => {
     getRecentProjects
   } = useProjectStore()
 
-  const { setLoading } = useTaskGraphStore()
+  const { setLoading, nodes } = useTaskGraphStore()
   
   const [newProjectGoal, setNewProjectGoal] = useState('')
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [loadingProjectId, setLoadingProjectId] = useState<string | null>(null)
   const [showConfigDialog, setShowConfigDialog] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
   const [newProjectConfig, setNewProjectConfig] = useState<ProjectConfig>({
     llm: {
       provider: 'openai',
@@ -69,6 +75,8 @@ const ProjectSidebar: React.FC = () => {
     execution: {
       max_concurrent_nodes: 3,
       max_execution_steps: 250,
+      max_recursion_depth: 5,
+      task_timeout_seconds: 300,
       enable_hitl: true,
       hitl_root_plan_only: false,
       hitl_timeout_seconds: 300,
@@ -93,6 +101,138 @@ const ProjectSidebar: React.FC = () => {
   useEffect(() => {
     loadProjects()
   }, [])
+
+  // Helper function to find the root node
+  const getRootNode = () => {
+    return Object.values(nodes).find(node => node.layer === 0 && !node.parent_node_id)
+  }
+
+  // Helper function to check if root node is completed and has results
+  const isRootNodeCompleted = () => {
+    const rootNode = getRootNode()
+    return rootNode && rootNode.status === 'DONE' && (rootNode.full_result || rootNode.output_summary)
+  }
+
+  // Function to download root node result (client-side)
+  const downloadRootNodeResult = async () => {
+    const rootNode = getRootNode()
+    if (!rootNode) {
+      toast({
+        title: "Error",
+        description: "No root node found",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      // Determine the best content to download
+      let content = ''
+      let filename = 'project-result'
+      let mimeType = 'text/plain'
+
+      if (rootNode.full_result?.output_text_with_citations) {
+        content = rootNode.full_result.output_text_with_citations
+        filename = 'project-result.md'
+        mimeType = 'text/markdown'
+      } else if (rootNode.full_result?.output_text) {
+        content = rootNode.full_result.output_text
+        filename = 'project-result.md'
+        mimeType = 'text/markdown'
+      } else if (rootNode.full_result) {
+        content = JSON.stringify(rootNode.full_result, null, 2)
+        filename = 'project-result.json'
+        mimeType = 'application/json'
+      } else if (rootNode.output_summary) {
+        content = rootNode.output_summary
+        filename = 'project-result.txt'
+        mimeType = 'text/plain'
+      }
+
+      if (!content) {
+        toast({
+          title: "Error",
+          description: "No result content found to download",
+          variant: "destructive",
+        })
+        return
+      }
+
+      // Add project metadata to the content
+      const currentProject = getCurrentProject()
+      const metadata = `# Project: ${currentProject?.title || 'Untitled'}\n\n**Goal:** ${rootNode.goal}\n\n**Completed:** ${rootNode.timestamp_completed ? new Date(rootNode.timestamp_completed).toLocaleString() : 'Unknown'}\n\n---\n\n`
+      
+      const finalContent = mimeType === 'text/markdown' ? metadata + content : content
+
+      // Create and download the file
+      const blob = new Blob([finalContent], { type: mimeType })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+
+      toast({
+        title: "Download Complete",
+        description: `Project result downloaded as ${filename}`,
+      })
+    } catch (error) {
+      console.error('Failed to download result:', error)
+      toast({
+        title: "Error",
+        description: "Failed to download project result",
+        variant: "destructive",
+      })
+    }
+  }
+
+  // Manual save function
+  const handleSaveResults = async () => {
+    const currentProject = getCurrentProject()
+    if (!currentProject) return
+
+    setIsSaving(true)
+    try {
+      const result = await projectService.saveProjectResults(currentProject.id)
+      toast({
+        title: "Results Saved",
+        description: result.message || "Project results have been saved successfully",
+      })
+    } catch (error) {
+      console.error('Failed to save results:', error)
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to save results",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  // Download from server function
+  const handleDownloadFromServer = async (format: 'markdown' | 'json' | 'html' = 'markdown') => {
+    const currentProject = getCurrentProject()
+    if (!currentProject) return
+
+    try {
+      await projectService.downloadProjectReport(currentProject.id, format)
+      toast({
+        title: "Download Complete",
+        description: `Project report downloaded as ${format}`,
+      })
+    } catch (error) {
+      console.error('Failed to download from server:', error)
+      toast({
+        title: "Feature Not Available",
+        description: "Server-side download requires backend support. Use the client-side download instead.",
+        variant: "destructive",
+      })
+    }
+  }
 
   const loadProjects = async () => {
     try {
@@ -251,6 +391,8 @@ const ProjectSidebar: React.FC = () => {
 
   const recentProjects = getRecentProjects()
   const currentProject = getCurrentProject()
+  const rootNodeCompleted = isRootNodeCompleted()
+  const hasNodes = Object.keys(nodes).length > 0
 
   return (
     <div className={cn(
@@ -356,6 +498,45 @@ const ProjectSidebar: React.FC = () => {
             </DialogContent>
           </Dialog>
 
+          {/* Project Actions */}
+          {currentProject && hasNodes && (
+            <div className="px-4 pb-4 space-y-2">
+              {/* Save Results Button */}
+              <Button
+                onClick={handleSaveResults}
+                className="w-full"
+                size="sm"
+                variant="outline"
+                disabled={isSaving}
+              >
+                {isSaving ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Save className="h-4 w-4 mr-2" />
+                    Save Results
+                  </>
+                )}
+              </Button>
+
+              {/* Download Buttons */}
+              {rootNodeCompleted && (
+                <Button
+                  onClick={downloadRootNodeResult}
+                  className="w-full"
+                  size="sm"
+                  variant="outline"
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Download Final Report
+                </Button>
+              )}
+            </div>
+          )}
+
           {/* Current Project */}
           {currentProject && (
             <div className="px-4 pb-4">
@@ -429,22 +610,25 @@ const ProjectSidebar: React.FC = () => {
                       </div>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="opacity-0 group-hover:opacity-100 transition-opacity ml-2"
-                          >
+                          <div className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
                             <MoreVertical className="h-4 w-4" />
-                          </Button>
+                          </div>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onClick={(e) => handleDeleteProject(project.id, e)}
-                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                          >
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            Delete
+                          <DropdownMenuItem onClick={() => handleSwitchProject(project.id)}>
+                            <Play className="mr-2 h-4 w-4" />
+                            Switch to Project
                           </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleDeleteProject(project.id)}>
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Delete Project
+                          </DropdownMenuItem>
+                          {project.has_saved_results && (
+                            <DropdownMenuItem onClick={() => handleDownloadReport(project.id)}>
+                              <Download className="mr-2 h-4 w-4" />
+                              Download Report
+                            </DropdownMenuItem>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>

@@ -64,6 +64,7 @@ class ExecutionConfig(BaseModel):
     retry_delay_seconds: float = 5.0
     rate_limit_rpm: int = 60  # requests per minute
     max_execution_steps: int = 250
+    max_recursion_depth: int = 5  # NEW: Maximum recursion depth for task decomposition
     
     # HITL (Human-in-the-Loop) Configuration - Centralized
     enable_hitl: bool = True  # Master HITL switch
@@ -84,6 +85,14 @@ class ExecutionConfig(BaseModel):
             raise ValueError('max_concurrent_nodes must be at least 1')
         if v > 20:
             logger.warning(f'High concurrency ({v}) may overwhelm LLM APIs')
+        return v
+    
+    @validator('max_recursion_depth')
+    def validate_recursion_depth(cls, v):
+        if v < 1:
+            raise ValueError('max_recursion_depth must be at least 1')
+        if v > 10:
+            logger.warning(f'High recursion depth ({v}) may cause very deep task hierarchies')
         return v
     
     @validator('hitl_after_plan_generation', 'hitl_after_modified_plan', 'hitl_after_atomizer', 'hitl_before_execute')

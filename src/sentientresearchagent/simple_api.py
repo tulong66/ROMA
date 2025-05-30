@@ -91,6 +91,9 @@ def create_node_processor_config_from_main_config(main_config: "SentientConfig")
     
     node_config = NodeProcessorConfig()
     
+    # NEW: Set max_planning_layer from max_recursion_depth
+    node_config.max_planning_layer = getattr(main_config.execution, 'max_recursion_depth', 5)
+    
     # Map centralized config to NodeProcessorConfig
     if main_config.execution.enable_hitl:
         if main_config.execution.hitl_root_plan_only:
@@ -118,7 +121,8 @@ def create_node_processor_config_from_main_config(main_config: "SentientConfig")
     # NEW: Store the root_plan_only flag for HITLCoordinator to use
     node_config.hitl_root_plan_only = getattr(main_config.execution, 'hitl_root_plan_only', False)
     
-    logger.debug(f"NodeProcessorConfig created: plan_gen={node_config.enable_hitl_after_plan_generation}, "
+    logger.debug(f"NodeProcessorConfig created: max_planning_layer={node_config.max_planning_layer}, "
+                f"plan_gen={node_config.enable_hitl_after_plan_generation}, "
                 f"modified_plan={node_config.enable_hitl_after_modified_plan}, "
                 f"atomizer={node_config.enable_hitl_after_atomizer}, "
                 f"before_exec={node_config.enable_hitl_before_execute}, "

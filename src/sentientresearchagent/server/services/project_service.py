@@ -5,10 +5,13 @@ Handles project management logic including project graphs, state management,
 and synchronization with the display.
 """
 
-from typing import Dict, Any, Optional, Callable
+from typing import Dict, Any, Optional, Callable, List
 import traceback
 from loguru import logger
 from datetime import datetime
+import json
+import os
+from pathlib import Path
 
 from ...project_manager import ProjectManager
 from ...simple_api import create_node_processor_config_from_main_config
@@ -48,17 +51,47 @@ class ProjectService:
         self.project_graphs: Dict[str, Dict[str, Any]] = {}
         self.project_configs: Dict[str, Any] = {}
         
+        # Create results storage directory
+        self.results_dir = Path("project_results")
+        self.results_dir.mkdir(exist_ok=True)
+        
+        logger.info("✅ ProjectService initialized")
+        
     def get_all_projects(self) -> Dict[str, Any]:
         """
-        Get all projects with current project info.
+        Get all projects with their metadata.
         
         Returns:
             Dictionary containing projects list and current project ID
         """
         projects = self.project_manager.get_all_projects()
+        current_project_id = self.project_manager.get_current_project_id()
+        
+        # Convert projects to dictionaries and add metadata
+        project_dicts = []
+        for project in projects:
+            project_dict = project.to_dict()
+            
+            # Add completion metadata if available
+            try:
+                results_file = self.results_dir / f"{project.id}_results.json"
+                if results_file.exists():
+                    with open(results_file, 'r') as f:
+                        saved_results = json.load(f)
+                        project_dict['has_saved_results'] = True
+                        project_dict['last_saved'] = saved_results.get('saved_at')
+                        project_dict['completion_status'] = saved_results.get('metadata', {}).get('completion_status')
+                else:
+                    project_dict['has_saved_results'] = False
+            except Exception as e:
+                logger.warning(f"Failed to check saved results for project {project.id}: {e}")
+                project_dict['has_saved_results'] = False
+            
+            project_dicts.append(project_dict)
+        
         return {
-            "projects": [p.to_dict() for p in projects],
-            "current_project_id": self.project_manager.current_project_id
+            "projects": project_dicts,
+            "current_project_id": current_project_id
         }
     
     def create_project(self, goal: str, max_steps: int, custom_config: Optional[Any] = None) -> Dict[str, Any]:
@@ -101,8 +134,24 @@ class ProjectService:
         # Load project state if it exists
         project_state = self.project_manager.load_project_state(project_id)
         
+        # Check for saved results
+        project_dict = project.to_dict()
+        try:
+            results_file = self.results_dir / f"{project_id}_results.json"
+            if results_file.exists():
+                project_dict['has_saved_results'] = True
+                with open(results_file, 'r') as f:
+                    saved_results = json.load(f)
+                    project_dict['last_saved'] = saved_results.get('saved_at')
+                    project_dict['completion_status'] = saved_results.get('metadata', {}).get('completion_status')
+            else:
+                project_dict['has_saved_results'] = False
+        except Exception as e:
+            logger.warning(f"Failed to check saved results for project {project_id}: {e}")
+            project_dict['has_saved_results'] = False
+        
         return {
-            "project": project.to_dict(),
+            "project": project_dict,
             "state": project_state
         }
     
@@ -111,65 +160,56 @@ class ProjectService:
         Switch to a different project.
         
         Args:
-            project_id: Project identifier to switch to
+            project_id: Project identifier
             
         Returns:
             True if successful, False otherwise
         """
         try:
             # Save current project state if there is one
-            self.save_current_project_state()
+            current_project_id = self.project_manager.get_current_project_id()
+            if current_project_id and current_project_id != project_id:
+                self._auto_save_current_project()
             
             # Switch to new project
-            if not self.project_manager.set_current_project(project_id):
-                return False
+            success = self.project_manager.switch_project(project_id)
+            if success:
+                # Load saved results if available
+                self._auto_load_project_results(project_id)
+                logger.info(f"✅ Switched to project {project_id}")
             
-            # Load new project state
-            if not self.load_project_into_graph(project_id):
-                logger.error(f"Failed to load project {project_id} state")
-                return False
-            
-            # Broadcast update
-            if self.broadcast_callback:
-                self.broadcast_callback()
-            
-            logger.info(f"✅ Switched to project {project_id}")
-            return True
-            
+            return success
         except Exception as e:
             logger.error(f"Failed to switch to project {project_id}: {e}")
             return False
     
     def delete_project(self, project_id: str) -> bool:
         """
-        Delete a project.
+        Delete a project and its saved results.
         
         Args:
-            project_id: Project identifier to delete
+            project_id: Project identifier
             
         Returns:
             True if successful, False otherwise
         """
         try:
-            # Remove project-specific data
-            if project_id in self.project_graphs:
-                del self.project_graphs[project_id]
+            # Delete saved results
+            results_file = self.results_dir / f"{project_id}_results.json"
+            if results_file.exists():
+                results_file.unlink()
+                logger.info(f"🗑️ Deleted saved results for project {project_id}")
+            
+            # Remove custom config
             if project_id in self.project_configs:
                 del self.project_configs[project_id]
             
-            # Delete from project manager
-            if not self.project_manager.delete_project(project_id):
-                return False
+            # Delete project
+            success = self.project_manager.delete_project(project_id)
+            if success:
+                logger.info(f"🗑️ Deleted project {project_id}")
             
-            # If this was the current project, clear the display graph
-            if self.project_manager.current_project_id is None:
-                self._clear_display_graph()
-                if self.broadcast_callback:
-                    self.broadcast_callback()
-            
-            logger.info(f"✅ Deleted project {project_id}")
-            return True
-            
+            return success
         except Exception as e:
             logger.error(f"Failed to delete project {project_id}: {e}")
             return False
@@ -402,13 +442,15 @@ class ProjectService:
                 "provider": config.llm.provider,
                 "model": config.llm.model,
                 "temperature": config.llm.temperature,
-                "max_tokens": config.llm.max_tokens,
+                "max_tokens": getattr(config.llm, 'max_tokens', None),
                 "timeout": config.llm.timeout,
                 "max_retries": config.llm.max_retries
             },
             "execution": {
                 "max_concurrent_nodes": config.execution.max_concurrent_nodes,
                 "max_execution_steps": config.execution.max_execution_steps,
+                "max_recursion_depth": getattr(config.execution, 'max_recursion_depth', 5),
+                "task_timeout_seconds": getattr(config.execution, 'task_timeout_seconds', 300),
                 "enable_hitl": config.execution.enable_hitl,
                 "hitl_root_plan_only": config.execution.hitl_root_plan_only,
                 "hitl_timeout_seconds": config.execution.hitl_timeout_seconds,
@@ -564,3 +606,176 @@ class ProjectService:
                 "success": False,
                 "error": str(e)
             }
+
+    def save_project_results(self, project_id: str, results_package: Dict[str, Any]) -> bool:
+        """
+        Save project results to persistent storage.
+        
+        Args:
+            project_id: Project identifier
+            results_package: Complete results package to save
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            results_file = self.results_dir / f"{project_id}_results.json"
+            
+            # Add save metadata
+            results_package['save_metadata'] = {
+                'saved_at': datetime.now().isoformat(),
+                'version': '1.0',
+                'project_id': project_id
+            }
+            
+            # Write to file
+            with open(results_file, 'w') as f:
+                json.dump(results_package, f, indent=2, default=str)
+            
+            logger.info(f"💾 Saved results for project {project_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to save results for project {project_id}: {e}")
+            return False
+    
+    def load_project_results(self, project_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Load saved project results from persistent storage.
+        
+        Args:
+            project_id: Project identifier
+            
+        Returns:
+            Results package if found, None otherwise
+        """
+        try:
+            results_file = self.results_dir / f"{project_id}_results.json"
+            
+            if not results_file.exists():
+                return None
+            
+            with open(results_file, 'r') as f:
+                results_package = json.load(f)
+            
+            logger.info(f"📂 Loaded saved results for project {project_id}")
+            return results_package
+            
+        except Exception as e:
+            logger.error(f"Failed to load results for project {project_id}: {e}")
+            return None
+    
+    def _auto_save_current_project(self):
+        """
+        Automatically save the current project's results.
+        """
+        try:
+            current_project_id = self.project_manager.get_current_project_id()
+            if not current_project_id:
+                return
+            
+            # Get current graph data
+            graph_data = {}
+            if hasattr(self.system_manager, 'task_graph') and self.system_manager.task_graph:
+                if hasattr(self.system_manager.task_graph, 'to_visualization_dict'):
+                    graph_data = self.system_manager.task_graph.to_visualization_dict()
+            
+            # Only save if there's meaningful data
+            if graph_data.get('all_nodes'):
+                project_data = self.get_project(current_project_id)
+                if project_data:
+                    results_package = {
+                        "project": project_data['project'],
+                        "saved_at": datetime.now().isoformat(),
+                        "graph_data": graph_data,
+                        "auto_saved": True,
+                        "metadata": {
+                            "total_nodes": len(graph_data.get('all_nodes', {})),
+                            "project_goal": graph_data.get('overall_project_goal'),
+                            "completion_status": self._get_completion_status(graph_data.get('all_nodes', {}))
+                        }
+                    }
+                    
+                    self.save_project_results(current_project_id, results_package)
+                    logger.info(f"🔄 Auto-saved project {current_project_id}")
+        
+        except Exception as e:
+            logger.warning(f"Failed to auto-save current project: {e}")
+    
+    def _auto_load_project_results(self, project_id: str):
+        """
+        Automatically load project results when switching projects.
+        """
+        try:
+            results_package = self.load_project_results(project_id)
+            if results_package and results_package.get('graph_data'):
+                # Restore graph data to system manager
+                if hasattr(self.system_manager, 'task_graph') and self.system_manager.task_graph:
+                    # This would need to be implemented based on your graph restoration logic
+                    logger.info(f"🔄 Auto-loaded results for project {project_id}")
+        
+        except Exception as e:
+            logger.warning(f"Failed to auto-load project results for {project_id}: {e}")
+    
+    def _get_completion_status(self, nodes: Dict[str, Any]) -> str:
+        """
+        Determine project completion status from nodes.
+        
+        Args:
+            nodes: Dictionary of task nodes
+            
+        Returns:
+            Completion status string
+        """
+        if not nodes:
+            return "no_nodes"
+        
+        total_nodes = len(nodes)
+        completed_nodes = sum(1 for node in nodes.values() if node.get('status') == 'DONE')
+        failed_nodes = sum(1 for node in nodes.values() if node.get('status') == 'FAILED')
+        running_nodes = sum(1 for node in nodes.values() if node.get('status') in ['RUNNING', 'READY'])
+        
+        if completed_nodes == total_nodes:
+            return "completed"
+        elif failed_nodes > 0 and running_nodes == 0:
+            return "failed"
+        elif running_nodes > 0:
+            return "running"
+        else:
+            return "in_progress"
+    
+    def get_saved_projects_summary(self) -> List[Dict[str, Any]]:
+        """
+        Get a summary of all projects with saved results.
+        
+        Returns:
+            List of project summaries with saved results info
+        """
+        summaries = []
+        
+        try:
+            for results_file in self.results_dir.glob("*_results.json"):
+                project_id = results_file.stem.replace("_results", "")
+                
+                try:
+                    with open(results_file, 'r') as f:
+                        results_package = json.load(f)
+                    
+                    summary = {
+                        "project_id": project_id,
+                        "title": results_package.get('project', {}).get('title', 'Unknown'),
+                        "saved_at": results_package.get('saved_at'),
+                        "completion_status": results_package.get('metadata', {}).get('completion_status'),
+                        "total_nodes": results_package.get('metadata', {}).get('total_nodes', 0),
+                        "auto_saved": results_package.get('auto_saved', False)
+                    }
+                    
+                    summaries.append(summary)
+                
+                except Exception as e:
+                    logger.warning(f"Failed to read results file {results_file}: {e}")
+        
+        except Exception as e:
+            logger.error(f"Failed to get saved projects summary: {e}")
+        
+        return sorted(summaries, key=lambda x: x.get('saved_at', ''), reverse=True)

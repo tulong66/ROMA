@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useState, useCallback, useMemo } from 'react'
 import { useTaskGraphStore } from '@/stores/taskGraphStore'
 import { useProjectStore } from '@/stores/projectStore'
 import { webSocketService } from '@/services/websocketService'
@@ -83,13 +83,19 @@ const MainLayout: React.FC = () => {
   const hasMultipleSelected = selectedNodeIds.size > 1
   const currentProject = getCurrentProject()
   
-  console.log('MainLayout render:', { 
-    hasNodes, 
-    nodeCount: Object.keys(nodes).length, 
+  // Memoize the debug object to prevent unnecessary re-renders
+  const debugInfo = useMemo(() => ({
+    hasNodes,
+    nodeCount: Object.keys(nodes).length,
     isConnected,
     isLoading,
     currentProject: currentProject?.title
-  })
+  }), [hasNodes, Object.keys(nodes).length, isConnected, isLoading, currentProject])
+
+  // Only log when values actually change
+  useEffect(() => {
+    console.log('MainLayout render:', debugInfo)
+  }, [debugInfo])
 
   // Show ProjectInput when no current project or no nodes and not loading
   const showProjectInput = !currentProject || (!hasNodes && !isLoading)

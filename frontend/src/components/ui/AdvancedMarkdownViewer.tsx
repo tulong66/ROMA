@@ -134,16 +134,21 @@ const AdvancedMarkdownViewer: React.FC<AdvancedMarkdownViewerProps> = ({
         {children}
       </a>
     ),
-    // Enhanced lists
+    // FIXED: Enhanced lists with proper spacing and alignment
     ul: ({ children, ...props }: any) => (
-      <ul className="list-disc list-inside space-y-1 my-2" {...props}>
+      <ul className="list-disc list-outside ml-6 space-y-1 my-3" {...props}>
         {children}
       </ul>
     ),
     ol: ({ children, ...props }: any) => (
-      <ol className="list-decimal list-inside space-y-1 my-2" {...props}>
+      <ol className="list-decimal list-outside ml-6 space-y-1 my-3" {...props}>
         {children}
       </ol>
+    ),
+    li: ({ children, ...props }: any) => (
+      <li className="leading-relaxed" {...props}>
+        <div className="inline">{children}</div>
+      </li>
     ),
     // Enhanced headings
     h1: ({ children, ...props }: any) => (

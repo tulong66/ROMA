@@ -110,6 +110,22 @@ class ReadyPlanHandler(INodeHandler):
             elif hitl_outcome_plan["status"] != "approved":
                 return 
 
+            # NEW: Check if creating sub-nodes would exceed max recursion depth
+            logger.debug(f"    ReadyPlanHandler: Depth check for {node.task_id}: current_layer={node.layer}, max_planning_layer={context.config.max_planning_layer}, would_create_layer={node.layer + 1}")
+            
+            if node.layer + 1 >= context.config.max_planning_layer:
+                logger.warning(f"    ReadyPlanHandler: Creating sub-nodes for {node.task_id} at layer {node.layer} would exceed max planning depth ({context.config.max_planning_layer}). Converting to atomic execution task.")
+                # Convert the plan to an atomic execution task instead of creating sub-nodes
+                node.node_type = NodeType.EXECUTE
+                node.result = plan_output  # Store the plan as the result for reference
+                node.output_summary = f"Plan created but converted to atomic task due to max depth limit. Contains {len(plan_output.sub_tasks)} potential sub-tasks."
+                # Set status back to READY so it can be executed in the next cycle
+                node.update_status(TaskStatus.READY)
+                logger.info(f"    ReadyPlanHandler: Node {node.task_id} converted to atomic execution task due to depth limit and set to READY for execution.")
+                return
+            else:
+                logger.debug(f"    ReadyPlanHandler: Depth check passed for {node.task_id}, proceeding to create {len(plan_output.sub_tasks)} sub-nodes")
+
             context.sub_node_creator.create_sub_nodes(node, plan_output)
             node.result = plan_output
             node.output_summary = f"Planned {len(plan_output.sub_tasks)} sub-tasks."
@@ -229,46 +245,12 @@ class ReadyNodeHandler(INodeHandler):
         logger.info(f"  ReadyNodeHandler: Handling READY node {node.task_id} (Original NodeType: {node.node_type}, Goal: '{node.goal[:30]}...')")
         node.update_status(TaskStatus.RUNNING)
         
-        # NEW: Skip atomization for PLAN nodes - they should go directly to planning
-        if node.node_type == NodeType.PLAN:
-            logger.info(f"    ReadyNodeHandler: Node {node.task_id} is PLAN type, skipping atomizer and going directly to planning")
-            await self.ready_plan_handler.handle(node, context)
-            return
-        
-        # For EXECUTE nodes, continue with atomization
-        action_to_take_after_atomizer = await context.node_atomizer.atomize_node(node, context)
-
-        if action_to_take_after_atomizer is None: 
-            logger.info(f"Node {node.task_id} processing halted after atomizer/HITL attempt (atomizer returned None). Current node status: {node.status}")
-            return
-
-        # Update the node type based on atomizer's decision
-        if isinstance(action_to_take_after_atomizer, NodeType):
-            if node.node_type != action_to_take_after_atomizer:
-                logger.info(f"    ReadyNodeHandler: Updating node.node_type from {node.node_type} to {action_to_take_after_atomizer} based on atomizer decision")
-            node.node_type = action_to_take_after_atomizer
-        else:
-            # Handle edge cases where node_type might be a string
-            current_node_type_value = node.node_type 
-            if isinstance(current_node_type_value, str):
-                try:
-                    node.node_type = NodeType[current_node_type_value.upper()] 
-                    logger.debug(f"    ReadyNodeHandler: Coerced node.node_type from string '{current_node_type_value}' to enum {node.node_type}")
-                except KeyError:
-                    logger.error(f"    ReadyNodeHandler: Invalid string value '{current_node_type_value}' for node.node_type. Cannot convert. Node {node.task_id} will fail.")
-                    node.update_status(TaskStatus.FAILED, error_msg=f"Invalid node.node_type string: {current_node_type_value}")
-                    return
-            elif not isinstance(current_node_type_value, NodeType):
-                logger.error(f"    ReadyNodeHandler: node.node_type for {node.task_id} is not string or NodeType: {type(current_node_type_value)}. Node will fail.")
-                node.update_status(TaskStatus.FAILED, error_msg=f"Invalid node.node_type type: {type(current_node_type_value)}")
-                return
-        
-        # Check max planning depth
+        # Check max planning depth BEFORE planning (move this check earlier)
         if node.node_type == NodeType.PLAN and node.layer >= context.config.max_planning_layer:
-            logger.warning(f"    ReadyNodeHandler: Max planning depth ({context.config.max_planning_layer}) reached for {node.task_id}. Forcing EXECUTE.")
+            logger.warning(f"    ReadyNodeHandler: Max planning depth ({context.config.max_planning_layer}) reached for {node.task_id} at layer {node.layer}. Forcing EXECUTE.")
             node.node_type = NodeType.EXECUTE 
         
-        current_action_type = node.node_type 
+        current_action_type = node.node_type
 
         if current_action_type == NodeType.PLAN:
             await self.ready_plan_handler.handle(node, context)
