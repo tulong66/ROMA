@@ -124,6 +124,26 @@ class SystemManager:
             logger.info("🤖 Initializing agent registry...")
             from ...hierarchical_agent_framework import agents
             from ...hierarchical_agent_framework.agents.registry import AGENT_REGISTRY, NAMED_AGENTS
+            
+            # NEW: Trigger YAML agent integration
+            logger.info("🔄 Integrating YAML-based agents...")
+            try:
+                # Call the lazy integration function
+                yaml_integration_results = agents.integrate_yaml_agents_lazy()
+                
+                if yaml_integration_results:
+                    logger.info(f"✅ YAML Integration Results:")
+                    logger.info(f"   📋 Action keys registered: {yaml_integration_results['registered_action_keys']}")
+                    logger.info(f"   🏷️  Named keys registered: {yaml_integration_results['registered_named_keys']}")
+                    logger.info(f"   ⏭️  Skipped agents: {yaml_integration_results['skipped_agents']}")
+                    logger.info(f"   ❌ Failed registrations: {yaml_integration_results['failed_registrations']}")
+                else:
+                    logger.warning("⚠️  YAML integration returned no results - using legacy agents only")
+                    
+            except Exception as e:
+                logger.error(f"❌ YAML agent integration failed: {e}")
+                logger.info("Continuing with legacy agent system only...")
+            
             logger.info(f"✅ Agent registry loaded: {len(AGENT_REGISTRY)} adapters, {len(NAMED_AGENTS)} named agents")
             
             # 6. Initialize core components

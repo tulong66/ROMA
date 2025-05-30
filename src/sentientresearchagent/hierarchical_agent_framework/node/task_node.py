@@ -54,7 +54,9 @@ class TaskNode(BaseModel):
     aux_data: Dict[str, Any] = Field(default_factory=dict)
 
     class Config:
-        use_enum_values = True # Important for serialization if you pass enums around
+        # Remove use_enum_values to keep enums as enum objects, not strings
+        # use_enum_values = True # This was causing enums to be stored as strings!
+        pass  # Keep the Config class but remove the problematic setting
 
     def update_status(self, new_status: TaskStatus, result: Any = None, 
                      error_msg: Optional[str] = None, result_summary: Optional[str] = None,

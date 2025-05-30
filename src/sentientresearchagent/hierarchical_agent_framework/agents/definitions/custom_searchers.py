@@ -5,18 +5,11 @@ import types
 from dotenv import load_dotenv
 from typing import Dict, Optional, List
 from loguru import logger
-# Attempt to import genai, but don't fail if not immediately available
-# This allows the file to be parsed even if genai isn't configured for all searchers yet.
-try:
-    from google import genai
-except ImportError:
-    logger.warning("Warning: google.genai module not found. GeminiSearcherWrapper will not be usable.")
-    genai = None 
 
 try:
     from openai import OpenAI, AsyncOpenAI
 except ImportError:
-    logger.warning("Warning: openai module not found. OpenAISearcherWrapper will not be usable.")
+    logger.warning("Warning: openai module not found. OpenAICustomSearchAdapter will not be usable.")
     OpenAI = None
     AsyncOpenAI = None
 
@@ -29,89 +22,6 @@ from sentientresearchagent.hierarchical_agent_framework.agents.base_adapter impo
 from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode
 
 load_dotenv()
-
-
-# --- SentientLLM Class Definition (Copied from your example) ---
-class SentientLLM:
-    def __init__(self):
-        self.url = "https://agentic.dev.sentient.xyz/api/v1/assist/i0067m9tal65"
-        self.headers = {
-            "x-custom-auth": os.getenv("SENTIENT_CUSTOM_AUTH"),
-            "x-user-id": os.getenv("SENTIENT_USER_ID"),
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {os.getenv('SENTIENT_BEARER_TOKEN')}"
-        }
-        self.id = "01JT3DJWM7AKWS9ZYKWG62JTM9" # Consider making these configurable
-        self.chat_id = "01JT3DJWM7AKWS9ZYKWG62JTM8" # Consider making these configurable
-
-    def run(self, query):
-        data = {
-            "id": self.id,
-            "chat_id": self.chat_id,
-            "content": {
-                "capability": "assist",
-                "request_payload": {
-                    "parts": [
-                        {
-                            "prompt": query,
-                            "files_ids": []
-                        }
-                    ]
-                }
-            }
-        }
-        try:
-            response = requests.post(self.url, headers=self.headers, json=data, timeout=120)
-            response.raise_for_status()
-            answer_parts = []
-            lines = response.text.splitlines()
-            collect_next_data = False
-            for line in lines:
-                if line.strip() == "event: final_response":
-                    collect_next_data = True
-                elif line.startswith("event: "):
-                    collect_next_data = False
-                elif collect_next_data and line.startswith("data: "):
-                    try:
-                        data_json = json.loads(line[len("data: "):])
-                        content = data_json.get("content")
-                        if isinstance(content, str):
-                            answer_parts.append(content)
-                    except json.JSONDecodeError:
-                        print(f"Warning: Could not decode JSON data line: {line}")
-                        continue
-                    except Exception as e:
-                        print(f"Warning: Error processing data line: {line} - {e}")
-                        continue
-            return "".join(answer_parts).strip()
-        except requests.exceptions.RequestException as e:
-            print(f"Error during SentientLLM API call: {e}")
-            raise Exception(f"SentientLLM API Error: {e}") from e
-        except Exception as e:
-            print(f"An unexpected error occurred in SentientLLM: {e}")
-            raise
-
-# --- SentientSearcherWrapper (Copied from your example) ---
-class SentientSearcherWrapper:
-    def __init__(self):
-        self.llm = SentientLLM()
-        self.name = "sentient_searcher"
-
-    def run(self, input_data: str) -> types.SimpleNamespace:
-        if not isinstance(input_data, str):
-             query = input_data.get("input_goal") or input_data.get("query") # type: ignore
-             if not query:
-                  raise ValueError("SentientSearcherWrapper received non-string input without 'input_goal' or 'query' key")
-        else:
-             query = input_data
-        logger.info(f"--- Calling Sentient Searcher with Query: {query} ---")
-        try:
-            result_text = self.llm.run(query)
-            logger.info(f"--- Sentient Searcher Result: {result_text[:100]}... ---")
-            return types.SimpleNamespace(content=result_text)
-        except Exception as e:
-            logger.error(f"Error invoking SentientSearcherWrapper: {e}")
-            raise
 
 # --- OpenAI Custom Searcher with Annotations (Adapter Version) ---
 class OpenAICustomSearchAdapter(BaseAdapter):

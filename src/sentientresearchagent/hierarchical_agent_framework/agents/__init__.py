@@ -1,37 +1,45 @@
 from loguru import logger
 
-# Import configurations and registry functions
-from .configurations import AGENT_CONFIGURATIONS
+# Import only the registry components we need
 from .registry import (
-    initialize_adapters_from_configurations,
-    register_special_cases,
     AGENT_REGISTRY, # Expose for potential direct use or inspection
     NAMED_AGENTS    # Expose for potential direct use or inspection
 )
 
-logger.info("Executing agents/__init__.py: Initializing agent adapters...")
+logger.info("🤖 Initializing YAML-based agent system...")
 
-# Process standard configurations
-if AGENT_CONFIGURATIONS:
-    initialize_adapters_from_configurations(AGENT_CONFIGURATIONS)
-else:
-    logger.warning("AGENT_CONFIGURATIONS list is empty. No standard adapters will be initialized from it.")
+# YAML-based agent integration (replaces legacy system)
+def integrate_yaml_agents_lazy():
+    """Load and integrate YAML-configured agents."""
+    try:
+        from ..agent_configs.registry_integration import integrate_yaml_agents
+        
+        logger.info("🔄 Loading YAML-based agents...")
+        integration_results = integrate_yaml_agents()
+        
+        logger.info(f"✅ YAML Agent Integration Results:")
+        logger.info(f"   📋 Action keys registered: {integration_results['registered_action_keys']}")
+        logger.info(f"   🏷️  Named keys registered: {integration_results['registered_named_keys']}")
+        logger.info(f"   ⏭️  Skipped agents: {integration_results['skipped_agents']}")
+        logger.info(f"   ❌ Failed registrations: {integration_results['failed_registrations']}")
+        
+        # Log final registry state
+        logger.info(f"📊 Final registry state - AGENT_REGISTRY: {len(AGENT_REGISTRY)} entries")
+        logger.info(f"📊 Final registry state - NAMED_AGENTS: {len(NAMED_AGENTS)} entries")
+        
+        return integration_results
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to integrate YAML agents: {e}")
+        logger.error("🚨 No agents will be available! Check your YAML configuration.")
+        return None
 
-# Handle any special registration cases
-# This function will internally decide what to do based on availability of agents/adapters
-register_special_cases()
+# Store the lazy loader for later use
+_yaml_integration_loader = integrate_yaml_agents_lazy
 
-logger.info(f"AGENT_REGISTRY populated: {len(AGENT_REGISTRY)} entries.")
-logger.info(f"NAMED_AGENTS populated: {len(NAMED_AGENTS)} entries.")
-
+# Final check
 if not AGENT_REGISTRY and not NAMED_AGENTS:
-    logger.warning("Warning: No agent adapters or named agents were registered. "
-                   "The system might not find agents to process tasks.")
-
-# Clean up imports that are no longer directly used in __init__.py
-# Specific adapters, Agno agents, BaseAdapter, TaskType, etc.,
-# are now primarily used in configurations.py or registry.py.
-
-# Expose key components if needed elsewhere, though direct imports are preferred.
-# For example, if some other module needed direct access to AGENT_REGISTRY,
-# it's already imported and thus available via from . import AGENT_REGISTRY
+    logger.warning("⚠️  Warning: No agent adapters or named agents were registered.")
+    logger.warning("The system might not find agents to process tasks.")
+else:
+    logger.info("✅ Agent system initialization completed successfully")

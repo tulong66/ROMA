@@ -1,0 +1,180 @@
+# Production Agent Configuration
+# This replaces the scattered definitions with a centralized, maintainable configuration
+
+agents:
+  # =============================================================================
+  # PLANNER AGENTS - Break down complex goals into manageable sub-tasks
+  # =============================================================================
+  
+  - name: "SimpleTestPlanner"
+    type: "planner"
+    adapter_class: "PlannerAdapter"
+    description: "General-purpose planner for breaking down tasks into sub-tasks"
+    model:
+      provider: "litellm"
+      model_id: "openrouter/anthropic/claude-3-7-sonnet"
+    prompt_source: "prompts.planner_prompts.PLANNER_SYSTEM_MESSAGE"
+    response_model: "PlanOutput"
+    registration:
+      action_keys:
+        - action_verb: "plan"
+          task_type: "WRITE"
+        - action_verb: "plan"
+          task_type: "THINK"
+        - action_verb: "plan"
+          task_type: "SEARCH"
+      named_keys: ["default_planner", "SimpleTestPlanner"]
+    enabled: true
+
+  - name: "CoreResearchPlanner"
+    type: "planner"
+    adapter_class: "PlannerAdapter"
+    description: "Specialized planner for research-focused tasks"
+    model:
+      provider: "litellm"
+      model_id: "openrouter/anthropic/claude-3-7-sonnet"
+    prompt_source: "prompts.planner_prompts.PLANNER_SYSTEM_MESSAGE"
+    response_model: "PlanOutput"
+    registration:
+      named_keys: ["CoreResearchPlanner"]
+    enabled: true
+
+  # =============================================================================
+  # EXECUTOR AGENTS - Execute atomic tasks (search, write, think)
+  # =============================================================================
+
+  - name: "SearchExecutor"
+    type: "executor"
+    adapter_class: "ExecutorAdapter"
+    description: "LLM-based search executor with web search tools"
+    model:
+      provider: "openai"
+      model_id: "gpt-4.1"
+    prompt_source: "prompts.executor_prompts.SEARCH_EXECUTOR_SYSTEM_MESSAGE"
+    response_model: "WebSearchResultsOutput"
+    tools: ["DuckDuckGoTools"]
+    registration:
+      named_keys: ["SearchExecutor", "default_search_executor"]
+    enabled: true
+
+  - name: "SearchSynthesizer"
+    type: "executor"
+    adapter_class: "ExecutorAdapter"
+    description: "Synthesizes search results into coherent summaries"
+    model:
+      provider: "litellm"
+      model_id: "openrouter/anthropic/claude-3-7-sonnet"
+    prompt_source: "prompts.executor_prompts.SEARCH_SYNTHESIZER_SYSTEM_MESSAGE"
+    registration:
+      action_keys:
+        - action_verb: "execute"
+          task_type: "THINK"
+      named_keys: ["SearchSynthesizer"]
+    enabled: true
+
+  - name: "BasicReportWriter"
+    type: "executor"
+    adapter_class: "ExecutorAdapter"
+    description: "Writes detailed reports based on provided context"
+    model:
+      provider: "litellm"
+      model_id: "openrouter/anthropic/claude-3-7-sonnet"
+    prompt_source: "prompts.executor_prompts.BASIC_REPORT_WRITER_SYSTEM_MESSAGE"
+    registration:
+      action_keys:
+        - action_verb: "execute"
+          task_type: "WRITE"
+      named_keys: ["BasicReportWriter"]
+    enabled: true
+
+  # =============================================================================
+  # CUSTOM SEARCH AGENTS - Direct API-based search without LLM overhead
+  # =============================================================================
+
+  - name: "OpenAICustomSearcher"
+    type: "custom_search"
+    adapter_class: "OpenAICustomSearchAdapter"
+    description: "Direct API-based search using OpenAI's search capabilities"
+    adapter_params:
+      model_id: "gpt-4.1"
+    registration:
+      action_keys:
+        - action_verb: "execute"
+          task_type: "SEARCH"
+      named_keys: ["OpenAICustomSearcher", "default_openai_searcher"]
+    enabled: true
+
+  # =============================================================================
+  # AGGREGATOR AGENTS - Combine results from sub-tasks
+  # =============================================================================
+
+  - name: "DefaultAggregator"
+    type: "aggregator"
+    adapter_class: "AggregatorAdapter"
+    description: "Synthesizes results from multiple child tasks"
+    model:
+      provider: "litellm"
+      model_id: "openrouter/anthropic/claude-3-7-sonnet"
+    prompt_source: "prompts.aggregator_prompts.DEFAULT_AGGREGATOR_SYSTEM_MESSAGE"
+    registration:
+      action_keys:
+        - action_verb: "aggregate"
+          task_type: null
+      named_keys: ["default_aggregator"]
+    enabled: true
+
+  # =============================================================================
+  # ATOMIZER AGENTS - Determine if tasks need further breakdown
+  # =============================================================================
+
+  - name: "DefaultAtomizer"
+    type: "atomizer"
+    adapter_class: "AtomizerAdapter"
+    description: "Determines if tasks are atomic or need further planning"
+    model:
+      provider: "litellm"
+      model_id: "openrouter/anthropic/claude-3-7-sonnet"
+    prompt_source: "prompts.atomizer_prompts.ATOMIZER_SYSTEM_MESSAGE"
+    response_model: "AtomizerOutput"
+    registration:
+      action_keys:
+        - action_verb: "atomize"
+          task_type: null
+      named_keys: ["default_atomizer"]
+    enabled: true
+
+  # =============================================================================
+  # PLAN MODIFIER AGENTS - Modify existing plans based on feedback
+  # =============================================================================
+
+  - name: "PlanModifier"
+    type: "plan_modifier"
+    adapter_class: "PlanModifierAdapter"
+    description: "Modifies existing plans based on user feedback"
+    model:
+      provider: "litellm"
+      model_id: "openrouter/anthropic/claude-3-7-sonnet"
+    prompt_source: "prompts.plan_modifier_prompts.PLAN_MODIFIER_SYSTEM_PROMPT"
+    response_model: "PlanOutput"
+    registration:
+      action_keys:
+        - action_verb: "modify_plan"
+          task_type: null
+      named_keys: ["PlanModifier"]
+    enabled: true
+
+# =============================================================================
+# CONFIGURATION METADATA
+# =============================================================================
+metadata:
+  version: "1.0.0"
+  description: "Production agent configuration for Sentient Research Agent"
+  last_updated: "2024-01-01"
+  total_agents: 8
+  migration_status: "integrated_with_legacy"
+  features:
+    - "Structured output support"
+    - "Tool integration" 
+    - "Dynamic prompt resolution"
+    - "Flexible model providers"
+    - "Legacy system compatibility"
