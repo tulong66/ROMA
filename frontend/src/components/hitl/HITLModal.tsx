@@ -3,12 +3,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { CheckCircle, XCircle, Edit, Clock, AlertTriangle, Loader2, Target, Users, Calendar, FileText, CheckCircle2, ArrowRight } from 'lucide-react'
+import { CheckCircle, XCircle, Edit, Clock, AlertTriangle, Loader2, Target, Users, Calendar, FileText, CheckCircle2, ArrowRight, Brain, Zap, MessageSquare, Copy, ChevronDown, ChevronRight, List, Search, PenTool, RefreshCw } from 'lucide-react'
 import { useTaskGraphStore } from '@/stores/taskGraphStore'
 import { webSocketService } from '@/services/websocketService'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
+import { cn } from '@/lib/utils'
 
 interface HITLRequest {
   checkpoint_name: string
@@ -18,6 +19,355 @@ interface HITLRequest {
   current_attempt: number
   request_id: string
   timestamp: string
+}
+
+// Plan Viewer Component - Specialized for displaying plans
+const PlanViewer: React.FC<{ planData: any; isModified?: boolean }> = ({ planData, isModified = false }) => {
+  // Handle both original and modified plan structures
+  const getPlanData = () => {
+    if (planData?.proposed_plan?.sub_tasks) {
+      return planData.proposed_plan
+    }
+    if (planData?.proposed_modified_plan?.sub_tasks) {
+      return planData.proposed_modified_plan
+    }
+    return null
+  }
+
+  const plan = getPlanData()
+  
+  if (!plan?.sub_tasks) {
+    return (
+      <Card>
+        <CardContent className="p-4">
+          <p className="text-muted-foreground italic">No plan data available</p>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  const subTasks = plan.sub_tasks
+
+  const getTaskTypeIcon = (taskType: string) => {
+    switch (taskType) {
+      case 'SEARCH': return <Search className="h-4 w-4 text-blue-600" />
+      case 'THINK': return <Brain className="h-4 w-4 text-purple-600" />
+      case 'WRITE': return <PenTool className="h-4 w-4 text-green-600" />
+      default: return <Target className="h-4 w-4 text-gray-600" />
+    }
+  }
+
+  const getTaskTypeBadge = (taskType: string) => {
+    const variants = {
+      'SEARCH': 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300',
+      'THINK': 'bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-300',
+      'WRITE': 'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300'
+    }
+    return variants[taskType as keyof typeof variants] || 'bg-gray-100 text-gray-800'
+  }
+
+  const getNodeTypeBadge = (nodeType: string) => {
+    return nodeType === 'PLAN' 
+      ? 'bg-orange-100 text-orange-800 dark:bg-orange-900/50 dark:text-orange-300'
+      : 'bg-gray-100 text-gray-800 dark:bg-gray-900/50 dark:text-gray-300'
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm font-medium flex items-center gap-2">
+          {isModified ? <RefreshCw className="h-4 w-4 text-blue-600" /> : <List className="h-4 w-4" />}
+          {isModified ? 'Modified Plan' : 'Proposed Plan'} ({subTasks.length} tasks)
+          {isModified && (
+            <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300">
+              Updated
+            </Badge>
+          )}
+        </CardTitle>
+        {/* Show modification context for modified plans */}
+        {isModified && planData?.original_user_modification_request_for_this_cycle && (
+          <div className="mt-2 p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-800">
+            <p className="text-xs text-blue-800 dark:text-blue-300">
+              <strong>Your feedback:</strong> {planData.original_user_modification_request_for_this_cycle}
+            </p>
+          </div>
+        )}
+      </CardHeader>
+      <CardContent className="pt-0">
+        <div className="space-y-4">
+          {subTasks.map((task: any, index: number) => (
+            <div key={index} className={cn(
+              "border rounded-lg p-4 space-y-3",
+              isModified && "border-blue-200 bg-blue-50/50 dark:border-blue-800 dark:bg-blue-950/20"
+            )}>
+              {/* Task Header */}
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className={cn(
+                    "flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium",
+                    isModified 
+                      ? "bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-300"
+                      : "bg-gray-100 dark:bg-gray-900/50 text-gray-800 dark:text-gray-300"
+                  )}>
+                    {index + 1}
+                  </div>
+                  {getTaskTypeIcon(task.task_type)}
+                </div>
+                <div className="flex gap-2 flex-shrink-0">
+                  <Badge className={cn("text-xs", getTaskTypeBadge(task.task_type))}>
+                    {task.task_type}
+                  </Badge>
+                  <Badge className={cn("text-xs", getNodeTypeBadge(task.node_type))}>
+                    {task.node_type}
+                  </Badge>
+                </div>
+              </div>
+
+              {/* Task Goal */}
+              <div>
+                <h4 className="font-medium text-sm mb-2">Goal:</h4>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  {task.goal}
+                </p>
+              </div>
+
+              {/* Dependencies */}
+              {task.depends_on_indices && task.depends_on_indices.length > 0 && (
+                <div>
+                  <h4 className="font-medium text-sm mb-2">Dependencies:</h4>
+                  <div className="flex gap-1 flex-wrap">
+                    {task.depends_on_indices.map((depIndex: number) => (
+                      <Badge key={depIndex} variant="outline" className="text-xs">
+                        Task {depIndex + 1}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* Plan Summary */}
+        <div className={cn(
+          "mt-6 p-4 rounded-lg",
+          isModified 
+            ? "bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800"
+            : "bg-muted/50"
+        )}>
+          <h4 className="font-medium text-sm mb-2">Plan Summary:</h4>
+          <div className="grid grid-cols-3 gap-4 text-xs">
+            <div>
+              <span className="text-muted-foreground">Search Tasks:</span>
+              <div className="font-medium">{subTasks.filter((t: any) => t.task_type === 'SEARCH').length}</div>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Think Tasks:</span>
+              <div className="font-medium">{subTasks.filter((t: any) => t.task_type === 'THINK').length}</div>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Write Tasks:</span>
+              <div className="font-medium">{subTasks.filter((t: any) => t.task_type === 'WRITE').length}</div>
+            </div>
+          </div>
+          
+          {/* Show replan information for modified plans */}
+          {isModified && planData?.replan_attempt_count && (
+            <div className="mt-3 pt-3 border-t border-blue-200 dark:border-blue-800">
+              <div className="flex items-center gap-2 text-xs text-blue-800 dark:text-blue-300">
+                <RefreshCw className="h-3 w-3" />
+                <span>Modification attempt {planData.replan_attempt_count}</span>
+              </div>
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// Enhanced JSON Viewer Component
+const JsonViewer: React.FC<{ data: any; title?: string }> = ({ data, title }) => {
+  const [isExpanded, setIsExpanded] = useState(false) // Start collapsed for raw data
+  const [copiedPath, setCopiedPath] = useState<string | null>(null)
+
+  const copyToClipboard = (text: string, path: string) => {
+    navigator.clipboard.writeText(text)
+    setCopiedPath(path)
+    setTimeout(() => setCopiedPath(null), 2000)
+  }
+
+  // Determine if an item should be expanded by default based on its importance
+  const shouldExpandByDefault = (key: string, depth: number) => {
+    const importantKeys = ['proposed_plan', 'sub_tasks', 'task_goal']
+    return depth < 2 || importantKeys.includes(key)
+  }
+
+  const ExpandableItem: React.FC<{ 
+    children: React.ReactNode; 
+    label: string; 
+    defaultExpanded?: boolean;
+    itemKey?: string;
+    depth?: number;
+  }> = ({ children, label, defaultExpanded, itemKey, depth = 0 }) => {
+    const [isItemExpanded, setIsItemExpanded] = useState(
+      defaultExpanded ?? shouldExpandByDefault(itemKey || '', depth)
+    )
+    
+    return (
+      <div className="ml-4">
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 w-6 p-0"
+            onClick={() => setIsItemExpanded(!isItemExpanded)}
+          >
+            {isItemExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+          </Button>
+          <span className="text-muted-foreground">{label}</span>
+        </div>
+        {isItemExpanded && (
+          <div className="ml-4 mt-2 space-y-1">
+            {children}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  const renderValue = (value: any, path: string = '', depth: number = 0, parentKey?: string): React.ReactNode => {
+    if (value === null) {
+      return <span className="text-muted-foreground italic">null</span>
+    }
+    
+    if (value === undefined) {
+      return <span className="text-muted-foreground italic">undefined</span>
+    }
+    
+    if (typeof value === 'boolean') {
+      return <span className={cn("font-medium", value ? "text-green-600" : "text-red-600")}>{String(value)}</span>
+    }
+    
+    if (typeof value === 'number') {
+      return <span className="text-blue-600 font-medium">{value}</span>
+    }
+    
+    if (typeof value === 'string') {
+      return (
+        <div className="group relative">
+          <span className="text-green-700 dark:text-green-400">"{value}"</span>
+          {value.length > 50 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="ml-2 h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+              onClick={() => copyToClipboard(value, path)}
+            >
+              <Copy className="h-3 w-3" />
+            </Button>
+          )}
+        </div>
+      )
+    }
+    
+    if (Array.isArray(value)) {
+      return (
+        <ExpandableItem 
+          label={`Array (${value.length} items)`} 
+          itemKey={parentKey}
+          depth={depth}
+        >
+          {value.map((item, index) => (
+            <div key={index} className="flex gap-2">
+              <span className="text-muted-foreground min-w-[2rem]">[{index}]:</span>
+              <div className="flex-1">
+                {renderValue(item, `${path}[${index}]`, depth + 1, `${parentKey}_${index}`)}
+              </div>
+            </div>
+          ))}
+        </ExpandableItem>
+      )
+    }
+    
+    if (typeof value === 'object') {
+      const keys = Object.keys(value)
+      
+      return (
+        <ExpandableItem 
+          label={`Object (${keys.length} properties)`} 
+          itemKey={parentKey}
+          depth={depth}
+        >
+          {keys.map((key) => (
+            <div key={key} className="flex gap-2">
+              <span className="text-purple-600 dark:text-purple-400 font-medium min-w-fit">"{key}":</span>
+              <div className="flex-1">
+                {renderValue(value[key], `${path}.${key}`, depth + 1, key)}
+              </div>
+            </div>
+          ))}
+        </ExpandableItem>
+      )
+    }
+    
+    return <span className="text-muted-foreground">{String(value)}</span>
+  }
+
+  if (!data) {
+    return (
+      <Card>
+        <CardContent className="p-4">
+          <p className="text-muted-foreground italic">No data to display</p>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <FileText className="h-4 w-4" />
+            {title || 'Raw Data'}
+          </CardTitle>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 w-6 p-0"
+              onClick={() => setIsExpanded(!isExpanded)}
+            >
+              {isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 w-6 p-0"
+              onClick={() => copyToClipboard(JSON.stringify(data, null, 2), 'root')}
+            >
+              <Copy className="h-3 w-3" />
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+      {isExpanded && (
+        <CardContent className="pt-0">
+          <ScrollArea className="h-[300px] w-full">
+            <div className="font-mono text-sm">
+              {renderValue(data)}
+            </div>
+          </ScrollArea>
+          {copiedPath && (
+            <div className="mt-2 text-xs text-green-600 dark:text-green-400">
+              ✓ Copied to clipboard
+            </div>
+          )}
+        </CardContent>
+      )}
+    </Card>
+  )
 }
 
 export function HITLModal() {
@@ -31,500 +381,358 @@ export function HITLModal() {
   const isOpen = hitlRequest !== null
   const request = hitlRequest as HITLRequest | null
 
-  console.log('🤔 HITLModal render:', { 
-    isOpen, 
-    hasRequest: !!request, 
-    requestId: request?.request_id,
-    checkpoint: request?.checkpoint_name,
-    attempt: request?.current_attempt,
-    isSubmitting,
-    isWaitingForModification,
-    lastProcessedRequestId
-  })
-
-  // Add effect to track when requests change
+  // Reset state when modal opens/closes
   useEffect(() => {
-    if (request) {
-      console.log('🆕 New HITL request received:', {
-        requestId: request.request_id,
-        checkpoint: request.checkpoint_name,
-        attempt: request.current_attempt,
-        timestamp: request.timestamp
-      })
-    } else {
-      console.log('❌ HITL request cleared')
+    if (isOpen) {
+      setSelectedAction(null)
+      setModificationInstructions('')
+      setIsSubmitting(false)
     }
-  }, [request?.request_id])
-
-  // Add effect to track when modal opens/closes
-  useEffect(() => {
-    console.log(`🚪 Modal ${isOpen ? 'OPENED' : 'CLOSED'}`)
   }, [isOpen])
 
-  // Enhanced effect to detect when modification is complete
+  // CRITICAL: Detect when a new HITL request arrives and reset waiting state
   useEffect(() => {
-    if (isWaitingForModification && request) {
-      // Check if we received a NEW HITL request (different request_id)
-      // AND it's a modified plan review checkpoint
-      const isNewRequest = request.request_id !== lastProcessedRequestId
-      const isModifiedPlanReview = request.checkpoint_name.includes('PostModifiedPlanReview') || 
-                                   request.checkpoint_name.includes('PostInitialPlanGeneration')
+    if (request && request.request_id !== lastProcessedRequestId) {
+      console.log('🔄 New HITL request detected:', {
+        newRequestId: request.request_id,
+        lastProcessedId: lastProcessedRequestId,
+        checkpoint: request.checkpoint_name,
+        attempt: request.current_attempt
+      })
       
-      if (isNewRequest && isModifiedPlanReview) {
-        console.log('✅ Modification complete - received new plan review request:', { 
-          checkpoint: request.checkpoint_name,
-          requestId: request.request_id,
-          lastProcessedId: lastProcessedRequestId,
-          isNewRequest,
-          isModifiedPlanReview
-        })
-        
-        setIsWaitingForModification(false)
-        setSelectedAction(null)
-        setModificationInstructions('')
-        setLastProcessedRequestId(request.request_id)
-        // Don't clear the HITL request - we need to show the modified plan
-      }
-    }
-  }, [isWaitingForModification, request?.checkpoint_name, request?.request_id, lastProcessedRequestId])
-
-  // Track when we start processing a new request
-  useEffect(() => {
-    if (request && !isWaitingForModification) {
+      // Reset all states for the new request
+      setIsWaitingForModification(false)
+      setSelectedAction(null)
+      setModificationInstructions('')
+      setIsSubmitting(false)
       setLastProcessedRequestId(request.request_id)
+      
+      console.log('✅ Reset modal state for new request')
     }
-  }, [request?.request_id, isWaitingForModification])
+  }, [request?.request_id, lastProcessedRequestId])
 
   const handleClose = () => {
-    console.log('🚪 User attempting to close modal:', { isSubmitting, isWaitingForModification })
     if (!isSubmitting && !isWaitingForModification) {
-      console.log('✅ Closing modal and clearing request')
       clearHITLRequest()
       setSelectedAction(null)
       setModificationInstructions('')
       setIsWaitingForModification(false)
-    } else {
-      console.log('❌ Cannot close modal - operation in progress')
+      setLastProcessedRequestId(null)
     }
   }
 
   const handleResponse = async (action: 'approve' | 'modify' | 'abort', feedback?: string) => {
-    if (!hitlRequest) return;
+    if (!hitlRequest || isSubmitting) return
 
-    console.log('📤 Sending HITL response:', { action, feedback, requestId: hitlRequest.request_id });
+    setIsSubmitting(true)
     
     try {
+      console.log('📤 Sending HITL response:', {
+        action,
+        requestId: hitlRequest.request_id,
+        feedback: feedback?.substring(0, 100) + (feedback && feedback.length > 100 ? '...' : '')
+      })
+
       await webSocketService.sendHITLResponse({
         request_id: hitlRequest.request_id,
         action,
         modification_instructions: feedback || ''
-      });
+      })
 
       if (action === 'modify') {
-        console.log('⏳ Waiting for modified plan to be generated...');
-        setIsWaitingForModification(true);
-        // Don't clear the request - wait for the new plan
+        console.log('⏳ Waiting for modified plan...')
+        setIsWaitingForModification(true)
+        setSelectedAction(null)
+        setModificationInstructions('')
+        // Don't clear the request - wait for the new one
       } else {
-        // Only clear for approve/abort
-        clearHITLRequest();
-        setIsWaitingForModification(false);
+        console.log('✅ Action completed, clearing request')
+        clearHITLRequest()
+        setIsWaitingForModification(false)
+        setLastProcessedRequestId(null)
       }
     } catch (error) {
-      console.error('Failed to send HITL response:', error);
-    }
-  };
-
-  // Clear HITL request when modal closes (only for non-modify cases)
-  useEffect(() => {
-    if (!isOpen && hitlRequest && !isWaitingForModification) {
-      console.log('❌ HITL request cleared');
-      clearHITLRequest();
-    }
-  }, [isOpen, hitlRequest, isWaitingForModification]);
-
-  const renderPlanData = (data: any) => {
-    if (!data) return <div className="text-muted-foreground">No data provided</div>
-
-    // Handle different types of HITL data structures
-    if (data.proposed_plan || data.proposed_modified_plan) {
-      return renderPlanStructure(data)
-    } else if (data.task_goal || data.goal) {
-      return renderTaskData(data)
-    } else {
-      return renderGenericData(data)
+      console.error('Failed to send HITL response:', error)
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
-  const renderPlanStructure = (data: any) => {
-    const plan = data.proposed_plan || data.proposed_modified_plan
-    const taskGoal = data.task_goal || data.goal
-    const plannerInput = data.planner_input_summary
-    const modificationInstructions = data.user_modification_instructions
-    const replanReason = data.reason_for_current_replan
-
-    return (
-      <div className="space-y-6">
-        {/* Task Goal Section */}
-        {taskGoal && (
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <Target className="w-5 h-5 text-blue-600" />
-                Task Goal
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm leading-relaxed">{taskGoal}</p>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Modification Context (if this is a replan) */}
-        {(modificationInstructions || replanReason) && (
-          <Card className="border-orange-200 bg-orange-50">
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-lg text-orange-800">
-                <AlertTriangle className="w-5 h-5" />
-                Modification Context
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {modificationInstructions && (
-                <div>
-                  <h4 className="font-medium text-orange-800 mb-1">Your Previous Instructions:</h4>
-                  <p className="text-sm text-orange-700 bg-orange-100 p-3 rounded border">{modificationInstructions}</p>
-                </div>
-              )}
-              {replanReason && (
-                <div>
-                  <h4 className="font-medium text-orange-800 mb-1">Reason for Replan:</h4>
-                  <p className="text-sm text-orange-700">{replanReason}</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Project Context */}
-        {plannerInput && (
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <FileText className="w-5 h-5 text-green-600" />
-                Project Context
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {plannerInput.overall_objective && (
-                <div>
-                  <h4 className="font-medium text-gray-700 mb-1">Overall Objective:</h4>
-                  <p className="text-sm text-gray-600">{plannerInput.overall_objective}</p>
-                </div>
-              )}
-              {plannerInput.context_summary && (
-                <div>
-                  <h4 className="font-medium text-gray-700 mb-1">Context Summary:</h4>
-                  <p className="text-sm text-gray-600">{plannerInput.context_summary}</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Proposed Plan */}
-        {plan && (
-          <Card className="border-blue-200">
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-lg text-blue-800">
-                <CheckCircle2 className="w-5 h-5" />
-                {data.proposed_modified_plan ? 'Modified Plan' : 'Proposed Plan'}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {renderPlan(plan)}
-            </CardContent>
-          </Card>
-        )}
-      </div>
-    )
-  }
-
-  const renderPlan = (plan: any) => {
-    if (!plan) return <div className="text-muted-foreground">No plan data</div>
-
-    // Handle different plan structures
-    if (plan.subtasks && Array.isArray(plan.subtasks)) {
-      return (
-        <div className="space-y-4">
-          {plan.description && (
-            <div className="mb-4">
-              <h4 className="font-medium text-gray-700 mb-2">Plan Description:</h4>
-              <p className="text-sm text-gray-600 bg-gray-50 p-3 rounded">{plan.description}</p>
-            </div>
-          )}
-          
-          <div>
-            <h4 className="font-medium text-gray-700 mb-3">Subtasks ({plan.subtasks.length}):</h4>
-            <div className="space-y-3">
-              {plan.subtasks.map((subtask: any, index: number) => (
-                <div key={index} className="border rounded-lg p-4 bg-white">
-                  <div className="flex items-start gap-3">
-                    <div className="flex-shrink-0 w-6 h-6 bg-blue-100 text-blue-800 rounded-full flex items-center justify-center text-sm font-medium">
-                      {index + 1}
-                    </div>
-                    <div className="flex-1 space-y-2">
-                      <h5 className="font-medium text-gray-800">{subtask.goal || subtask.description || `Subtask ${index + 1}`}</h5>
-                      {subtask.description && subtask.goal !== subtask.description && (
-                        <p className="text-sm text-gray-600">{subtask.description}</p>
-                      )}
-                      {subtask.agent_name && (
-                        <div className="flex items-center gap-1 text-xs text-gray-500">
-                          <Users className="w-3 h-3" />
-                          Agent: {subtask.agent_name}
-                        </div>
-                      )}
-                      {subtask.expected_output && (
-                        <div className="text-xs text-gray-500">
-                          <span className="font-medium">Expected Output:</span> {subtask.expected_output}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )
-    }
-
-    // Handle simple plan structures or fallback
-    return renderGenericData(plan)
-  }
-
-  const renderTaskData = (data: any) => {
-    return (
-      <div className="space-y-4">
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <Target className="w-5 h-5 text-blue-600" />
-              Task Information
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {data.task_goal && (
-              <div>
-                <h4 className="font-medium text-gray-700 mb-1">Goal:</h4>
-                <p className="text-sm text-gray-600">{data.task_goal}</p>
-              </div>
-            )}
-            {data.agent_name && (
-              <div>
-                <h4 className="font-medium text-gray-700 mb-1">Agent:</h4>
-                <p className="text-sm text-gray-600">{data.agent_name}</p>
-              </div>
-            )}
-            {data.task_type && (
-              <div>
-                <h4 className="font-medium text-gray-700 mb-1">Task Type:</h4>
-                <Badge variant="outline">{data.task_type}</Badge>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-        
-        {/* Show other fields if present */}
-        {Object.keys(data).some(key => !['task_goal', 'agent_name', 'task_type', 'task_id'].includes(key)) && (
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg">Additional Details</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {renderGenericData(Object.fromEntries(
-                Object.entries(data).filter(([key]) => !['task_goal', 'agent_name', 'task_type', 'task_id'].includes(key))
-              ))}
-            </CardContent>
-          </Card>
-        )}
-      </div>
-    )
-  }
-
-  const renderGenericData = (data: any) => {
-    if (!data || typeof data !== 'object') {
-      return <pre className="text-sm text-gray-600 whitespace-pre-wrap">{String(data)}</pre>
-    }
-
-    return (
-      <div className="space-y-3">
-        {Object.entries(data).map(([key, value]) => (
-          <div key={key} className="border-b border-gray-100 pb-2 last:border-b-0">
-            <h4 className="font-medium text-gray-700 mb-1 capitalize">
-              {key.replace(/_/g, ' ')}:
-            </h4>
-            <div className="text-sm text-gray-600">
-              {typeof value === 'object' && value !== null ? (
-                <pre className="bg-gray-50 p-2 rounded text-xs overflow-x-auto">
-                  {JSON.stringify(value, null, 2)}
-                </pre>
-              ) : (
-                <span>{String(value)}</span>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-    )
-  }
-
-  const getActionIcon = (action: string) => {
-    switch (action) {
-      case 'approve': return <CheckCircle className="w-4 h-4" />
-      case 'modify': return <Edit className="w-4 h-4" />
-      case 'abort': return <XCircle className="w-4 h-4" />
-      default: return <Clock className="w-4 h-4" />
+  const handleActionSelect = (action: 'approve' | 'modify' | 'abort') => {
+    setSelectedAction(action)
+    
+    if (action === 'approve' || action === 'abort') {
+      handleResponse(action)
     }
   }
 
-  const getActionColor = (action: string) => {
-    switch (action) {
-      case 'approve': return 'bg-green-500 hover:bg-green-600 text-white'
-      case 'modify': return 'bg-blue-500 hover:bg-blue-600 text-white'
-      case 'abort': return 'bg-red-500 hover:bg-red-600 text-white'
-      default: return 'bg-gray-500 hover:bg-gray-600'
+  const handleModifySubmit = () => {
+    if (modificationInstructions.trim()) {
+      handleResponse('modify', modificationInstructions.trim())
     }
   }
 
-  if (!request) return null
+  if (!request) {
+    return null
+  }
+
+  const getCheckpointIcon = (checkpoint: string) => {
+    if (checkpoint.includes('Plan')) return <Brain className="h-5 w-5" />
+    if (checkpoint.includes('Execute')) return <Zap className="h-5 w-5" />
+    return <Target className="h-5 w-5" />
+  }
+
+  const getAttemptBadgeVariant = (attempt: number) => {
+    if (attempt === 1) return 'default'
+    if (attempt <= 3) return 'secondary'
+    return 'destructive'
+  }
+
+  // Determine if this is a modified plan (attempt > 1)
+  const isModifiedPlan = request.current_attempt > 1
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="max-w-4xl w-full h-[90vh] p-0 gap-0">
-        {/* Header - Fixed */}
-        <DialogHeader className="p-6 pb-4 border-b">
-          <DialogTitle className="flex items-center gap-2">
-            <Clock className="w-5 h-5" />
-            Human Review Required
-            {request?.current_attempt && request.current_attempt > 1 && (
-              <Badge variant="secondary">Attempt {request.current_attempt}</Badge>
-            )}
-          </DialogTitle>
-          <DialogDescription>
-            {isWaitingForModification ? (
-              <div className="flex items-center gap-2 text-blue-600">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Processing your modification request... Please wait for the updated plan.
+      <DialogContent className="max-w-6xl w-full max-h-[90vh] p-0 gap-0 overflow-hidden">
+        {/* Header */}
+        <DialogHeader className="px-6 py-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/50 dark:to-indigo-950/50 border-b">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-100 dark:bg-blue-900/50 rounded-lg">
+                {getCheckpointIcon(request.checkpoint_name)}
               </div>
-            ) : (
-              `Checkpoint: ${request?.checkpoint_name || 'Unknown'} | Node: ${request?.node_id || 'Unknown'}`
-            )}
-          </DialogDescription>
-        </DialogHeader>
-
-        {isWaitingForModification ? (
-          <div className="flex-1 flex items-center justify-center py-8">
-            <div className="text-center">
-              <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-blue-600" />
-              <h3 className="text-lg font-medium mb-2">Generating Modified Plan</h3>
-              <p className="text-muted-foreground">
-                The system is processing your modification request and will show you the updated plan shortly.
-              </p>
+              <div>
+                <DialogTitle className="text-xl font-semibold text-foreground">
+                  {isModifiedPlan ? 'Review Modified Plan' : 'Human Review Required'}
+                </DialogTitle>
+                <DialogDescription className="text-sm text-muted-foreground mt-1">
+                  {request.checkpoint_name}
+                  {isModifiedPlan && ' - Plan has been updated based on your feedback'}
+                </DialogDescription>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge variant={getAttemptBadgeVariant(request.current_attempt)}>
+                Attempt {request.current_attempt}
+              </Badge>
+              <Badge variant="outline" className="text-xs">
+                {request.node_id}
+              </Badge>
             </div>
           </div>
-        ) : (
-          <>
-            {/* Scrollable Content Area */}
-            <div className="flex-1 overflow-hidden">
-              <ScrollArea className="h-full">
-                <div className="p-6 space-y-4">
-                  {/* Context Message */}
-                  {request?.context_message && (
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                      <h3 className="font-medium text-blue-900 mb-2">Context</h3>
-                      <p className="text-blue-800 text-sm whitespace-pre-wrap">{request.context_message}</p>
+        </DialogHeader>
+
+        {/* Content */}
+        <div className="flex-1 overflow-hidden">
+          <ScrollArea className="h-[calc(90vh-200px)]">
+            <div className="p-6 space-y-6">
+              {/* Context Message */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    <MessageSquare className="h-4 w-4" />
+                    Context
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  <p className="text-sm leading-relaxed">{request.context_message}</p>
+                  {isModifiedPlan && (
+                    <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-800">
+                      <p className="text-sm text-blue-800 dark:text-blue-300">
+                        <RefreshCw className="h-4 w-4 inline mr-2" />
+                        This plan has been updated based on your previous feedback. Please review the changes.
+                      </p>
                     </div>
                   )}
+                </CardContent>
+              </Card>
 
-                  {/* Data for Review - Now with improved rendering */}
-                  <div>
-                    <h3 className="font-medium mb-4">Plan Review</h3>
-                    <div className="border rounded-lg bg-white">
-                      <ScrollArea className="max-h-[400px]">
-                        <div className="p-4">
-                          {renderPlanData(request?.data_for_review)}
-                        </div>
-                      </ScrollArea>
-                    </div>
-                  </div>
-                </div>
-              </ScrollArea>
-            </div>
-
-            {/* Action Selection - Fixed at bottom */}
-            <div className="border-t bg-white p-6 space-y-4">
-              <div>
-                <h3 className="font-medium mb-3">Choose Action</h3>
-                <div className="grid grid-cols-3 gap-2">
-                  {(['approve', 'modify', 'abort'] as const).map((action) => (
-                    <Button
-                      key={action}
-                      variant={selectedAction === action ? 'default' : 'outline'}
-                      onClick={() => setSelectedAction(action)}
-                      className="flex items-center gap-2 justify-center"
-                      type="button"
-                    >
-                      {getActionIcon(action)}
-                      {action.charAt(0).toUpperCase() + action.slice(1)}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Modification Instructions */}
-              {selectedAction === 'modify' && (
-                <div>
-                  <label htmlFor="modification-instructions" className="block text-sm font-medium mb-2">
-                    Modification Instructions
-                  </label>
-                  <Textarea
-                    id="modification-instructions"
-                    placeholder="Describe what changes you want to make to the plan..."
-                    value={modificationInstructions}
-                    onChange={(e) => setModificationInstructions(e.target.value)}
-                    className="min-h-[100px] resize-none"
-                  />
-                </div>
+              {/* Task Goal */}
+              {request.data_for_review?.task_goal && (
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm font-medium flex items-center gap-2">
+                      <Target className="h-4 w-4" />
+                      Task Goal
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-0">
+                    <p className="text-sm leading-relaxed font-medium">
+                      {request.data_for_review.task_goal}
+                    </p>
+                  </CardContent>
+                </Card>
               )}
 
-              {/* Submit Buttons */}
-              <div className="flex justify-end gap-2 pt-4 border-t">
-                <Button 
-                  variant="outline" 
-                  onClick={handleClose} 
-                  disabled={isSubmitting}
-                  type="button"
-                >
-                  Cancel
-                </Button>
-                <Button 
-                  onClick={() => handleResponse(selectedAction as 'approve' | 'modify' | 'abort', selectedAction === 'modify' ? modificationInstructions : undefined)} 
-                  disabled={!selectedAction || isSubmitting || (selectedAction === 'modify' && !modificationInstructions.trim())}
-                  type="button"
-                >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                      Submitting...
-                    </>
-                  ) : (
-                    `Submit ${selectedAction ? selectedAction.charAt(0).toUpperCase() + selectedAction.slice(1) : ''}`
-                  )}
-                </Button>
-              </div>
+              {/* Plan Viewer - Specialized for plans */}
+              {request.data_for_review && (
+                <PlanViewer planData={request.data_for_review} isModified={isModifiedPlan} />
+              )}
+
+              {/* Raw Data Viewer - Collapsible */}
+              <JsonViewer data={request.data_for_review} title="Raw Data (Advanced)" />
+
+              {/* Action Selection */}
+              {!isWaitingForModification && (
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm font-medium">
+                      {isModifiedPlan ? 'Review Modified Plan' : 'Choose Action'}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-0 space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <Button
+                        variant={selectedAction === 'approve' ? 'default' : 'outline'}
+                        className="h-auto p-4 flex flex-col items-center gap-2"
+                        onClick={() => handleActionSelect('approve')}
+                        disabled={isSubmitting}
+                      >
+                        <CheckCircle className="h-5 w-5 text-green-600" />
+                        <div className="text-center">
+                          <div className="font-medium">Approve</div>
+                          <div className="text-xs text-muted-foreground">
+                            {isModifiedPlan ? 'Accept modified plan' : 'Continue as planned'}
+                          </div>
+                        </div>
+                      </Button>
+
+                      <Button
+                        variant={selectedAction === 'modify' ? 'default' : 'outline'}
+                        className="h-auto p-4 flex flex-col items-center gap-2"
+                        onClick={() => setSelectedAction('modify')}
+                        disabled={isSubmitting}
+                      >
+                        <Edit className="h-5 w-5 text-blue-600" />
+                        <div className="text-center">
+                          <div className="font-medium">Request Changes</div>
+                          <div className="text-xs text-muted-foreground">
+                            {isModifiedPlan ? 'Request further changes' : 'Provide feedback'}
+                          </div>
+                        </div>
+                      </Button>
+
+                      <Button
+                        variant={selectedAction === 'abort' ? 'destructive' : 'outline'}
+                        className="h-auto p-4 flex flex-col items-center gap-2"
+                        onClick={() => handleActionSelect('abort')}
+                        disabled={isSubmitting}
+                      >
+                        <XCircle className="h-5 w-5 text-red-600" />
+                        <div className="text-center">
+                          <div className="font-medium">Abort</div>
+                          <div className="text-xs text-muted-foreground">Stop execution</div>
+                        </div>
+                      </Button>
+                    </div>
+
+                    {/* Modification Instructions */}
+                    {selectedAction === 'modify' && (
+                      <div className="space-y-3 pt-4 border-t">
+                        <label className="text-sm font-medium">
+                          {isModifiedPlan ? 'Additional Modification Instructions' : 'Modification Instructions'}
+                        </label>
+                        <Textarea
+                          placeholder={isModifiedPlan 
+                            ? "Describe what additional changes you'd like to see..."
+                            : "Describe what changes you'd like to see..."
+                          }
+                          value={modificationInstructions}
+                          onChange={(e) => setModificationInstructions(e.target.value)}
+                          className="min-h-[100px]"
+                        />
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="outline"
+                            onClick={() => setSelectedAction(null)}
+                            disabled={isSubmitting}
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            onClick={handleModifySubmit}
+                            disabled={!modificationInstructions.trim() || isSubmitting}
+                          >
+                            {isSubmitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                            Submit Changes
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Waiting for Modification */}
+              {isWaitingForModification && (
+                <Card>
+                  <CardContent className="p-6 text-center">
+                    <div className="flex flex-col items-center gap-3">
+                      <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+                      <div>
+                        <h3 className="font-medium">Processing Your Feedback</h3>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          The system is incorporating your changes and will present a revised plan shortly.
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Request Details */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    <Clock className="h-4 w-4" />
+                    Request Details
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <span className="text-muted-foreground">Request ID:</span>
+                      <div className="font-mono text-xs mt-1 p-2 bg-muted rounded">
+                        {request.request_id}
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Timestamp:</span>
+                      <div className="mt-1">
+                        {new Date(request.timestamp).toLocaleString()}
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
-          </>
-        )}
+          </ScrollArea>
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 bg-muted/30 border-t">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <div className="flex items-center gap-4">
+              <span>Node: {request.node_id}</span>
+              <span>•</span>
+              <span>Checkpoint: {request.checkpoint_name}</span>
+              {isModifiedPlan && (
+                <>
+                  <span>•</span>
+                  <span className="text-blue-600 dark:text-blue-400">Modified Plan</span>
+                </>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {isSubmitting && (
+                <>
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  <span>Processing...</span>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
   )

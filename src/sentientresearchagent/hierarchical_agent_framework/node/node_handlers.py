@@ -102,6 +102,10 @@ class ReadyPlanHandler(INodeHandler):
                 node.replan_reason = f"User requested modification: {modification_instructions[:100]}..."
                 node.update_status(TaskStatus.NEEDS_REPLAN)
                 node.output_summary = "Initial plan requires user modification."
+                
+                # CRITICAL: Update the knowledge store immediately to ensure the status change is persisted
+                context.knowledge_store.add_or_update_record_from_node(node)
+                logger.info(f"✅ Node {node.task_id} status updated to NEEDS_REPLAN and persisted to knowledge store")
                 return
             elif hitl_outcome_plan["status"] != "approved":
                 return 
@@ -225,6 +229,13 @@ class ReadyNodeHandler(INodeHandler):
         logger.info(f"  ReadyNodeHandler: Handling READY node {node.task_id} (Original NodeType: {node.node_type}, Goal: '{node.goal[:30]}...')")
         node.update_status(TaskStatus.RUNNING)
         
+        # NEW: Skip atomization for PLAN nodes - they should go directly to planning
+        if node.node_type == NodeType.PLAN:
+            logger.info(f"    ReadyNodeHandler: Node {node.task_id} is PLAN type, skipping atomizer and going directly to planning")
+            await self.ready_plan_handler.handle(node, context)
+            return
+        
+        # For EXECUTE nodes, continue with atomization
         action_to_take_after_atomizer = await context.node_atomizer.atomize_node(node, context)
 
         if action_to_take_after_atomizer is None: 
@@ -513,6 +524,10 @@ class NeedsReplanNodeHandler(INodeHandler):
                 node.replan_reason = f"User requested modification: {modification_instructions[:100]}..."
                 node.update_status(TaskStatus.NEEDS_REPLAN)
                 node.output_summary = "Plan requires user modification."
+                
+                # CRITICAL: Update the knowledge store immediately to ensure the status change is persisted
+                context.knowledge_store.add_or_update_record_from_node(node)
+                logger.info(f"✅ Node {node.task_id} status updated to NEEDS_REPLAN and persisted to knowledge store")
                 return
             else:
                 # Handle other statuses (aborted, error, etc.)

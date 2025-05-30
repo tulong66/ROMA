@@ -502,3 +502,65 @@ class ProjectService:
                 project_task_graph.graphs[graph_id] = new_graph
             except Exception as e:
                 logger.warning(f"Failed to reconstruct graph {graph_id}: {e}")
+
+    def _check_system_readiness_for_execution(self) -> bool:
+        """
+        Check if the system is ready for project execution.
+        
+        Returns:
+            True if system is ready, False otherwise
+        """
+        # Check if WebSocket HITL is ready (if HITL is enabled)
+        if self.system_manager.config.execution.enable_hitl:
+            if not self.system_manager.is_websocket_hitl_ready():
+                logger.warning("⚠️ WebSocket HITL not ready - execution may auto-approve HITL requests")
+                return False
+        
+        return True
+
+    def start_project_execution(self, project_id: str) -> Dict[str, Any]:
+        """
+        Start execution for a project.
+        
+        Args:
+            project_id: ID of the project to start
+            
+        Returns:
+            Dictionary containing execution status
+        """
+        try:
+            # Check system readiness
+            if not self._check_system_readiness_for_execution():
+                logger.warning("🚨 System not fully ready for execution, but proceeding...")
+                # Don't block execution, just warn
+            
+            # Load the project if not already loaded
+            if not self.load_project_into_graph(project_id):
+                return {
+                    "success": False,
+                    "error": f"Failed to load project {project_id}"
+                }
+            
+            # Switch to this project
+            if not self.switch_project(project_id):
+                return {
+                    "success": False,
+                    "error": f"Failed to switch to project {project_id}"
+                }
+            
+            # Start execution using the execution service
+            execution_result = self.execution_service.start_execution()
+            
+            return {
+                "success": True,
+                "project_id": project_id,
+                "execution_status": execution_result
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to start project execution for {project_id}: {e}")
+            traceback.print_exc()
+            return {
+                "success": False,
+                "error": str(e)
+            }

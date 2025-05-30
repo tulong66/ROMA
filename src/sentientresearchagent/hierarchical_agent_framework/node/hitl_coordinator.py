@@ -61,6 +61,12 @@ class HITLCoordinator:
                     "message": user_message,
                     "modification_instructions": modification_instructions
                 }
+            elif user_choice == "timeout":
+                logger.warning(f"HITLCoordinator: Node {node.task_id} HITL for '{checkpoint_name}' timed out. Auto-approving.")
+                return {"status": "approved", "message": f"Auto-approved after timeout: {user_message}"}
+            elif user_choice == "error":
+                logger.warning(f"HITLCoordinator: Node {node.task_id} HITL for '{checkpoint_name}' had an error. Auto-approving.")
+                return {"status": "approved", "message": f"Auto-approved after error: {user_message}"}
             else: # Should not happen if hook logic is correct (aborted is via exception from request_human_review)
                 logger.error(f"HITLCoordinator: Node {node.task_id} HITL for '{checkpoint_name}' returned unexpected choice: {user_choice}. Treating as error.")
                 node.update_status(TaskStatus.FAILED, error_msg=f"Unexpected HITL user choice: {user_choice}")

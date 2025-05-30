@@ -53,8 +53,16 @@ class SentientServer:
         self.system_manager = SystemManager()
         self.system_manager.initialize()
         
-        # Setup WebSocket HITL integration
+        # Setup WebSocket HITL integration IMMEDIATELY after system init
+        logger.info("🔌 Setting up WebSocket HITL integration...")
         self.system_manager.setup_websocket_hitl(self.socketio)
+        
+        # Verify WebSocket HITL is ready
+        if self.system_manager.config.execution.enable_hitl:
+            if self.system_manager.is_websocket_hitl_ready():
+                logger.info("✅ WebSocket HITL verified as ready")
+            else:
+                logger.error("❌ WebSocket HITL setup failed!")
         
         # Create broadcast manager
         self.broadcast_manager = BroadcastManager(
@@ -87,6 +95,11 @@ class SentientServer:
             self.project_service, 
             self.execution_service
         )
+        
+        # Final readiness check
+        if self.system_manager.config.execution.enable_hitl:
+            hitl_status = self.system_manager.get_websocket_hitl_status()
+            logger.info(f"🎮 Final HITL Status: {hitl_status}")
         
         logger.info("✅ Server created successfully!")
         return self.app, self.socketio

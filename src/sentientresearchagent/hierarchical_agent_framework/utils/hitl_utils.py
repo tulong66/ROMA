@@ -140,8 +140,8 @@ async def request_human_review(
     # Check if we should use WebSocket HITL
     if os.getenv('SENTIENT_USE_WEBSOCKET_HITL', 'false').lower() == 'true':
         try:
-            # Import the WebSocket function from the utils module
-            from sentientresearchagent.hierarchical_agent_framework.utils.websocket_hitl_utils import websocket_human_review
+            # Import the WebSocket function from the utils module - FIXED: Use relative import
+            from .websocket_hitl_utils import websocket_human_review
             logger.info(f"🌐 Using WebSocket HITL for checkpoint: {checkpoint_name}")
             return await websocket_human_review(
                 checkpoint_name=checkpoint_name,

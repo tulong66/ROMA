@@ -1,38 +1,68 @@
 """
 System Manager Service
 
-Handles system initialization, configuration, and global state management.
+Centralized management of all Sentient Research Agent components.
 """
 
-from typing import Dict, Any, Optional
-import traceback
 import sys
+import traceback
 import os
+from typing import Dict, Any, Optional
 from loguru import logger
 
 from ...config_utils import auto_load_config, validate_config
 from ...cache.cache_manager import init_cache_manager
-from ...error_handler import get_error_handler, set_error_handler, ErrorHandler
+from ...error_handler import ErrorHandler, set_error_handler
 from ...exceptions import handle_exception
-from ...simple_api import SimpleSentientAgent, create_node_processor_config_from_main_config
-
-# Framework imports
 from ...hierarchical_agent_framework.graph.task_graph import TaskGraph
-from ...hierarchical_agent_framework.node.task_node import TaskNode
-from ...hierarchical_agent_framework.node.node_processor import NodeProcessor
-from ...hierarchical_agent_framework.graph.state_manager import StateManager
 from ...hierarchical_agent_framework.context.knowledge_store import KnowledgeStore
-from ...hierarchical_agent_framework.graph.execution_engine import ExecutionEngine
+from ...hierarchical_agent_framework.graph.state_manager import StateManager
 from ...hierarchical_agent_framework.node.hitl_coordinator import HITLCoordinator
-from ...hierarchical_agent_framework.utils.websocket_hitl_utils import set_socketio_instance, set_hitl_timeout
+from ...hierarchical_agent_framework.node.node_processor import NodeProcessor
+from ...hierarchical_agent_framework.graph.execution_engine import ExecutionEngine
+from ...simple_api import create_node_processor_config_from_main_config, SimpleSentientAgent
+
+# Import WebSocket HITL utils with error handling
+try:
+    from ...hierarchical_agent_framework.utils.websocket_hitl_utils import (
+        set_socketio_instance, 
+        set_hitl_timeout, 
+        is_websocket_hitl_ready,
+        get_websocket_hitl_status
+    )
+    WEBSOCKET_HITL_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"WebSocket HITL functions not available: {e}")
+    WEBSOCKET_HITL_AVAILABLE = False
+    
+    # Define fallback functions
+    def set_socketio_instance(socketio):
+        logger.warning("WebSocket HITL not available - using fallback")
+    
+    def set_hitl_timeout(timeout_seconds: float):
+        logger.warning("WebSocket HITL not available - using fallback")
+    
+    def is_websocket_hitl_ready() -> bool:
+        return False
+    
+    def get_websocket_hitl_status() -> Dict[str, Any]:
+        return {
+            "ready": False,
+            "socketio_available": False,
+            "connected_clients": 0,
+            "pending_requests": 0,
+            "timeout_seconds": 1800.0,
+            "error": "WebSocket HITL functions not available"
+        }
 
 
 class SystemManager:
     """
-    Manages system initialization and global state.
+    Centralized system manager for all Sentient Research Agent components.
     
-    This class encapsulates all the system initialization logic that was
-    previously scattered throughout the monolithic server file.
+    This class handles initialization, configuration, and coordination of all
+    system components including the task graph, knowledge store, execution engine,
+    and various services.
     """
     
     def __init__(self):
@@ -47,6 +77,7 @@ class SystemManager:
         self.error_handler = None
         self.simple_agent_instance = None
         self._initialized = False
+        self._websocket_hitl_ready = False
     
     def initialize(self) -> Dict[str, Any]:
         """
@@ -150,15 +181,46 @@ class SystemManager:
         """
         if not self._initialized:
             raise RuntimeError("System must be initialized before setting up WebSocket HITL")
+        
+        if not WEBSOCKET_HITL_AVAILABLE:
+            logger.warning("⚠️ WebSocket HITL functions not available - skipping setup")
+            return
             
         # Enable WebSocket HITL
         os.environ['SENTIENT_USE_WEBSOCKET_HITL'] = 'true'
+        
+        # Set server connection info for cross-process communication
+        os.environ['SENTIENT_SERVER_HOST'] = 'localhost'
+        os.environ['SENTIENT_SERVER_PORT'] = '5000'
         
         # Set up WebSocket HITL instance
         set_socketio_instance(socketio)
         set_hitl_timeout(self.config.execution.hitl_timeout_seconds)
         
+        # Mark WebSocket HITL as ready
+        self._websocket_hitl_ready = True
+        
         logger.info(f"✅ WebSocket HITL initialized with {self.config.execution.hitl_timeout_seconds}s timeout")
+        logger.info(f"🔗 HTTP fallback configured for localhost:5000")
+    
+    def is_websocket_hitl_ready(self) -> bool:
+        """Check if WebSocket HITL is ready for use"""
+        if not WEBSOCKET_HITL_AVAILABLE:
+            return False
+        return self._websocket_hitl_ready and is_websocket_hitl_ready()
+    
+    def get_websocket_hitl_status(self) -> Dict[str, Any]:
+        """Get detailed WebSocket HITL status"""
+        if not WEBSOCKET_HITL_AVAILABLE:
+            return {
+                "ready": False,
+                "socketio_available": False,
+                "connected_clients": 0,
+                "pending_requests": 0,
+                "timeout_seconds": 1800.0,
+                "error": "WebSocket HITL functions not available"
+            }
+        return get_websocket_hitl_status()
     
     def get_simple_agent(self) -> Optional[SimpleSentientAgent]:
         """
@@ -225,7 +287,10 @@ class SystemManager:
                 "total_nodes": len(self.task_graph.nodes),
                 "total_graphs": len(self.task_graph.graphs)
             },
-            "initialized": self._initialized
+            "websocket_hitl": self.get_websocket_hitl_status(),
+            "initialized": self._initialized,
+            "websocket_hitl_ready": self.is_websocket_hitl_ready(),
+            "websocket_hitl_available": WEBSOCKET_HITL_AVAILABLE
         }
     
     def _log_system_info(self):
@@ -242,5 +307,6 @@ class SystemManager:
                 logger.info(f"   - Modified Plan: {getattr(self.config.execution, 'hitl_after_modified_plan', True)}")
                 logger.info(f"   - Atomizer: {getattr(self.config.execution, 'hitl_after_atomizer', False)}")
                 logger.info(f"   - Before Execute: {getattr(self.config.execution, 'hitl_before_execute', False)}")
+                logger.info(f"   - WebSocket HITL Available: {WEBSOCKET_HITL_AVAILABLE}")
         except Exception as e:
             logger.warning(f"Failed to log system info: {e}")

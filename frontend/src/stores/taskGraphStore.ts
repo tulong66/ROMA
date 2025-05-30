@@ -215,12 +215,11 @@ export const useTaskGraphStore = create<TaskGraphState>()(
       console.log('  Actually different:', actuallyDifferent)
       console.log('  Node count changed:', prevNodeCount !== newNodeCount)
       
-      // Preserve current HITL request during updates
-      const currentHITLRequest = get().hitlRequest
-      const shouldPreserveHITL = currentHITLRequest !== null
+      // Always preserve HITL request if one exists
+      const currentHITLRequest = prevState.hitlRequest
       
-      if (shouldPreserveHITL) {
-        console.log('🔒 STORE: Preserving active HITL request during task graph update:', currentHITLRequest?.request_id)
+      if (currentHITLRequest) {
+        console.log('🔒 STORE: Preserving active HITL request during update')
       }
       
       // Force update by creating completely new objects
@@ -229,9 +228,10 @@ export const useTaskGraphStore = create<TaskGraphState>()(
         graphs: { ...(data.graphs || {}) },
         overallProjectGoal: data.overall_project_goal,
         isLoading: newNodeCount === 0 ? prevState.isLoading : false,
-        hitlRequest: shouldPreserveHITL ? currentHITLRequest : null,
-        currentHITLRequest: shouldPreserveHITL ? currentHITLRequest : undefined,
-        isHITLModalOpen: shouldPreserveHITL ? prevState.isHITLModalOpen : false,
+        // Always preserve HITL state if it exists
+        hitlRequest: currentHITLRequest,
+        currentHITLRequest: currentHITLRequest,
+        isHITLModalOpen: !!currentHITLRequest,
       }
       
       console.log('🏪 STORE: Setting new state:', {
@@ -583,22 +583,91 @@ export const useTaskGraphStore = create<TaskGraphState>()(
       return stats
     },
     
-    // HITL Actions
+    // HITL Actions with AGGRESSIVE DEBUGGING
     setHITLRequest: (request: HITLRequest | null) => {
       const current = get().hitlRequest
+      const timestamp = new Date().toISOString()
+      
       console.log('🏪 Store: Setting HITL request:', {
+        timestamp,
         previous: current?.request_id || 'none',
         new: request?.request_id || 'none',
         checkpoint: request?.checkpoint_name || 'none',
-        attempt: request?.current_attempt || 'none'
+        attempt: request?.current_attempt || 'none',
+        fullRequest: request
       })
       
-      set({ hitlRequest: request })
+      // AGGRESSIVE DEBUGGING: Validate the request
+      if (request) {
+        const validationErrors = []
+        if (!request.request_id) validationErrors.push('missing request_id')
+        if (!request.checkpoint_name) validationErrors.push('missing checkpoint_name')
+        if (!request.node_id) validationErrors.push('missing node_id')
+        
+        if (validationErrors.length > 0) {
+          console.error('🚨 Store: Invalid HITL request:', {
+            errors: validationErrors,
+            request
+          })
+        } else {
+          console.log('✅ Store: HITL request validation passed')
+        }
+      }
+      
+      // Set the state
+      const newState = { 
+        hitlRequest: request,
+        currentHITLRequest: request || undefined,
+        isHITLModalOpen: request !== null
+      }
+      
+      console.log('🏪 Store: Setting new HITL state:', newState)
+      set(newState)
+      
+      // AGGRESSIVE DEBUGGING: Verify the state was set
+      setTimeout(() => {
+        const verifyState = get()
+        console.log('🔍 Store: HITL state verification:', {
+          timestamp: new Date().toISOString(),
+          hitlRequest: verifyState.hitlRequest,
+          currentHITLRequest: verifyState.currentHITLRequest,
+          isHITLModalOpen: verifyState.isHITLModalOpen,
+          requestIdMatch: verifyState.hitlRequest?.request_id === request?.request_id,
+          stateSetCorrectly: !!verifyState.hitlRequest === !!request
+        })
+        
+        if (request && !verifyState.hitlRequest) {
+          console.error('🚨 CRITICAL: HITL request was not persisted in store!')
+        } else if (request && verifyState.hitlRequest?.request_id !== request.request_id) {
+          console.error('🚨 CRITICAL: HITL request ID mismatch in store!')
+        }
+      }, 50)
     },
-    
+
     clearHITLRequest: () => {
-      console.log('🏪 Store: Explicitly clearing HITL request')
-      set({ hitlRequest: null })
+      const timestamp = new Date().toISOString()
+      console.log('🏪 Store: Explicitly clearing HITL request', { timestamp })
+      
+      const newState = { 
+        hitlRequest: null,
+        currentHITLRequest: undefined,
+        isHITLModalOpen: false
+      }
+      
+      console.log('🏪 Store: Setting cleared HITL state:', newState)
+      set(newState)
+      
+      // Verify the clear worked
+      setTimeout(() => {
+        const verifyState = get()
+        console.log('🔍 Store: HITL clear verification:', {
+          timestamp: new Date().toISOString(),
+          hitlRequest: verifyState.hitlRequest,
+          currentHITLRequest: verifyState.currentHITLRequest,
+          isHITLModalOpen: verifyState.isHITLModalOpen,
+          clearedCorrectly: !verifyState.hitlRequest && !verifyState.currentHITLRequest && !verifyState.isHITLModalOpen
+        })
+      }, 50)
     },
     
     respondToHITL: (response: HITLResponse) => {
@@ -631,4 +700,59 @@ export const useTaskGraphStore = create<TaskGraphState>()(
     // New properties
     hitlRequest: null,
   }))
-) 
+)
+
+// AGGRESSIVE DEBUGGING: Add store state monitoring
+if (typeof window !== 'undefined' && window) {
+  let lastHITLState = null
+  
+  useTaskGraphStore.subscribe((state) => {
+    const currentHITLState = {
+      hitlRequest: state.hitlRequest,
+      currentHITLRequest: state.currentHITLRequest,
+      isHITLModalOpen: state.isHITLModalOpen
+    }
+    
+    // Only log if HITL state actually changed
+    if (JSON.stringify(currentHITLState) !== JSON.stringify(lastHITLState)) {
+      console.log('🏪 Store: HITL state changed:', {
+        timestamp: new Date().toISOString(),
+        previous: lastHITLState,
+        current: currentHITLState,
+        hasRequest: !!currentHITLState.hitlRequest,
+        modalShouldBeOpen: !!currentHITLState.hitlRequest
+      })
+      lastHITLState = currentHITLState
+    }
+  })
+  
+  // Add global debugging functions
+  const globalWindow = window as any
+  
+  globalWindow.getHITLStoreState = () => {
+    const state = useTaskGraphStore.getState()
+    return {
+      hitlRequest: state.hitlRequest,
+      currentHITLRequest: state.currentHITLRequest,
+      isHITLModalOpen: state.isHITLModalOpen,
+      hitlLogs: state.hitlLogs
+    }
+  }
+  
+  globalWindow.triggerTestHITLFromStore = () => {
+    const testRequest = {
+      request_id: 'store-test-' + Date.now(),
+      checkpoint_name: 'StoreTestCheckpoint',
+      context_message: 'This is a test HITL request triggered from store',
+      data_for_review: { test: true, source: 'store' },
+      node_id: 'store-test-node',
+      current_attempt: 1,
+      timestamp: new Date().toISOString()
+    }
+    
+    console.log('🧪 Triggering test HITL from store:', testRequest)
+    useTaskGraphStore.getState().setHITLRequest(testRequest)
+  }
+  
+  globalWindow.getHITLState = globalWindow.getHITLStoreState
+} 

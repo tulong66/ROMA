@@ -4,7 +4,7 @@ This provides a single, easy-to-use API that integrates all system components
 with proper configuration management.
 """
 
-from typing import Dict, Any, Optional, Union, Iterator
+from typing import Dict, Any, Optional, Union, Iterator, TYPE_CHECKING
 from pathlib import Path
 from datetime import datetime
 import uuid
@@ -12,6 +12,11 @@ import asyncio
 import nest_asyncio  # Add this import
 
 from loguru import logger
+
+# Use TYPE_CHECKING to avoid runtime import issues
+if TYPE_CHECKING:
+    from .config import SentientConfig
+    from .hierarchical_agent_framework.node.node_configs import NodeProcessorConfig
 
 try:
     # Import existing framework components
@@ -37,10 +42,16 @@ try:
 except ImportError as e:
     logger.error(f"Framework components not available: {e}")
     FRAMEWORK_AVAILABLE = False
+    
+    # Define dummy classes when framework is not available
+    class SentientConfig:
+        pass
+    
+    class NodeProcessorConfig:
+        pass
 
 
-
-def load_unified_config(config_path: Optional[Union[str, Path]] = None) -> SentientConfig:
+def load_unified_config(config_path: Optional[Union[str, Path]] = None) -> "SentientConfig":
     """
     Load configuration with unified approach.
     
@@ -50,6 +61,9 @@ def load_unified_config(config_path: Optional[Union[str, Path]] = None) -> Senti
     Returns:
         SentientConfig instance
     """
+    if not FRAMEWORK_AVAILABLE:
+        raise ImportError("Framework components not available. Please install missing dependencies.")
+    
     if config_path:
         config_path = Path(config_path)
         if not config_path.exists():
@@ -68,10 +82,13 @@ def load_unified_config(config_path: Optional[Union[str, Path]] = None) -> Senti
     return config
 
 
-def create_node_processor_config_from_main_config(main_config: SentientConfig) -> NodeProcessorConfig:
+def create_node_processor_config_from_main_config(main_config: "SentientConfig") -> "NodeProcessorConfig":
     """
     Create NodeProcessorConfig from the centralized main configuration.
     """
+    if not FRAMEWORK_AVAILABLE:
+        raise ImportError("Framework components not available. Please install missing dependencies.")
+    
     node_config = NodeProcessorConfig()
     
     # Map centralized config to NodeProcessorConfig
@@ -110,7 +127,7 @@ def create_node_processor_config_from_main_config(main_config: SentientConfig) -
     return node_config
 
 
-def initialize_system(config: SentientConfig) -> Dict[str, Any]:
+def initialize_system(config: "SentientConfig") -> Dict[str, Any]:
     """
     Initialize all system components with proper integration.
     
@@ -120,6 +137,9 @@ def initialize_system(config: SentientConfig) -> Dict[str, Any]:
     Returns:
         Dictionary containing all initialized components
     """
+    if not FRAMEWORK_AVAILABLE:
+        raise ImportError("Framework components not available. Please install missing dependencies.")
+    
     logger.info("🔧 Initializing Sentient Research Agent system...")
     
     try:
@@ -208,7 +228,7 @@ class SentientAgent:
     components with proper configuration management.
     """
     
-    def __init__(self, config: Optional[SentientConfig] = None, enable_hitl: Optional[bool] = None):
+    def __init__(self, config: Optional["SentientConfig"] = None, enable_hitl: Optional[bool] = None):
         """
         Initialize the agent with configuration.
         

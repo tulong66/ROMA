@@ -11,6 +11,8 @@ class WebSocketService {
   private lastUpdateTime = 0
   private updateCount = 0
   private connectionStableTimer: ReturnType<typeof setTimeout> | null = null
+  private hasEverConnected = false
+  private lastConnectionAttempt = 0
 
   connect() {
     if (this.isConnecting || this.isConnected()) {
@@ -18,6 +20,12 @@ class WebSocketService {
       return
     }
 
+    if (this.socket && !this.socket.connected && Date.now() - this.lastConnectionAttempt < 1000) {
+      console.log('⚠️ Too soon to reconnect, waiting...')
+      return
+    }
+
+    this.lastConnectionAttempt = Date.now()
     this.isConnecting = true
     console.log('🔌 Attempting to connect to WebSocket at http://localhost:5000')
     
@@ -107,28 +115,104 @@ class WebSocketService {
     })
 
     this.socket.on('hitl_request', (request: HITLRequest) => {
-      console.log('🤔 Received HITL request:', request)
+      console.log('🤔 WebSocket: Received HITL request:', {
+        timestamp: new Date().toISOString(),
+        requestId: request.request_id,
+        checkpoint: request.checkpoint_name,
+        nodeId: request.node_id,
+        fullRequest: request
+      })
+      
       try {
+        // AGGRESSIVE DEBUGGING: Validate request structure
+        const validationErrors = []
+        if (!request.request_id) validationErrors.push('missing request_id')
+        if (!request.checkpoint_name) validationErrors.push('missing checkpoint_name')
+        if (!request.node_id) validationErrors.push('missing node_id')
+        
+        if (validationErrors.length > 0) {
+          console.error('❌ Invalid HITL request structure:', {
+            errors: validationErrors,
+            request
+          })
+          return
+        }
+
+        console.log('✅ HITL request validation passed')
+        
         // Add to HITL logs
+        console.log('📝 Adding HITL log entry')
         useTaskGraphStore.getState().addHITLLog({
           checkpoint_name: request.checkpoint_name,
           context_message: request.context_message,
           node_id: request.node_id,
           current_attempt: request.current_attempt,
           timestamp: request.timestamp || new Date().toISOString(),
-          request_id: request.request_id || Math.random().toString(36)
+          request_id: request.request_id
         })
         
-        // Also set for modal (when we implement it)
+        // AGGRESSIVE DEBUGGING: Check store state before setting
+        const storeBefore = useTaskGraphStore.getState()
+        console.log('🏪 Store state BEFORE setting HITL request:', {
+          hitlRequest: storeBefore.hitlRequest,
+          currentHITLRequest: storeBefore.currentHITLRequest,
+          isHITLModalOpen: storeBefore.isHITLModalOpen
+        })
+        
+        // Set the HITL request in the store - this should open the modal
+        console.log('📤 Setting HITL request in store')
         useTaskGraphStore.getState().setHITLRequest(request)
+        
+        // AGGRESSIVE DEBUGGING: Verify it was set and check multiple times
+        const verifyStoreUpdate = () => {
+          const storeAfter = useTaskGraphStore.getState()
+          console.log('✅ Store state AFTER setting HITL request:', {
+            timestamp: new Date().toISOString(),
+            hitlRequest: storeAfter.hitlRequest,
+            currentHITLRequest: storeAfter.currentHITLRequest,
+            isHITLModalOpen: storeAfter.isHITLModalOpen,
+            hasRequest: !!storeAfter.hitlRequest,
+            requestIdMatch: storeAfter.hitlRequest?.request_id === request.request_id
+          })
+          
+          // Check if the modal should be visible
+          if (!storeAfter.hitlRequest) {
+            console.error('🚨 CRITICAL: HITL request was not set in store!')
+          } else if (storeAfter.hitlRequest.request_id !== request.request_id) {
+            console.error('🚨 CRITICAL: HITL request ID mismatch!')
+          } else {
+            console.log('✅ HITL request successfully set in store')
+          }
+        }
+        
+        // Verify immediately and after a delay
+        verifyStoreUpdate()
+        setTimeout(verifyStoreUpdate, 100)
+        setTimeout(verifyStoreUpdate, 500)
+        
       } catch (error) {
         console.error('❌ Error processing HITL request:', error)
+        console.error('Stack trace:', error.stack)
       }
     })
 
-    // Add test event handler for debugging
+    // AGGRESSIVE DEBUGGING: Add test event handler
     this.socket.on('hitl_test', (data) => {
       console.log('🧪 Received HITL test event:', data)
+      
+      // Trigger a test HITL request
+      const testRequest = {
+        request_id: 'test-' + Date.now(),
+        checkpoint_name: 'TestCheckpoint',
+        context_message: 'This is a test HITL request',
+        data_for_review: { test: true },
+        node_id: 'test-node',
+        current_attempt: 1,
+        timestamp: new Date().toISOString()
+      }
+      
+      console.log('🧪 Triggering test HITL request:', testRequest)
+      useTaskGraphStore.getState().setHITLRequest(testRequest)
     })
 
     this.socket.on('project_started', (data) => {
@@ -141,9 +225,12 @@ class WebSocketService {
       useTaskGraphStore.getState().setLoading(false)
     })
 
-    // Debug: Log ALL WebSocket events
+    // AGGRESSIVE DEBUGGING: Log ALL WebSocket events
     this.socket.onAny((eventName, ...args) => {
-      console.log(`🔊 WebSocket event received: "${eventName}"`, args)
+      console.log(`🔊 WebSocket event received: "${eventName}"`, {
+        timestamp: new Date().toISOString(),
+        args: args.length > 0 ? args : 'no args'
+      })
     })
   }
 
@@ -182,11 +269,37 @@ class WebSocketService {
     }
   }
 
+  async checkSystemReadiness(): Promise<boolean> {
+    try {
+      const response = await fetch('/api/system/readiness')
+      const data = await response.json()
+      
+      if (data.ready) {
+        console.log('✅ System is ready for execution')
+        return true
+      } else {
+        console.log('⚠️ System not ready:', data.components)
+        return false
+      }
+    } catch (error) {
+      console.error('❌ Failed to check system readiness:', error)
+      return false
+    }
+  }
+
   startProject(projectGoal: string, maxSteps: number = 250) {
     if (this.isConnected()) {
       console.log('📤 Starting project:', projectGoal)
-      useTaskGraphStore.getState().setLoading(true)
-      this.socket!.emit('start_project', { project_goal: projectGoal, max_steps: maxSteps })
+      
+      // Check system readiness before starting
+      this.checkSystemReadiness().then(ready => {
+        if (!ready) {
+          console.warn('⚠️ System may not be fully ready - HITL requests might be auto-approved')
+        }
+        
+        useTaskGraphStore.getState().setLoading(true)
+        this.socket!.emit('start_project', { project_goal: projectGoal, max_steps: maxSteps })
+      })
     } else {
       console.error('❌ Cannot start project: not connected')
       useTaskGraphStore.getState().setLoading(false)
@@ -253,6 +366,50 @@ class WebSocketService {
       useTaskGraphStore.getState().setData(testData)
     }
   }
+
+  // AGGRESSIVE DEBUGGING: Add method to trigger test HITL
+  triggerTestHITL() {
+    console.log('🧪 Manually triggering test HITL request')
+    const testRequest = {
+      request_id: 'manual-test-' + Date.now(),
+      checkpoint_name: 'ManualTestCheckpoint',
+      context_message: 'This is a manually triggered test HITL request',
+      data_for_review: { 
+        test: true, 
+        timestamp: new Date().toISOString(),
+        message: 'Manual test from frontend'
+      },
+      node_id: 'manual-test-node',
+      current_attempt: 1,
+      timestamp: new Date().toISOString()
+    }
+    
+    console.log('🧪 Setting manual test HITL request:', testRequest)
+    useTaskGraphStore.getState().setHITLRequest(testRequest)
+    
+    // Also emit to server for testing
+    if (this.isConnected()) {
+      this.socket!.emit('hitl_test_trigger', testRequest)
+    }
+  }
 }
 
-export const webSocketService = new WebSocketService() 
+// Export singleton instance
+export const webSocketService = new WebSocketService()
+
+// AGGRESSIVE DEBUGGING: Add global access for testing - Fix the window check
+if (typeof window !== 'undefined' && window) {
+  const globalWindow = window as any
+  
+  globalWindow.webSocketService = webSocketService
+  globalWindow.triggerTestHITL = () => webSocketService.triggerTestHITL()
+  globalWindow.getHITLState = () => {
+    const state = useTaskGraphStore.getState()
+    return {
+      hitlRequest: state.hitlRequest,
+      currentHITLRequest: state.currentHITLRequest,
+      isHITLModalOpen: state.isHITLModalOpen,
+      hitlLogs: state.hitlLogs
+    }
+  }
+} 

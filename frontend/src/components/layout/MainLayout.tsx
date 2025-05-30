@@ -13,6 +13,7 @@ import { HITLModal } from '@/components/hitl/HITLModal'
 import ConnectionStatus from '@/components/status/ConnectionStatus'
 import HITLLog from '@/components/hitl/HITLLog'
 import HITLNotification from '@/components/hitl/HITLNotification'
+import { wsManager } from '@/services/websocketManager'
 
 const MainLayout: React.FC = () => {
   const { 
@@ -33,21 +34,10 @@ const MainLayout: React.FC = () => {
   const [loadingMessage, setLoadingMessage] = useState('Initializing project...')
   const [loadingDots, setLoadingDots] = useState('')
 
-  // Initialize WebSocket connection once
+  // Initialize WebSocket connection through manager
   useEffect(() => {
-    console.log('🔌 MainLayout: Initializing WebSocket connection')
-    
-    // Only connect if not already connected
-    if (!webSocketService.isConnected()) {
-      webSocketService.connect()
-    }
-    
-    // Cleanup on unmount
-    return () => {
-      console.log('🔌 MainLayout: Cleaning up WebSocket connection')
-      webSocketService.disconnect()
-    }
-  }, []) // Empty dependency array - only run once
+    wsManager.initialize()
+  }, [])
 
   // Handle connection status changes
   useEffect(() => {
