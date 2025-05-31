@@ -240,11 +240,24 @@ class ProjectService:
             # Create update callback for real-time sync
             update_callback = self._create_project_update_callback(project_id)
             
+            # Get the current profile's blueprint from SystemManager
+            current_profile = self.system_manager.get_current_profile()
+            current_blueprint = None
+            if current_profile:
+                try:
+                    from ...hierarchical_agent_framework.agent_configs.profile_loader import ProfileLoader
+                    profile_loader = ProfileLoader()
+                    current_blueprint = profile_loader.load_profile(current_profile)
+                    logger.info(f"🎯 Using blueprint '{current_blueprint.name}' for project {project_id}")
+                except Exception as e:
+                    logger.warning(f"⚠️  Failed to load blueprint for profile '{current_profile}': {e}")
+
             project_node_processor = NodeProcessor(
                 task_graph=project_task_graph,
                 knowledge_store=self.system_manager.knowledge_store,
                 config=custom_config,
-                node_processor_config=node_processor_config
+                node_processor_config=node_processor_config,
+                agent_blueprint=current_blueprint
             )
             
             project_execution_engine = ExecutionEngine(

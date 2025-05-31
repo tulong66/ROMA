@@ -1,355 +1,263 @@
-import React, { useState, useEffect } from 'react'
-import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Bot, CheckCircle, AlertCircle, Loader2, RefreshCw, Info, Crown } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import React, { useState, useEffect } from 'react';
+import { ChevronDown, User, Settings, Cpu, AlertCircle, CheckCircle, Layers, Zap } from 'lucide-react';
 
 interface Profile {
-  name: string
-  description: string
-  planner_mappings: Record<string, string>
-  executor_mappings: Record<string, string>
-  atomizer: string
-  aggregator: string
-  plan_modifier: string
-  default_planner: string
-  default_executor: string
-  is_current: boolean
-  is_valid: boolean
-  validation?: {
-    blueprint_valid: boolean
-    missing_agents?: string[]
-  }
-  root_planner: string
-  recommended_for?: string[]
+  name: string;
+  description: string;
+  root_planner: string;
+  default_planner: string;
+  default_executor: string;
+  aggregator: string;
+  atomizer: string;
+  plan_modifier: string;
+  planner_mappings: Record<string, string>;
+  executor_mappings: Record<string, string>;
+  validation_issues?: string[];
+  recommended_for?: string[];
+  is_valid: boolean;
 }
 
 interface ProjectProfileSelectorProps {
-  selectedProfile: string
-  onProfileChange: (profileName: string) => void
+  selectedProfile: string;
+  onProfileChange: (profileName: string) => void;
 }
 
 const ProjectProfileSelector: React.FC<ProjectProfileSelectorProps> = ({
-  selectedProfile,
+  selectedProfile: currentProfile,
   onProfileChange
 }) => {
-  const [profiles, setProfiles] = useState<Profile[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isOpen, setIsOpen] = useState(false);
 
-  // Load profiles from API
   useEffect(() => {
     const loadProfiles = async () => {
       try {
-        setLoading(true)
-        console.log('🔍 Attempting to fetch profiles from /api/profiles')
-        
-        const response = await fetch('/api/profiles')
-        console.log('📡 Response status:', response.status, response.statusText)
-        console.log('📡 Response headers:', Object.fromEntries(response.headers.entries()))
+        console.log('🔍 Attempting to fetch profiles from /api/profiles');
+        const response = await fetch('/api/profiles');
+        console.log('📡 Response status:', response.status, response.statusText);
         
         if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
         
-        const responseText = await response.text()
-        console.log('📄 Raw response text (first 200 chars):', responseText.substring(0, 200))
+        const data = await response.json();
+        console.log('✅ Parsed data:', data);
         
-        // Check if response is HTML (indicates API route not working)
-        if (responseText.trim().startsWith('<!doctype') || responseText.trim().startsWith('<html')) {
-          throw new Error('API returned HTML instead of JSON - API route may not be working')
+        setProfiles(data.profiles || []);
+        
+        // ✅ Auto-select the current profile from backend
+        if (data.current_profile && (!currentProfile || currentProfile !== data.current_profile)) {
+          console.log('🎯 Auto-selecting current profile:', data.current_profile);
+          onProfileChange?.(data.current_profile);
         }
-        
-        let data
-        try {
-          data = JSON.parse(responseText)
-        } catch (parseError) {
-          console.error('❌ JSON parse error:', parseError)
-          console.error('📄 Full response text:', responseText)
-          throw new Error(`Invalid JSON response: ${parseError.message}`)
-        }
-        
-        console.log('✅ Parsed data:', data)
-        
-        if (data.profiles) {
-          // Transform API data to match our interface
-          const transformedProfiles = data.profiles.map((profile: any) => ({
-            name: profile.name,
-            description: profile.description,
-            root_planner: profile.root_planner,
-            planner_mappings: profile.planner_mappings || {},
-            executor_mappings: profile.executor_mappings || {},
-            is_valid: profile.is_valid,
-            validation: profile.validation
-          }))
-          
-          console.log('🔄 Transformed profiles:', transformedProfiles)
-          setProfiles(transformedProfiles)
-          
-          // If no profile is selected, select the first valid one or the current one
-          if (!selectedProfile && data.profiles.length > 0) {
-            const currentProfile = data.profiles.find((p: Profile) => p.is_current)
-            const firstValidProfile = data.profiles.find((p: Profile) => p.is_valid)
-            const defaultProfile = currentProfile || firstValidProfile || data.profiles[0]
-            onProfileChange(defaultProfile.name)
-          }
-        } else {
-          throw new Error('Invalid API response format - missing profiles field')
-        }
-      } catch (err) {
-        console.error('❌ Failed to load profiles:', err)
-        setError(err instanceof Error ? err.message : 'Failed to load profiles')
-        
-        // Fallback to hardcoded profiles if API fails
-        console.log('🔄 Using fallback hardcoded profiles')
-        setProfiles([
-          {
-            name: 'deep_research_agent',
-            description: 'Comprehensive research agent with specialized root planner and task-specific executors',
-            root_planner: 'DeepResearchPlanner',
-            planner_mappings: {
-              'SEARCH': 'CoreResearchPlanner',
-              'WRITE': 'CoreResearchPlanner', 
-              'THINK': 'CoreResearchPlanner'
-            },
-            executor_mappings: {
-              'SEARCH': 'OpenAICustomSearcher',
-              'THINK': 'SearchSynthesizer',
-              'WRITE': 'BasicReportWriter'
-            },
-            is_valid: true
-          }
-        ])
-        if (!selectedProfile) {
-          onProfileChange('deep_research_agent')
-        }
+      } catch (error) {
+        console.error('❌ Failed to load profiles:', error);
+        setError('Failed to load agent profiles');
       } finally {
-        setLoading(false)
+        setLoading(false);
       }
-    }
+    };
 
-    loadProfiles()
-  }, [])
+    loadProfiles();
+  }, []); // Remove currentProfile dependency to avoid infinite loops
 
-  const selectedProfileData = profiles.find(p => p.name === selectedProfile)
-
-  const getDisplayName = (profileName: string) => {
-    // Convert snake_case to Title Case
-    return profileName
-      .split('_')
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(' ')
-  }
-
-  const getRecommendedFor = (profile: Profile): string[] => {
-    if (!profile) return ['Custom tasks'] // Safety check
-    
-    if (profile.name === 'deep_research_agent') {
-      return ['Academic research', 'Market analysis', 'Technical investigation']
-    }
-    if (profile.name === 'general_agent') {
-      return ['General tasks', 'Quick analysis', 'Simple research']
-    }
-    return ['Custom tasks']
-  }
+  const selectedProfileData = profiles.find(p => p.name === currentProfile);
 
   if (loading) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Bot className="h-5 w-5" />
-            Agent Profile
-          </CardTitle>
-          <CardDescription>
-            Choose the AI agent profile that best fits your project type
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex items-center justify-center py-8">
-          <div className="flex items-center gap-2 text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Loading profiles...
-          </div>
-        </CardContent>
-      </Card>
-    )
+      <div className="space-y-2">
+        <label className="text-sm font-medium text-gray-700">Agent Profile</label>
+        <div className="animate-pulse bg-gray-200 h-10 rounded-md"></div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-2">
+        <label className="text-sm font-medium text-gray-700">Agent Profile</label>
+        <div className="flex items-center space-x-2 text-red-600 text-sm">
+          <AlertCircle className="h-4 w-4" />
+          <span>{error}</span>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Bot className="h-5 w-5" />
-          Agent Profile
-          {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-        </CardTitle>
-        <CardDescription>
-          Choose the AI agent profile that best fits your project type
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {error && (
-          <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <AlertCircle className="h-4 w-4 text-yellow-600" />
-                <span className="text-sm text-yellow-700 dark:text-yellow-300">
-                  API Error: {error}
-                </span>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  // Implement retry logic here
-                }}
-                className="h-6 text-xs"
-              >
-                <RefreshCw className="h-3 w-3 mr-1" />
-                Retry
-              </Button>
-            </div>
-            <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-1">
-              Using fallback configuration. Some features may be limited.
-            </p>
+    <div className="space-y-2">
+      <label className="text-sm font-medium text-gray-700">Agent Profile</label>
+      
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => setIsOpen(!isOpen)}
+          className="w-full flex items-center justify-between px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-white text-left focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+        >
+          <div className="flex items-center space-x-2">
+            <User className="h-4 w-4 text-gray-500" />
+            <span className="text-sm">
+              {selectedProfileData?.name || 'Select Profile'}
+            </span>
           </div>
-        )}
+          <ChevronDown className={`h-4 w-4 text-gray-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        </button>
 
-        <div className="space-y-2">
-          <Label htmlFor="profile-select">Select Profile</Label>
-          <Select value={selectedProfile} onValueChange={onProfileChange} disabled={loading}>
-            <SelectTrigger id="profile-select">
-              <SelectValue placeholder="Choose an agent profile..." />
-            </SelectTrigger>
-            <SelectContent>
-              {profiles.map((profile) => (
-                <SelectItem key={profile.name} value={profile.name}>
-                  <div className="flex items-center space-x-2">
+        {isOpen && (
+          <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-96 overflow-auto">
+            {profiles.map((profile) => (
+              <button
+                key={profile.name}
+                type="button"
+                onClick={() => {
+                  onProfileChange(profile.name);
+                  setIsOpen(false);
+                }}
+                className={`w-full px-3 py-3 text-left hover:bg-gray-50 focus:outline-none focus:bg-gray-50 border-b border-gray-100 last:border-b-0 ${
+                  currentProfile === profile.name ? 'bg-blue-50' : ''
+                }`}
+              >
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-sm">{profile.name}</span>
                     {profile.is_valid ? (
-                      <CheckCircle className="w-4 h-4 text-green-500" />
+                      <CheckCircle className="h-4 w-4 text-green-500" />
                     ) : (
-                      <AlertCircle className="w-4 h-4 text-yellow-500" />
-                    )}
-                    <span>{getDisplayName(profile.name)}</span>
-                    {profile.is_current && (
-                      <Badge variant="secondary" className="text-xs ml-2">
-                        Current
-                      </Badge>
+                      <AlertCircle className="h-4 w-4 text-red-500" />
                     )}
                   </div>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+                  
+                  <p className="text-xs text-gray-600">{profile.description}</p>
+                  
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="flex items-center space-x-1">
+                      <Settings className="h-3 w-3 text-gray-400" />
+                      <span className="text-gray-500">Root:</span>
+                      <span className="font-mono text-gray-700">{profile.root_planner}</span>
+                    </div>
+                    <div className="flex items-center space-x-1">
+                      <Cpu className="h-3 w-3 text-gray-400" />
+                      <span className="text-gray-500">Executor:</span>
+                      <span className="font-mono text-gray-700">{profile.default_executor}</span>
+                    </div>
+                  </div>
 
-        {/* Profile Details */}
-        {selectedProfileData && (
-          <div className="mt-4 p-4 bg-muted/50 rounded-lg space-y-3">
-            <div className="flex items-center justify-between">
-              <h4 className="font-medium text-sm">{getDisplayName(selectedProfileData.name)}</h4>
-              <div className="flex items-center space-x-2">
-                {selectedProfileData.is_current && (
-                  <Badge variant="default" className="text-xs">
-                    Active
-                  </Badge>
-                )}
-                <Badge variant={selectedProfileData.is_valid ? "secondary" : "outline"} className="text-xs">
-                  {selectedProfileData.is_valid ? 'Ready' : 'Issues'}
-                </Badge>
-              </div>
+                  {!profile.is_valid && (profile.validation_issues || []).length > 0 && (
+                    <div className="text-xs text-red-600">
+                      <span className="font-medium">Issues:</span>
+                      <ul className="list-disc list-inside ml-2">
+                        {(profile.validation_issues || []).map((issue, idx) => (
+                          <li key={idx}>{issue}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {selectedProfileData && (
+        <div className="mt-3 p-3 bg-gray-50 rounded-md">
+          <h4 className="text-sm font-medium text-gray-900 mb-3">{selectedProfileData.name}</h4>
+          
+          {/* Core Adapters */}
+          <div className="space-y-2 text-xs text-gray-600 mb-3">
+            <div className="flex justify-between">
+              <span className="flex items-center space-x-1">
+                <Settings className="h-3 w-3" />
+                <span>Root Planner:</span>
+              </span>
+              <span className="font-mono text-gray-800">{selectedProfileData.root_planner}</span>
             </div>
-            
-            <p className="text-sm text-muted-foreground">
-              {selectedProfileData.description}
-            </p>
+            <div className="flex justify-between">
+              <span className="flex items-center space-x-1">
+                <Settings className="h-3 w-3" />
+                <span>Default Planner:</span>
+              </span>
+              <span className="font-mono text-gray-800">{selectedProfileData.default_planner}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="flex items-center space-x-1">
+                <Cpu className="h-3 w-3" />
+                <span>Default Executor:</span>
+              </span>
+              <span className="font-mono text-gray-800">{selectedProfileData.default_executor}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="flex items-center space-x-1">
+                <Layers className="h-3 w-3" />
+                <span>Aggregator:</span>
+              </span>
+              <span className="font-mono text-gray-800">{selectedProfileData.aggregator}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="flex items-center space-x-1">
+                <Zap className="h-3 w-3" />
+                <span>Atomizer:</span>
+              </span>
+              <span className="font-mono text-gray-800">{selectedProfileData.atomizer}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="flex items-center space-x-1">
+                <Settings className="h-3 w-3" />
+                <span>Plan Modifier:</span>
+              </span>
+              <span className="font-mono text-gray-800">{selectedProfileData.plan_modifier}</span>
+            </div>
+          </div>
 
-            {/* Validation Issues */}
-            {!selectedProfileData.is_valid && selectedProfileData.validation?.missing_agents && (
-              <div className="p-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded">
-                <p className="text-xs font-medium text-yellow-700 dark:text-yellow-300 mb-1">
-                  Validation Issues:
-                </p>
-                <ul className="text-xs text-yellow-600 dark:text-yellow-400 space-y-1">
-                  {selectedProfileData.validation.missing_agents.map((agent, index) => (
-                    <li key={index}>• Missing agent: {agent}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {/* Recommended For */}
-            {selectedProfileData.recommended_for && selectedProfileData.recommended_for.length > 0 && (
-              <div className="flex flex-wrap gap-1 mt-2">
-                {selectedProfileData.recommended_for.map((use, index) => (
-                  <Badge key={index} variant="secondary" className="text-xs">
-                    {use}
-                  </Badge>
+          {/* Task-Specific Planners */}
+          {selectedProfileData.planner_mappings && Object.keys(selectedProfileData.planner_mappings).length > 0 && (
+            <div className="mb-3">
+              <h5 className="text-xs font-medium text-gray-700 mb-1">Task-Specific Planners:</h5>
+              <div className="space-y-1">
+                {Object.entries(selectedProfileData.planner_mappings).map(([taskType, planner]) => (
+                  <div key={taskType} className="flex justify-between text-xs">
+                    <span className="text-gray-500">{taskType}:</span>
+                    <span className="font-mono text-gray-700">{planner}</span>
+                  </div>
                 ))}
               </div>
-            )}
-
-            {/* Root Planner - NEW */}
-            <div className="border-t pt-3">
-              <div className="flex items-center gap-2 mb-2">
-                <Crown className="h-4 w-4 text-amber-500" />
-                <p className="text-xs font-medium">Root Planner:</p>
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger>
-                      <Info className="h-3 w-3 text-muted-foreground" />
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p className="text-xs">Specialized planner for initial project decomposition</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </div>
-              <Badge variant="default" className="text-xs bg-amber-100 text-amber-800 border-amber-200">
-                {selectedProfileData.root_planner}
-              </Badge>
             </div>
+          )}
 
-            {/* Capabilities */}
-            <div className="grid grid-cols-2 gap-3 text-xs border-t pt-3">
-              <div>
-                <p className="font-medium mb-1">Sub-task Planners:</p>
-                <div className="space-y-1">
-                  {Object.entries(selectedProfileData.planner_mappings).map(([task, planner]) => (
-                    <div key={task} className="flex justify-between">
-                      <span className="text-muted-foreground">{task}:</span>
-                      <span>{planner}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              
-              <div>
-                <p className="font-medium mb-1">Task Executors:</p>
-                <div className="space-y-1">
-                  {Object.entries(selectedProfileData.executor_mappings).map(([task, executor]) => (
-                    <div key={task} className="flex justify-between">
-                      <span className="text-muted-foreground">{task}:</span>
-                      <span>{executor}</span>
-                    </div>
-                  ))}
-                </div>
+          {/* Task-Specific Executors */}
+          {selectedProfileData.executor_mappings && Object.keys(selectedProfileData.executor_mappings).length > 0 && (
+            <div className="mb-3">
+              <h5 className="text-xs font-medium text-gray-700 mb-1">Task-Specific Executors:</h5>
+              <div className="space-y-1">
+                {Object.entries(selectedProfileData.executor_mappings).map(([taskType, executor]) => (
+                  <div key={taskType} className="flex justify-between text-xs">
+                    <span className="text-gray-500">{taskType}:</span>
+                    <span className="font-mono text-gray-700">{executor}</span>
+                  </div>
+                ))}
               </div>
             </div>
-          </div>
-        )}
+          )}
+          
+          {!selectedProfileData.is_valid && (selectedProfileData.validation_issues || []).length > 0 && (
+            <div className="mt-2 p-2 bg-red-50 rounded border border-red-200">
+              <div className="flex items-center space-x-1 text-red-700 text-xs font-medium mb-1">
+                <AlertCircle className="h-3 w-3" />
+                <span>Validation Issues:</span>
+              </div>
+              <ul className="text-xs text-red-600 space-y-1">
+                {(selectedProfileData.validation_issues || []).map((issue, idx) => (
+                  <li key={idx}>• {issue}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
 
-        {profiles.length === 0 && !loading && (
-          <div className="text-center py-4 text-sm text-muted-foreground">
-            No profiles available
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  )
-}
-
-export default ProjectProfileSelector 
+export default ProjectProfileSelector;

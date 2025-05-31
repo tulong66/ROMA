@@ -411,7 +411,7 @@ class SystemManager:
                 knowledge_store=self.knowledge_store,
                 config=self.config,
                 node_processor_config=node_processor_config,
-                agent_blueprint=agent_blueprint  # Pass the actual blueprint object
+                agent_blueprint=agent_blueprint  # Pass the actual blueprint object instead of agent_blueprint_name
             )
             
             # 7. Initialize execution engine
@@ -514,6 +514,41 @@ class SystemManager:
     def get_current_profile(self) -> Optional[str]:
         """Get the currently active profile name."""
         return self._current_profile
+
+    def get_profiles_with_current(self) -> Dict[str, Any]:
+        """Get profiles list with current profile marked."""
+        try:
+            profiles = []
+            available_profile_names = self.get_available_profiles()
+            current_profile = self.get_current_profile()
+            
+            # ✅ Auto-select deep_research_agent if no current profile is set
+            if not current_profile and available_profile_names:
+                # Prefer deep_research_agent if available, otherwise use first available
+                if "deep_research_agent" in available_profile_names:
+                    current_profile = "deep_research_agent"
+                else:
+                    current_profile = available_profile_names[0]
+                self._current_profile = current_profile
+                logger.info(f"🎯 Auto-selected profile: {current_profile}")
+            
+            for profile_name in available_profile_names:
+                profile_details = self.get_profile_details(profile_name)
+                profile_details['is_current'] = (profile_name == current_profile)
+                profiles.append(profile_details)
+            
+            return {
+                "current_profile": current_profile,
+                "profiles": profiles,
+                "total_count": len(profiles)
+            }
+        except Exception as e:
+            logger.error(f"Failed to get profiles with current: {e}")
+            return {
+                "current_profile": None,
+                "profiles": [],
+                "total_count": 0
+            }
 
     def switch_profile(self, profile_name: str) -> Dict[str, Any]:
         """

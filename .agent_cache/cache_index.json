@@ -1,8 +1,8 @@
 {
   "agent_responses:SimpleTestPlanner:root:a1b8da0a84918ebb": {
     "file": "b96265c36bd92e86df60b6fb1c91ac5dc47f042fd6471da59f759a87cd4d142a.cache",
-    "created_at": "2025-05-31T19:27:11.404852",
-    "expires_at": "2025-05-31T20:27:11.404852"
+    "created_at": "2025-05-31T19:46:15.138396",
+    "expires_at": "2025-05-31T20:46:15.138396"
   },
   "agent_responses:SimpleTestPlanner:5107c15b57d22743": {
     "file": "0413d57ce6edbccab549d6453a3d9297993fdd309129a4706da308796cad6850.cache",
@@ -18,5 +18,65 @@
     "file": "bf49b76d5dbc6482de8f68cf6275f8312c7f0e8a1e455bfcf69a337ce79305ba.cache",
     "created_at": "2025-05-31T19:27:11.408159",
     "expires_at": "2025-05-31T20:27:11.408159"
+  },
+  "agent_responses:SimpleTestPlanner:c148f743daa6b097": {
+    "file": "5dc4aa16487c7c15b7158cc4f290de3fdfca451d4c64bb551f4e8845e55937c4.cache",
+    "created_at": "2025-05-31T19:30:13.367911",
+    "expires_at": "2025-05-31T20:30:13.367911"
+  },
+  "agent_responses:SimpleTestPlanner:24ea1f787a0ac592": {
+    "file": "91d9532f722e36b05d123936ac9c21ef033ddfbac5a40ee631009bc462b219f2.cache",
+    "created_at": "2025-05-31T19:44:08.572503",
+    "expires_at": "2025-05-31T20:44:08.572503"
+  },
+  "agent_responses:SimpleTestPlanner:root.1:b4a8294f8aca63b0": {
+    "file": "41f8e927dfbe88f1cadf21848bbfd475d37f0249547a737cb0f5fbd3c42e6083.cache",
+    "created_at": "2025-05-31T19:44:23.771606",
+    "expires_at": "2025-05-31T20:44:23.771606"
+  },
+  "agent_responses:SimpleTestPlanner:2771b1475ae85642": {
+    "file": "044fee46580af1f0a61a9db13b346f8b26247859db556e7d44339007aa67da10.cache",
+    "created_at": "2025-05-31T19:44:23.772461",
+    "expires_at": "2025-05-31T20:44:23.772461"
+  },
+  "agent_responses:BasicReportWriter:root.1.6:d4bef3ba34ffacd4": {
+    "file": "89b20cbc3416b5f522e1aad3776e7856831bc528d5d35b9024efce58ee91bb5a.cache",
+    "created_at": "2025-05-31T19:45:28.669438",
+    "expires_at": "2025-05-31T20:45:28.669438"
+  },
+  "agent_responses:BasicReportWriter:a7be53b8bf0b6956": {
+    "file": "230701c7c4ed41f723895f438108973df25f1d1e72ce292bbed5f5c8032b9462.cache",
+    "created_at": "2025-05-31T19:45:28.670969",
+    "expires_at": "2025-05-31T20:45:28.670969"
+  },
+  "agent_responses:SimpleTestPlanner:04524d4aed65de12": {
+    "file": "ac4d7f68232623463a808deb45520acbd9a8eeb62954a06613e3614e44db471f.cache",
+    "created_at": "2025-05-31T19:46:15.139755",
+    "expires_at": "2025-05-31T20:46:15.139755"
+  },
+  "agent_responses:DeepResearchPlanner:root:a1b8da0a84918ebb": {
+    "file": "c17f56dcfa48b707ac6d051b363ac100a40ab3993f6cdd966a09e8e6dba13c9d.cache",
+    "created_at": "2025-05-31T19:56:11.880292",
+    "expires_at": "2025-05-31T20:56:11.880292"
+  },
+  "agent_responses:DeepResearchPlanner:c488cff96c00fd6e": {
+    "file": "b01c9ace9d2c1d8264010fae9018f62b4c098f9fc68bc1ae65060b1816517b04.cache",
+    "created_at": "2025-05-31T19:52:33.482054",
+    "expires_at": "2025-05-31T20:52:33.482054"
+  },
+  "agent_responses:CoreResearchPlanner:root.2:466d8d0c18b27c77": {
+    "file": "f038d377ca9ce2bbaaf0ccb6d468bed34e4433c877f5d28e05e9c38a0ea7affb.cache",
+    "created_at": "2025-05-31T19:53:02.762572",
+    "expires_at": "2025-05-31T20:53:02.762572"
+  },
+  "agent_responses:CoreResearchPlanner:c6a13aec62dec4f9": {
+    "file": "a69716a6da13ac3c8af9d71112a6b4a2f6b63615eb3835a41f7c59e1d1d53271.cache",
+    "created_at": "2025-05-31T19:53:02.764037",
+    "expires_at": "2025-05-31T20:53:02.764037"
+  },
+  "agent_responses:DeepResearchPlanner:78fa3705f4a8fb97": {
+    "file": "aab0591b4b886d671e248e880423f830a47f460e8afc6c3c13e801ca2c6eafee.cache",
+    "created_at": "2025-05-31T19:56:11.881861",
+    "expires_at": "2025-05-31T20:56:11.881861"
   }
 }

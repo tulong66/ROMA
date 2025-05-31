@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any, List, Union
 from pydantic import BaseModel, Field, validator
 from loguru import logger
+import logging
 
 from sentientresearchagent.hierarchical_agent_framework.types import TaskType
 
@@ -332,9 +333,7 @@ class SentientConfig(BaseModel):
         return missing_keys
 
     def setup_logging(self) -> None:
-        """Configure logging based on the logging configuration."""
-        from loguru import logger
-        
+        """Configure logging based on the current settings."""
         # Remove existing handlers
         logger.remove()
         
@@ -361,6 +360,18 @@ class SentientConfig(BaseModel):
             )
         
         logger.info(f"Logging configured: level={self.logging.level}, file={self.logging.file_path}")
+
+        # Check for clean logging environment variable
+        clean_logs = os.getenv('CLEAN_LOGS', 'false').lower() == 'true'
+        
+        if clean_logs:
+            # Ultra-clean format for development
+            formatter = logging.Formatter('%(levelname)s | %(message)s')
+        else:
+            # Keep the existing detailed format
+            formatter = logging.Formatter(
+                fmt='%(asctime)s | %(levelname)s | %(name)s:%(funcName)s:%(lineno)d - %(message)s'
+            )
 
 # Default configuration instance
 default_config = SentientConfig()

@@ -35,14 +35,18 @@ def get_planner_from_blueprint(blueprint: 'AgentBlueprint', task_type: TaskType,
     
     # NEW: Check if this is the root node and if blueprint has root planner
     if node:
-        is_root_node = (node.task_id == "root" or 
-                       getattr(node, 'level', 0) == 0 or
-                       getattr(node, 'parent_id', None) is None)
+        is_root_node = (
+            node.task_id == "root" or 
+            getattr(node, 'layer', 0) == 0 or
+            getattr(node, 'parent_node_id', None) is None
+        )
         
         if is_root_node and hasattr(blueprint, 'root_planner_adapter_name') and blueprint.root_planner_adapter_name:
             planner_name = blueprint.root_planner_adapter_name
-            logger.info(f"🎯 Blueprint specifies ROOT planner for root node: {planner_name}")
+            logger.info(f"🎯 Using ROOT planner for root node {node.task_id}: {planner_name}")
             return planner_name
+        else:
+            logger.info(f"📋 Using task-specific planner for non-root node {node.task_id} (layer: {getattr(node, 'layer', 'unknown')}, parent: {getattr(node, 'parent_node_id', 'unknown')})")
     
     # 1. Try task-specific planner
     if hasattr(blueprint, 'planner_adapter_names') and task_type in blueprint.planner_adapter_names:

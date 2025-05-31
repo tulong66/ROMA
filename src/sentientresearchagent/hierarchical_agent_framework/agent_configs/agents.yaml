@@ -6,10 +6,10 @@ agents:
   # PLANNER AGENTS - Break down complex goals into manageable sub-tasks
   # =============================================================================
   
-  - name: "SimpleTestPlanner"
+  - name: "CoreResearchPlanner"
     type: "planner"
     adapter_class: "PlannerAdapter"
-    description: "General-purpose planner for breaking down tasks into sub-tasks"
+    description: "Specialized planner for research-focused tasks"
     model:
       provider: "litellm"
       model_id: "openrouter/anthropic/claude-3-7-sonnet"
@@ -23,20 +23,7 @@ agents:
           task_type: "THINK"
         - action_verb: "plan"
           task_type: "SEARCH"
-      named_keys: ["default_planner", "SimpleTestPlanner"]
-    enabled: true
-
-  - name: "CoreResearchPlanner"
-    type: "planner"
-    adapter_class: "PlannerAdapter"
-    description: "Specialized planner for research-focused tasks"
-    model:
-      provider: "litellm"
-      model_id: "openrouter/anthropic/claude-3-7-sonnet"
-    prompt_source: "prompts.planner_prompts.PLANNER_SYSTEM_MESSAGE"
-    response_model: "PlanOutput"
-    registration:
-      named_keys: ["CoreResearchPlanner"]
+      named_keys: ["CoreResearchPlanner", "default_planner"]
     enabled: true
 
   - name: "DeepResearchPlanner"

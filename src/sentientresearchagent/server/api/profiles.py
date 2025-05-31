@@ -18,27 +18,19 @@ def create_profile_routes(app, system_manager):
     """
     
     @app.route('/api/profiles', methods=['GET'])
-    def get_available_profiles():
-        """Get list of available agent profiles."""
+    def get_profiles():
+        """Get all available agent profiles with current profile marked."""
         try:
-            profiles = system_manager.get_available_profiles()
-            current_profile = system_manager.get_current_profile()
-            
-            # Get details for each profile
-            profile_details = []
-            for profile_name in profiles:
-                details = system_manager.get_profile_details(profile_name)
-                details['is_current'] = (profile_name == current_profile)
-                profile_details.append(details)
-            
-            return jsonify({
-                "profiles": profile_details,
-                "current_profile": current_profile,
-                "total_count": len(profiles)
-            })
+            profiles_data = system_manager.get_profiles_with_current()
+            return jsonify(profiles_data)
         except Exception as e:
-            logger.error(f"Failed to get available profiles: {e}")
-            return jsonify({"error": str(e)}), 500
+            logger.error(f"Profiles API error: {e}")
+            return jsonify({
+                "current_profile": None,
+                "profiles": [],
+                "total_count": 0,
+                "error": str(e)
+            }), 500
     
     @app.route('/api/profiles/<profile_name>', methods=['GET'])
     def get_profile_details(profile_name: str):
