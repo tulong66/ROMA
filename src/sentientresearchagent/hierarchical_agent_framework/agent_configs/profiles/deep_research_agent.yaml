@@ -3,33 +3,32 @@
 
 profile:
   name: "DeepResearchAgent"
-  description: "Comprehensive research agent with task-specific planners and specialized executors"
-  
-  # Task-specific planners - different planners for different task types
+  description: "Comprehensive research agent with specialized root planner and task-specific execution"
+
+  # Root-specific planner for initial decomposition
+  root_planner_adapter_name: "DeepResearchPlanner"
+
+  # Task-specific planners for sub-tasks
   planner_adapter_names:
     SEARCH: "CoreResearchPlanner"      # Specialized for search task planning
     WRITE: "CoreResearchPlanner"       # Could use different planner if needed
     THINK: "CoreResearchPlanner"       # Could use different planner if needed
-    
+
   # Task-specific executors
   executor_adapter_names:
     SEARCH: "OpenAICustomSearcher"     # Advanced search capabilities
     THINK: "SearchSynthesizer"         # Analysis and synthesis
     WRITE: "BasicReportWriter"         # Report generation
-    
-  # Single agents for other actions
-  aggregator_adapter_name: "DefaultAggregator"
-  atomizer_adapter_name: "DefaultAtomizer"
+
+  # Other action agents
+  atomizer_adapter_name: "default_atomizer"
+  aggregator_adapter_name: "default_aggregator"
   plan_modifier_adapter_name: "PlanModifier"
-  
+
   # Fallbacks
   default_planner_adapter_name: "CoreResearchPlanner"
   default_executor_adapter_name: "SearchSynthesizer"
   default_node_agent_name_prefix: "DeepResearch"
-
-# Profile-specific agents (if any new ones are needed)
-# For now, we'll use existing agents from the main agents.yaml
-agents: []
 
 # Profile metadata
 metadata:

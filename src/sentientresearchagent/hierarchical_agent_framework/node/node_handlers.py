@@ -17,20 +17,32 @@ from ..context.enhanced_context_builder import resolve_context_for_agent_with_pa
 from ..context.smart_context_utils import get_smart_child_context
 
 
-def get_planner_from_blueprint(blueprint: 'AgentBlueprint', task_type: TaskType, fallback_name: Optional[str] = None) -> Optional[str]:
+def get_planner_from_blueprint(blueprint: 'AgentBlueprint', task_type: TaskType, fallback_name: Optional[str] = None, node: Optional[TaskNode] = None) -> Optional[str]:
     """
-    Get the appropriate planner name from blueprint based on task type.
+    Get the appropriate planner name from blueprint based on task type and node level.
     
     Args:
         blueprint: The agent blueprint
         task_type: The task type needing planning
         fallback_name: Fallback agent name if blueprint doesn't specify
+        node: The TaskNode (needed to determine if it's root)
         
     Returns:
         Agent name to use for planning, or None if no suitable planner found
     """
     if not blueprint:
         return fallback_name
+    
+    # NEW: Check if this is the root node and if blueprint has root planner
+    if node:
+        is_root_node = (node.task_id == "root" or 
+                       getattr(node, 'level', 0) == 0 or
+                       getattr(node, 'parent_id', None) is None)
+        
+        if is_root_node and hasattr(blueprint, 'root_planner_adapter_name') and blueprint.root_planner_adapter_name:
+            planner_name = blueprint.root_planner_adapter_name
+            logger.info(f"🎯 Blueprint specifies ROOT planner for root node: {planner_name}")
+            return planner_name
     
     # 1. Try task-specific planner
     if hasattr(blueprint, 'planner_adapter_names') and task_type in blueprint.planner_adapter_names:
@@ -105,11 +117,12 @@ class ReadyPlanHandler(INodeHandler):
         try:
             current_overall_objective = node.overall_objective or getattr(context.task_graph, 'overall_project_goal', "Undefined overall project goal")
             
-            # ENHANCED: Use new blueprint system for planner selection
+            # ENHANCED: Use new blueprint system for planner selection with node parameter
             lookup_name_for_planner = get_planner_from_blueprint(
                 context.current_agent_blueprint, 
                 node.task_type, 
-                agent_name_at_entry
+                agent_name_at_entry,
+                node  # NEW: Pass the node so we can check if it's root
             )
 
             node.agent_name = lookup_name_for_planner 

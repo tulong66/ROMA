@@ -105,6 +105,7 @@ class ProfileLoader:
             blueprint = AgentBlueprint(
                 name=profile_config.get("name", profile_name),
                 description=profile_config.get("description", f"Agent profile: {profile_name}"),
+                root_planner_adapter_name=profile_config.get("root_planner_adapter_name"),
                 planner_adapter_names=planner_adapter_names,
                 executor_adapter_names=executor_adapter_names,
                 atomizer_adapter_name=profile_config.get("atomizer_adapter_name", "DefaultAtomizer"),

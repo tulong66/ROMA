@@ -39,6 +39,19 @@ agents:
       named_keys: ["CoreResearchPlanner"]
     enabled: true
 
+  - name: "DeepResearchPlanner"
+    type: "planner"
+    adapter_class: "PlannerAdapter"
+    description: "Master planner specialized in high-level research project decomposition and strategy"
+    model:
+      provider: "litellm"
+      model_id: "openrouter/anthropic/claude-3-7-sonnet"
+    prompt_source: "prompts.planner_prompts.DEEP_RESEARCH_PLANNER_SYSTEM_MESSAGE"
+    response_model: "PlanOutput"
+    registration:
+      named_keys: ["DeepResearchPlanner"]
+    enabled: true
+
   # =============================================================================
   # EXECUTOR AGENTS - Execute atomic tasks (search, write, think)
   # =============================================================================
@@ -170,7 +183,7 @@ metadata:
   version: "1.0.0"
   description: "Production agent configuration for Sentient Research Agent"
   last_updated: "2024-01-01"
-  total_agents: 8
+  total_agents: 9
   migration_status: "integrated_with_legacy"
   features:
     - "Structured output support"

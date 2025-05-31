@@ -4,12 +4,15 @@ from sentientresearchagent.hierarchical_agent_framework.node.task_node import Ta
 
 
 class AgentBlueprint(BaseModel):
-    """Enhanced agent blueprint supporting task-specific planners and extensible action verbs."""
+    """Enhanced agent blueprint supporting task-specific planners and root-specific planning."""
     name: str
     description: str
     
     # Enhanced planner mapping - different planners for different task types
     planner_adapter_names: Dict[TaskType, str] = {}  # TaskType -> planner_name
+    
+    # NEW: Root-specific planner (overrides task-specific planners for root node)
+    root_planner_adapter_name: Optional[str] = None
     
     # Keep existing executor mapping
     executor_adapter_names: Dict[TaskType, str] = {}  # TaskType -> executor_name
@@ -28,12 +31,15 @@ class AgentBlueprint(BaseModel):
     planner_adapter_name: Optional[str] = None
 
 
-# Updated research blueprint using new structure
+# Updated research blueprint with root-specific planner
 DEFAULT_DEEP_RESEARCH_BLUEPRINT = AgentBlueprint(
     name="DeepResearchAgent",
-    description="A comprehensive research agent with task-specific planners and executors.",
+    description="A comprehensive research agent with specialized root planner and task-specific sub-planners.",
     
-    # Task-specific planners
+    # Root-specific planner for initial task decomposition
+    root_planner_adapter_name="DeepResearchPlanner",
+    
+    # Task-specific planners for sub-tasks
     planner_adapter_names={
         TaskType.SEARCH: "CoreResearchPlanner",      # Specialized for search planning
         TaskType.WRITE: "CoreResearchPlanner",       # Could be different if needed

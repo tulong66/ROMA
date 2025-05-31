@@ -1,72 +1,22 @@
 {
   "agent_responses:SimpleTestPlanner:root:a1b8da0a84918ebb": {
     "file": "b96265c36bd92e86df60b6fb1c91ac5dc47f042fd6471da59f759a87cd4d142a.cache",
-    "created_at": "2025-05-31T15:15:07.671936",
-    "expires_at": "2025-05-31T16:15:07.671936"
+    "created_at": "2025-05-31T19:27:11.404852",
+    "expires_at": "2025-05-31T20:27:11.404852"
   },
-  "agent_responses:SimpleTestPlanner:5e9338b26eaa77e7": {
-    "file": "ac9a2b609498d19ecca691cae58cd1920492c4c9d2146193ae2dcde7fa78e093.cache",
-    "created_at": "2025-05-31T14:42:08.301424",
-    "expires_at": "2025-05-31T15:42:08.301424"
+  "agent_responses:SimpleTestPlanner:5107c15b57d22743": {
+    "file": "0413d57ce6edbccab549d6453a3d9297993fdd309129a4706da308796cad6850.cache",
+    "created_at": "2025-05-31T19:03:27.815999",
+    "expires_at": "2025-05-31T20:03:27.815999"
   },
-  "agent_responses:SimpleTestPlanner:root.1:b4a8294f8aca63b0": {
-    "file": "41f8e927dfbe88f1cadf21848bbfd475d37f0249547a737cb0f5fbd3c42e6083.cache",
-    "created_at": "2025-05-31T15:15:26.435793",
-    "expires_at": "2025-05-31T16:15:26.435793"
+  "agent_responses:SimpleTestPlanner:5eb9369c5ba2ea63": {
+    "file": "cfd617058939e5ff7742207db4ccc33fb2b5f504d0f2778bd2c76a58e7f4881f.cache",
+    "created_at": "2025-05-31T19:08:00.946791",
+    "expires_at": "2025-05-31T20:08:00.946791"
   },
-  "agent_responses:SimpleTestPlanner:2c33917bc0eeae52": {
-    "file": "e9c000a4669033c9630941691ee7040b94e6d1dccc027872ee4d4d8c32c01b38.cache",
-    "created_at": "2025-05-31T14:42:19.201670",
-    "expires_at": "2025-05-31T15:42:19.201670"
-  },
-  "agent_responses:SimpleTestPlanner:root.1.2:b4a8294f8aca63b0": {
-    "file": "c7b36b99cd34d4d70d7f731adc65ac112ddc68ab70eda455be42a97a9eb0f243.cache",
-    "created_at": "2025-05-31T14:51:17.267724",
-    "expires_at": "2025-05-31T15:51:17.267724"
-  },
-  "agent_responses:SimpleTestPlanner:f9cd649658081810": {
-    "file": "9b01bb07f69553ef918824246364cf27d2c796fa46474947c43ecc1c624b08a2.cache",
-    "created_at": "2025-05-31T14:42:26.997509",
-    "expires_at": "2025-05-31T15:42:26.997509"
-  },
-  "agent_responses:SimpleTestPlanner:root.1.1:b4a8294f8aca63b0": {
-    "file": "71644731dc63c41475a4b92b4a05a349943f646c60bf85fca884a03f05fad71d.cache",
-    "created_at": "2025-05-31T14:51:16.800893",
-    "expires_at": "2025-05-31T15:51:16.800893"
-  },
-  "agent_responses:SimpleTestPlanner:cd78670150cd50a4": {
-    "file": "fafd2baf001513247f84c4d0665473f62002d9dd098f87495062f14d7d462a3f.cache",
-    "created_at": "2025-05-31T14:42:27.397425",
-    "expires_at": "2025-05-31T15:42:27.397425"
-  },
-  "agent_responses:SimpleTestPlanner:c5bf722c38caac84": {
-    "file": "4c06704dcc75e55ef191ab064b8e0578affdcdd50f78a3699a4c4cc8cfd47a4f.cache",
-    "created_at": "2025-05-31T14:51:00.127247",
-    "expires_at": "2025-05-31T15:51:00.127247"
-  },
-  "agent_responses:SimpleTestPlanner:5b4d0a709a7aa263": {
-    "file": "d6a8b7c24f4d0e5d2f657f65c883e8464907d118811b65a5fb2b9a0d180fc4dd.cache",
-    "created_at": "2025-05-31T14:51:09.304624",
-    "expires_at": "2025-05-31T15:51:09.304624"
-  },
-  "agent_responses:SimpleTestPlanner:3704c2df9b69f558": {
-    "file": "5e15dbe8735f06d200585a87c4a8bbcaf96ab04f486248e834dfa8fb2e65ba6e.cache",
-    "created_at": "2025-05-31T14:51:16.804341",
-    "expires_at": "2025-05-31T15:51:16.804341"
-  },
-  "agent_responses:SimpleTestPlanner:7d51a04861c7eef9": {
-    "file": "661a8b61886f6bac7573f16816b31d737bc5fb0e5515d1557e0025d7ea312dea.cache",
-    "created_at": "2025-05-31T14:51:17.269282",
-    "expires_at": "2025-05-31T15:51:17.269282"
-  },
-  "agent_responses:SimpleTestPlanner:1595e13011f68a45": {
-    "file": "3f9641403b9b39712e0f1079ab8532b0f9acb81a60d6a08e6c3c60421906c26c.cache",
-    "created_at": "2025-05-31T15:15:07.674478",
-    "expires_at": "2025-05-31T16:15:07.674478"
-  },
-  "agent_responses:SimpleTestPlanner:049ee87dde5b41fa": {
-    "file": "3882d0c2e82888de318038d7a617bfb3a2b7fa3b9c9ee5987e5ceaf1775e8cb4.cache",
-    "created_at": "2025-05-31T15:15:26.438367",
-    "expires_at": "2025-05-31T16:15:26.438367"
+  "agent_responses:SimpleTestPlanner:43b354f1df2ac51e": {
+    "file": "bf49b76d5dbc6482de8f68cf6275f8312c7f0e8a1e455bfcf69a337ce79305ba.cache",
+    "created_at": "2025-05-31T19:27:11.408159",
+    "expires_at": "2025-05-31T20:27:11.408159"
   }
 }

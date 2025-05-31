@@ -64,7 +64,8 @@ class NodeProcessor:
                  knowledge_store: KnowledgeStore,
                  config: Optional[SentientConfig] = None,
                  node_processor_config: Optional[NodeProcessorConfig] = None,
-                 agent_blueprint_name: Optional[str] = None):
+                 agent_blueprint_name: Optional[str] = None,
+                 agent_blueprint: Optional[AgentBlueprint] = None):
         logger.info("NodeProcessor initialized.")
         
         self.config = config or SentientConfig()
@@ -74,7 +75,12 @@ class NodeProcessor:
         self.knowledge_store = knowledge_store
         
         active_blueprint: Optional[AgentBlueprint] = None
-        if agent_blueprint_name:
+        
+        # Prioritize direct blueprint object over name lookup
+        if agent_blueprint:
+            active_blueprint = agent_blueprint
+            logger.info(f"NodeProcessor will use provided Agent Blueprint: {active_blueprint.name}")
+        elif agent_blueprint_name:
             active_blueprint = get_blueprint_by_name(agent_blueprint_name)
             if active_blueprint:
                 logger.info(f"NodeProcessor will use Agent Blueprint: {active_blueprint.name}")

@@ -9,6 +9,7 @@ import traceback
 import os
 from typing import Dict, Any, Optional, List
 from loguru import logger
+import time
 
 from ...config_utils import auto_load_config, validate_config
 from ...cache.cache_manager import init_cache_manager
@@ -369,13 +370,20 @@ class SystemManager:
                 logger.info(f"✅ Base agent integration:")
                 logger.info(f"   📋 Action keys: {yaml_integration_results['registered_action_keys']}")
                 logger.info(f"   🏷️  Named keys: {yaml_integration_results['registered_named_keys']}")
+                
+                # Log which agents are now available
+                logger.info(f"📊 Available named agents: {list(NAMED_AGENTS.keys())}")
             
-            # Validate the profile
+            # IMPORTANT: Validate the profile AFTER agents are loaded
+            logger.info(f"🔍 Validating profile: {profile_name}")
             profile_validation = validate_profile(profile_name)
             if not profile_validation.get("blueprint_valid", False):
                 logger.warning(f"⚠️  Profile validation issues for {profile_name}:")
                 for missing in profile_validation.get("missing_agents", []):
                     logger.warning(f"   - Missing: {missing}")
+                
+                # Log available agents for debugging
+                logger.info(f"📋 Available agents for comparison: {profile_validation.get('available_agents', [])}")
             else:
                 logger.info(f"✅ Profile {profile_name} validation passed")
             
@@ -391,12 +399,19 @@ class SystemManager:
             node_processor_config = create_node_processor_config_from_main_config(self.config)
             
             self.hitl_coordinator = HITLCoordinator(config=node_processor_config)
+            
+            # Load the actual blueprint object for the NodeProcessor
+            from ...hierarchical_agent_framework.agent_configs.profile_loader import ProfileLoader
+            profile_loader = ProfileLoader()
+            agent_blueprint = profile_loader.load_profile(profile_name)
+            logger.info(f"🎯 Loaded blueprint '{agent_blueprint.name}' for NodeProcessor")
+            
             self.node_processor = NodeProcessor(
                 task_graph=self.task_graph,
                 knowledge_store=self.knowledge_store,
                 config=self.config,
                 node_processor_config=node_processor_config,
-                agent_blueprint_name=profile_name  # Use the specified profile
+                agent_blueprint=agent_blueprint  # Pass the actual blueprint object
             )
             
             # 7. Initialize execution engine
@@ -407,8 +422,7 @@ class SystemManager:
                 knowledge_store=self.knowledge_store,
                 hitl_coordinator=self.hitl_coordinator,
                 config=self.config,
-                node_processor=self.node_processor,
-                initial_agent_blueprint_name=profile_name  # Use the specified profile
+                node_processor=self.node_processor
             )
             
             self._initialized = True
@@ -476,6 +490,7 @@ class SystemManager:
             return {
                 "name": blueprint.name,
                 "description": blueprint.description,
+                "root_planner": blueprint.root_planner_adapter_name,
                 "planner_mappings": {str(k): v for k, v in blueprint.planner_adapter_names.items()},
                 "executor_mappings": {str(k): v for k, v in blueprint.executor_adapter_names.items()},
                 "atomizer": blueprint.atomizer_adapter_name,
@@ -483,6 +498,7 @@ class SystemManager:
                 "plan_modifier": blueprint.plan_modifier_adapter_name,
                 "default_planner": blueprint.default_planner_adapter_name,
                 "default_executor": blueprint.default_executor_adapter_name,
+                "recommended_for": ["Research Projects", "Data Analysis", "Report Writing"],  # Add this field
                 "validation": validation,
                 "is_valid": validation.get("blueprint_valid", False)
             }
@@ -491,7 +507,8 @@ class SystemManager:
             return {
                 "name": profile_name,
                 "error": str(e),
-                "is_valid": False
+                "is_valid": False,
+                "recommended_for": []  # Add empty array for error case
             }
 
     def get_current_profile(self) -> Optional[str]:
