@@ -185,27 +185,94 @@ const ProjectSidebar: React.FC = () => {
     }
 
     try {
-      // Determine the best content to download
-      let content = ''
-      let filename = 'project-result'
-      let mimeType = 'text/plain'
+      // Use the same logic as FullResultModal to detect the best content
+      // Priority order: look for specific fields with complete content first
+      const candidates = [
+        // Check for the specific field that contains complete search results with citations
+        { field: 'full_result.output_text_with_citations', data: rootNode.full_result?.output_text_with_citations, type: 'markdown' as const },
+        
+        // Check for other potential markdown fields in full_result
+        { field: 'full_result.output_text', data: rootNode.full_result?.output_text, type: 'markdown' as const },
+        { field: 'full_result.result', data: rootNode.full_result?.result, type: 'unknown' as const },
+        
+        // Check for common markdown field names at root level
+        { field: 'output_summary_markdown', data: (rootNode as any).output_summary_markdown, type: 'markdown' as const },
+        { field: 'result_markdown', data: (rootNode as any).result_markdown, type: 'markdown' as const },
+        { field: 'markdown_result', data: (rootNode as any).markdown_result, type: 'markdown' as const },
+        { field: 'output_markdown', data: (rootNode as any).output_markdown, type: 'markdown' as const },
+        
+        // Then check full_result as a whole (for non-search nodes)
+        { field: 'full_result', data: rootNode.full_result, type: 'unknown' as const },
+        
+        // Finally fall back to output_summary (truncated version)
+        { field: 'output_summary', data: rootNode.output_summary, type: 'text' as const }
+      ]
 
-      if (rootNode.full_result?.output_text_with_citations) {
-        content = rootNode.full_result.output_text_with_citations
-        filename = 'project-result.md'
-        mimeType = 'text/markdown'
-      } else if (rootNode.full_result?.output_text) {
-        content = rootNode.full_result.output_text
-        filename = 'project-result.md'
-        mimeType = 'text/markdown'
-      } else if (rootNode.full_result) {
-        content = JSON.stringify(rootNode.full_result, null, 2)
-        filename = 'project-result.json'
-        mimeType = 'application/json'
-      } else if (rootNode.output_summary) {
-        content = rootNode.output_summary
-        filename = 'project-result.txt'
-        mimeType = 'text/plain'
+      let content = ''
+      let filename = 'project-result.md'
+      let mimeType = 'text/markdown'
+
+      // Find the first available candidate with substantial content
+      for (const candidate of candidates) {
+        if (candidate.data && 
+            candidate.data !== null && 
+            candidate.data !== undefined && 
+            String(candidate.data).trim().length > 0) {
+          
+          let candidateContent: string
+          let candidateType = candidate.type
+
+          if (typeof candidate.data === 'string') {
+            candidateContent = candidate.data
+          } else {
+            candidateContent = JSON.stringify(candidate.data, null, 2)
+            candidateType = 'json'
+          }
+
+          // Skip if this is just a truncated version and we might have better content
+          // Check if content looks truncated (ends with "..." or mentions annotations or is just planning info)
+          if (candidate.field === 'output_summary' && 
+              (candidateContent.includes('...') || 
+               candidateContent.match(/\(\d+\s+annotations?\)/) ||
+               candidateContent.includes('Planned') ||
+               candidateContent.includes('sub-task'))) {
+            // Continue to next candidate to see if we have better content
+            continue
+          }
+
+          // Auto-detect markdown if not already specified
+          if (candidateType === 'unknown' || candidateType === 'text') {
+            if (candidateContent.includes('# ') || candidateContent.includes('## ') || candidateContent.includes('**') || candidateContent.includes('- ') || candidateContent.includes('[') || candidateContent.includes('*')) {
+              candidateType = 'markdown'
+            } else if (candidateContent.trim().startsWith('{') || candidateContent.trim().startsWith('[')) {
+              try {
+                JSON.parse(candidateContent)
+                candidateType = 'json'
+              } catch {
+                candidateType = 'text'
+              }
+            } else {
+              candidateType = 'text'
+            }
+          }
+
+          // Set the content and file info
+          content = candidateContent
+          
+          if (candidateType === 'json') {
+            filename = 'project-result.json'
+            mimeType = 'application/json'
+          } else if (candidateType === 'markdown') {
+            filename = 'project-result.md'
+            mimeType = 'text/markdown'
+          } else {
+            filename = 'project-result.txt'
+            mimeType = 'text/plain'
+          }
+
+          console.log(`Using content from: ${candidate.field}, type: ${candidateType}, length: ${content.length}`)
+          break
+        }
       }
 
       if (!content) {
@@ -217,14 +284,15 @@ const ProjectSidebar: React.FC = () => {
         return
       }
 
-      // Add project metadata to the content
+      // Add project metadata to the content (only for markdown/text)
       const currentProject = getCurrentProject()
-      const metadata = `# Project: ${currentProject?.title || 'Untitled'}\n\n**Goal:** ${rootNode.goal}\n\n**Completed:** ${rootNode.timestamp_completed ? new Date(rootNode.timestamp_completed).toLocaleString() : 'Unknown'}\n\n---\n\n`
-      
-      const finalContent = mimeType === 'text/markdown' ? metadata + content : content
+      if (mimeType === 'text/markdown' || mimeType === 'text/plain') {
+        const metadata = `# Project: ${currentProject?.title || 'Untitled'}\n\n**Goal:** ${rootNode.goal}\n\n**Completed:** ${rootNode.timestamp_completed ? new Date(rootNode.timestamp_completed).toLocaleString() : 'Unknown'}\n\n---\n\n`
+        content = metadata + content
+      }
 
       // Create and download the file
-      const blob = new Blob([finalContent], { type: mimeType })
+      const blob = new Blob([content], { type: mimeType })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url

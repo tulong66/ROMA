@@ -33,7 +33,7 @@ def register_websocket_events(socketio, project_service, execution_service):
             logger.error(f"Error in connect handler: {e}")
     
     @socketio.on('disconnect')
-    def handle_disconnect():
+    def handle_disconnect(auth=None):
         """Handle client disconnection."""
         logger.info('👋 Client disconnected')
     

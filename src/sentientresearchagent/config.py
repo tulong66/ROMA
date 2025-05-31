@@ -36,7 +36,7 @@ class LLMConfig(BaseModel):
     
     @validator('provider')
     def validate_provider(cls, v):
-        valid_providers = ['openai', 'anthropic', 'azure', 'custom']
+        valid_providers = ['openai', 'anthropic', 'azure', 'custom', 'openrouter']
         if v.lower() not in valid_providers:
             logger.warning(f"Provider '{v}' not in standard list: {valid_providers}")
         return v.lower()
@@ -99,7 +99,8 @@ class ExecutionConfig(BaseModel):
     def validate_hitl_checkpoints(cls, v, values):
         """HITL checkpoints only matter if master HITL is enabled and root_plan_only is False"""
         if not values.get('enable_hitl', True) and v:
-            logger.warning("HITL checkpoint enabled but master enable_hitl is False")
+            logger.info("HITL checkpoint disabled due to master enable_hitl=False")
+            return False  # Auto-disable instead of just warning
         if values.get('hitl_root_plan_only', False) and v:
             logger.info("HITL checkpoint will be ignored due to hitl_root_plan_only=True")
         return v
@@ -108,7 +109,8 @@ class ExecutionConfig(BaseModel):
     def validate_root_plan_only(cls, v, values):
         """Root plan only requires master HITL to be enabled"""
         if v and not values.get('enable_hitl', True):
-            logger.warning("hitl_root_plan_only enabled but master enable_hitl is False")
+            logger.info("hitl_root_plan_only disabled due to master enable_hitl=False")
+            return False  # Auto-disable instead of just warning
         return v
 
 class AgentConfig(BaseModel):

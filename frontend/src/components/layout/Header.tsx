@@ -12,30 +12,22 @@ import ThemeToggle from '@/components/theme/ThemeToggle'
 import FilterPanel from '@/components/panels/FilterPanel'
 import ExportPanel from '@/components/panels/ExportPanel'
 import ContextFlowPanel from '@/components/panels/ContextFlowPanel'
+import { exportProjectReport } from '@/lib/exportUtils'
 
 const Header: React.FC = () => {
   const { 
     showContextFlow, 
     toggleContextFlow,
-    nodes 
+    nodes,
+    overallProjectGoal
   } = useTaskGraphStore()
 
   const hasNodes = Object.keys(nodes).length > 0
 
   const handleDownloadReport = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/download-report')
-      if (response.ok) {
-        const blob = await response.blob()
-        const url = window.URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = 'project-report.pdf'
-        document.body.appendChild(a)
-        a.click()
-        document.body.removeChild(a)
-        window.URL.revokeObjectURL(url)
-      }
+      // Use the existing export functionality to download as markdown
+      exportProjectReport(nodes, overallProjectGoal, 'markdown')
     } catch (error) {
       console.error('Failed to download report:', error)
     }
