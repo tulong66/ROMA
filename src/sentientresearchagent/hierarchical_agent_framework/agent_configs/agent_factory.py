@@ -429,6 +429,82 @@ class AgentFactory:
         
         return agents
 
+    def create_agents_for_profile(self, profile_config: 'DictConfig') -> Dict[str, Dict[str, Any]]:
+        """
+        Create agents specifically for a profile configuration.
+        
+        Args:
+            profile_config: Profile configuration from YAML
+            
+        Returns:
+            Dictionary of created agents
+        """
+        created_agents = {}
+        
+        # If the profile has its own agents section, create those
+        if "agents" in profile_config and profile_config.agents:
+            logger.info(f"Creating {len(profile_config.agents)} profile-specific agents...")
+            
+            for agent_config in profile_config.agents:
+                if agent_config.get("enabled", True):
+                    try:
+                        agent_info = self.create_agent(agent_config)
+                        created_agents[agent_config.name] = agent_info
+                        logger.info(f"✅ Created profile agent: {agent_config.name}")
+                    except Exception as e:
+                        logger.error(f"❌ Failed to create profile agent {agent_config.name}: {e}")
+        
+        return created_agents
+
+    def validate_blueprint_agents(self, blueprint: 'AgentBlueprint') -> Dict[str, Any]:
+        """
+        Validate that all agents referenced in a blueprint exist in the registry.
+        
+        Args:
+            blueprint: AgentBlueprint to validate
+            
+        Returns:
+            Validation results
+        """
+        from ..agents.registry import NAMED_AGENTS
+        
+        validation = {
+            "valid": True,
+            "missing_agents": [],
+            "available_agents": list(NAMED_AGENTS.keys()),
+            "blueprint_agents": []
+        }
+        
+        # Check planners
+        for task_type, planner_name in blueprint.planner_adapter_names.items():
+            validation["blueprint_agents"].append(f"Planner({task_type.value}): {planner_name}")
+            if planner_name not in NAMED_AGENTS:
+                validation["missing_agents"].append(f"Planner: {planner_name}")
+                validation["valid"] = False
+        
+        # Check executors
+        for task_type, executor_name in blueprint.executor_adapter_names.items():
+            validation["blueprint_agents"].append(f"Executor({task_type.value}): {executor_name}")
+            if executor_name not in NAMED_AGENTS:
+                validation["missing_agents"].append(f"Executor: {executor_name}")
+                validation["valid"] = False
+        
+        # Check other agents
+        other_agents = [
+            ("Aggregator", blueprint.aggregator_adapter_name),
+            ("Atomizer", blueprint.atomizer_adapter_name),
+            ("PlanModifier", blueprint.plan_modifier_adapter_name),
+        ]
+        
+        for agent_type, agent_name in other_agents:
+            if agent_name:
+                validation["blueprint_agents"].append(f"{agent_type}: {agent_name}")
+                if agent_name not in NAMED_AGENTS:
+                    validation["missing_agents"].append(f"{agent_type}: {agent_name}")
+                    validation["valid"] = False
+        
+        return validation
+
 
 def create_agents_from_config(config: DictConfig, config_loader) -> Dict[str, Dict[str, Any]]:
     """

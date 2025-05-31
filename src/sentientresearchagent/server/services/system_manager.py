@@ -7,7 +7,7 @@ Centralized management of all Sentient Research Agent components.
 import sys
 import traceback
 import os
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from loguru import logger
 
 from ...config_utils import auto_load_config, validate_config
@@ -330,3 +330,123 @@ class SystemManager:
                 logger.info(f"   - WebSocket HITL Available: {WEBSOCKET_HITL_AVAILABLE}")
         except Exception as e:
             logger.warning(f"Failed to log system info: {e}")
+
+    def initialize_with_profile(self, profile_name: str = "DeepResearchAgent") -> Dict[str, Any]:
+        """
+        Initialize the system with a specific agent profile.
+        
+        Args:
+            profile_name: Name of the agent profile to use
+            
+        Returns:
+            Dictionary containing all initialized components
+        """
+        if self._initialized:
+            logger.warning("System already initialized")
+            return self.get_components()
+        
+        try:
+            logger.info(f"🔧 Initializing Sentient Research Agent with profile: {profile_name}")
+            
+            # Standard initialization steps 1-4 (config, logging, error handling, cache)
+            self._initialize_base_components()
+            
+            # 5. Initialize agent registry with profile
+            logger.info("🤖 Initializing agent registry with profile...")
+            from ...hierarchical_agent_framework import agents
+            from ...hierarchical_agent_framework.agents.registry import AGENT_REGISTRY, NAMED_AGENTS
+            from ...hierarchical_agent_framework.agent_configs.registry_integration import (
+                integrate_yaml_agents, validate_profile
+            )
+            
+            # Load base agents first
+            yaml_integration_results = agents.integrate_yaml_agents_lazy()
+            
+            if yaml_integration_results:
+                logger.info(f"✅ Base agent integration:")
+                logger.info(f"   📋 Action keys: {yaml_integration_results['registered_action_keys']}")
+                logger.info(f"   🏷️  Named keys: {yaml_integration_results['registered_named_keys']}")
+            
+            # Validate the profile
+            profile_validation = validate_profile(profile_name)
+            if not profile_validation.get("blueprint_valid", False):
+                logger.warning(f"⚠️  Profile validation issues for {profile_name}:")
+                for missing in profile_validation.get("missing_agents", []):
+                    logger.warning(f"   - Missing: {missing}")
+            else:
+                logger.info(f"✅ Profile {profile_name} validation passed")
+            
+            logger.info(f"✅ Agent registry loaded: {len(AGENT_REGISTRY)} adapters, {len(NAMED_AGENTS)} named agents")
+            
+            # 6. Initialize core components with profile
+            logger.info(f"🧠 Initializing core components with profile: {profile_name}")
+            self.task_graph = TaskGraph()
+            self.knowledge_store = KnowledgeStore()
+            self.state_manager = StateManager(self.task_graph)
+            
+            # Create node processor config from main config
+            node_processor_config = create_node_processor_config_from_main_config(self.config)
+            
+            self.hitl_coordinator = HITLCoordinator(config=node_processor_config)
+            self.node_processor = NodeProcessor(
+                task_graph=self.task_graph,
+                knowledge_store=self.knowledge_store,
+                config=self.config,
+                node_processor_config=node_processor_config,
+                agent_blueprint_name=profile_name  # Use the specified profile
+            )
+            
+            # 7. Initialize execution engine
+            logger.info("⚙️  Initializing execution engine...")
+            self.execution_engine = ExecutionEngine(
+                task_graph=self.task_graph,
+                state_manager=self.state_manager,
+                knowledge_store=self.knowledge_store,
+                hitl_coordinator=self.hitl_coordinator,
+                config=self.config,
+                node_processor=self.node_processor,
+                initial_agent_blueprint_name=profile_name  # Use the specified profile
+            )
+            
+            self._initialized = True
+            logger.success(f"✅ System initialized successfully with profile: {profile_name}")
+            
+            return self.get_components()
+            
+        except Exception as e:
+            logger.error(f"❌ System initialization failed: {e}")
+            raise
+
+    def _initialize_base_components(self):
+        """Initialize base components (config, logging, error handling, cache)."""
+        # 1. Load and validate configuration
+        logger.info("📋 Loading configuration...")
+        self.config = auto_load_config()
+        
+        validation = validate_config(self.config)
+        if not validation["valid"]:
+            logger.warning("Configuration issues found:")
+            for issue in validation["issues"]:
+                logger.warning(f"   - {issue}")
+        
+        # 2. Setup logging from config
+        self.config.setup_logging()
+        
+        # 3. Initialize error handling
+        logger.info("🛡️  Setting up error handling...")
+        self.error_handler = ErrorHandler(enable_detailed_logging=True)
+        set_error_handler(self.error_handler)
+        
+        # 4. Initialize cache manager
+        logger.info("💾 Setting up cache system...")
+        self.cache_manager = init_cache_manager(self.config.cache)
+
+    def get_available_profiles(self) -> List[str]:
+        """Get list of available agent profiles."""
+        try:
+            from ...hierarchical_agent_framework.agent_configs.profile_loader import ProfileLoader
+            loader = ProfileLoader()
+            return loader.list_available_profiles()
+        except Exception as e:
+            logger.error(f"Failed to get available profiles: {e}")
+            return []

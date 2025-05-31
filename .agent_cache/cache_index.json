@@ -1,1 +1,42 @@
-{}
+{
+  "agent_responses:SimpleTestPlanner:root:a1b8da0a84918ebb": {
+    "file": "b96265c36bd92e86df60b6fb1c91ac5dc47f042fd6471da59f759a87cd4d142a.cache",
+    "created_at": "2025-05-31T14:42:08.299701",
+    "expires_at": "2025-05-31T15:42:08.299701"
+  },
+  "agent_responses:SimpleTestPlanner:5e9338b26eaa77e7": {
+    "file": "ac9a2b609498d19ecca691cae58cd1920492c4c9d2146193ae2dcde7fa78e093.cache",
+    "created_at": "2025-05-31T14:42:08.301424",
+    "expires_at": "2025-05-31T15:42:08.301424"
+  },
+  "agent_responses:SimpleTestPlanner:root.1:b4a8294f8aca63b0": {
+    "file": "41f8e927dfbe88f1cadf21848bbfd475d37f0249547a737cb0f5fbd3c42e6083.cache",
+    "created_at": "2025-05-31T14:42:19.200285",
+    "expires_at": "2025-05-31T15:42:19.200285"
+  },
+  "agent_responses:SimpleTestPlanner:2c33917bc0eeae52": {
+    "file": "e9c000a4669033c9630941691ee7040b94e6d1dccc027872ee4d4d8c32c01b38.cache",
+    "created_at": "2025-05-31T14:42:19.201670",
+    "expires_at": "2025-05-31T15:42:19.201670"
+  },
+  "agent_responses:SimpleTestPlanner:root.1.2:b4a8294f8aca63b0": {
+    "file": "c7b36b99cd34d4d70d7f731adc65ac112ddc68ab70eda455be42a97a9eb0f243.cache",
+    "created_at": "2025-05-31T14:42:26.995382",
+    "expires_at": "2025-05-31T15:42:26.995382"
+  },
+  "agent_responses:SimpleTestPlanner:f9cd649658081810": {
+    "file": "9b01bb07f69553ef918824246364cf27d2c796fa46474947c43ecc1c624b08a2.cache",
+    "created_at": "2025-05-31T14:42:26.997509",
+    "expires_at": "2025-05-31T15:42:26.997509"
+  },
+  "agent_responses:SimpleTestPlanner:root.1.1:b4a8294f8aca63b0": {
+    "file": "71644731dc63c41475a4b92b4a05a349943f646c60bf85fca884a03f05fad71d.cache",
+    "created_at": "2025-05-31T14:42:27.395741",
+    "expires_at": "2025-05-31T15:42:27.395741"
+  },
+  "agent_responses:SimpleTestPlanner:cd78670150cd50a4": {
+    "file": "fafd2baf001513247f84c4d0665473f62002d9dd098f87495062f14d7d462a3f.cache",
+    "created_at": "2025-05-31T14:42:27.397425",
+    "expires_at": "2025-05-31T15:42:27.397425"
+  }
+}

@@ -180,6 +180,94 @@ class RegistryIntegrator:
         
         return validation_results
 
+    def load_and_register_profile(self, profile_name: str) -> Dict[str, Any]:
+        """
+        Load a specific profile and register any profile-specific agents.
+        
+        Args:
+            profile_name: Name of the profile to load
+            
+        Returns:
+            Registration results
+        """
+        try:
+            from .profile_loader import ProfileLoader
+            
+            logger.info(f"🔄 Loading profile: {profile_name}")
+            
+            # Load the profile
+            profile_loader = ProfileLoader()
+            profile_config_raw = profile_loader.profiles_dir / f"{profile_name}.yaml"
+            
+            if not profile_config_raw.exists():
+                raise FileNotFoundError(f"Profile {profile_name} not found")
+            
+            # Load raw config to get agents section
+            from omegaconf import OmegaConf
+            profile_config = OmegaConf.load(profile_config_raw)
+            
+            # Create any profile-specific agents
+            profile_agents = self.factory.create_agents_for_profile(profile_config)
+            
+            if profile_agents:
+                logger.info(f"📋 Created {len(profile_agents)} profile-specific agents")
+                
+                # Register the profile-specific agents
+                self.created_agents.update(profile_agents)
+                registration_results = self._register_agents_in_existing_registry()
+                
+                logger.info(f"✅ Profile {profile_name} integration completed")
+                return registration_results
+            else:
+                logger.info(f"📋 Profile {profile_name} has no specific agents to register")
+                return {
+                    "registered_action_keys": 0,
+                    "registered_named_keys": 0,
+                    "skipped_agents": 0,
+                    "failed_registrations": 0,
+                    "details": []
+                }
+                
+        except Exception as e:
+            logger.error(f"❌ Failed to integrate profile {profile_name}: {e}")
+            raise
+
+    def validate_profile_integration(self, profile_name: str) -> Dict[str, Any]:
+        """
+        Validate that a profile's agents are properly integrated.
+        
+        Args:
+            profile_name: Name of the profile to validate
+            
+        Returns:
+            Validation results
+        """
+        try:
+            from .profile_loader import ProfileLoader
+            
+            # Load the blueprint
+            profile_loader = ProfileLoader()
+            blueprint = profile_loader.load_profile(profile_name)
+            
+            # Validate using the factory
+            validation = self.factory.validate_blueprint_agents(blueprint)
+            
+            return {
+                "profile_name": profile_name,
+                "blueprint_valid": validation["valid"],
+                "missing_agents": validation["missing_agents"],
+                "blueprint_agents": validation["blueprint_agents"],
+                "available_agents": validation["available_agents"]
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to validate profile {profile_name}: {e}")
+            return {
+                "profile_name": profile_name,
+                "blueprint_valid": False,
+                "error": str(e)
+            }
+
 
 def integrate_yaml_agents() -> Dict[str, Any]:
     """
@@ -200,4 +288,32 @@ def get_integration_status() -> Dict[str, Any]:
         Status information
     """
     integrator = RegistryIntegrator()
-    return integrator.get_registry_status() 
+    return integrator.get_registry_status()
+
+
+def integrate_profile(profile_name: str) -> Dict[str, Any]:
+    """
+    Convenience function to integrate a specific profile.
+    
+    Args:
+        profile_name: Name of the profile to integrate
+        
+    Returns:
+        Integration results
+    """
+    integrator = RegistryIntegrator()
+    return integrator.load_and_register_profile(profile_name)
+
+
+def validate_profile(profile_name: str) -> Dict[str, Any]:
+    """
+    Convenience function to validate a profile integration.
+    
+    Args:
+        profile_name: Name of the profile to validate
+        
+    Returns:
+        Validation results
+    """
+    integrator = RegistryIntegrator()
+    return integrator.validate_profile_integration(profile_name) 

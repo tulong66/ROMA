@@ -4,7 +4,7 @@ This provides a single, easy-to-use API that integrates all system components
 with proper configuration management.
 """
 
-from typing import Dict, Any, Optional, Union, Iterator, TYPE_CHECKING
+from typing import Dict, Any, List, Optional, Union, Iterator, TYPE_CHECKING
 from pathlib import Path
 from datetime import datetime
 import uuid
@@ -710,3 +710,135 @@ def _run_async_safely(coro):
     else:
         # Regular Python environment
         return asyncio.run(coro) 
+
+class ProfiledSentientAgent(SimpleSentientAgent):
+    """
+    Enhanced SimpleSentientAgent that supports agent profiles.
+    """
+    
+    def __init__(self, profile_name: str = "DeepResearchAgent", **kwargs):
+        """
+        Initialize with a specific agent profile.
+        
+        Args:
+            profile_name: Name of the agent profile to use
+            **kwargs: Additional arguments passed to parent class
+        """
+        self.profile_name = profile_name
+        super().__init__(**kwargs)
+    
+    @classmethod
+    def create_with_profile(cls, 
+                           profile_name: str = "DeepResearchAgent",
+                           enable_hitl: bool = True,
+                           **kwargs) -> "ProfiledSentientAgent":
+        """
+        Create a ProfiledSentientAgent with a specific profile.
+        
+        Args:
+            profile_name: Name of the agent profile to use
+            enable_hitl: Whether to enable human-in-the-loop
+            **kwargs: Additional configuration options
+            
+        Returns:
+            ProfiledSentientAgent instance
+        """
+        try:
+            logger.info(f"🤖 Creating ProfiledSentientAgent with profile: {profile_name}")
+            
+            # Load configuration
+            config = auto_load_config()
+            config.execution.enable_hitl = enable_hitl
+            
+            # Initialize system with profile
+            from .server.services.system_manager import SystemManager
+            system_manager = SystemManager()
+            components = system_manager.initialize_with_profile(profile_name)
+            
+            # Create agent instance
+            agent = cls(
+                profile_name=profile_name,
+                config=config,
+                **kwargs
+            )
+            
+            # Set components
+            agent.task_graph = components['task_graph']
+            agent.knowledge_store = components['knowledge_store']
+            agent.execution_engine = components['execution_engine']
+            agent.node_processor = components['node_processor']
+            agent._initialized = True
+            
+            logger.info(f"✅ ProfiledSentientAgent created successfully with profile: {profile_name}")
+            return agent
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to create ProfiledSentientAgent: {e}")
+            raise SentientAgentError(
+                f"Failed to create agent with profile {profile_name}: {e}",
+                suggestions=[
+                    f"Check that profile '{profile_name}' exists",
+                    "Verify all required agents are registered",
+                    "Check configuration and dependencies"
+                ]
+            )
+    
+    def get_profile_info(self) -> Dict[str, Any]:
+        """Get information about the current profile."""
+        try:
+            from .hierarchical_agent_framework.agent_configs.profile_loader import ProfileLoader
+            from .hierarchical_agent_framework.agent_configs.registry_integration import validate_profile
+            
+            loader = ProfileLoader()
+            blueprint = loader.load_profile(self.profile_name)
+            validation = validate_profile(self.profile_name)
+            
+            return {
+                "profile_name": self.profile_name,
+                "description": blueprint.description,
+                "planner_mappings": {str(k): v for k, v in blueprint.planner_adapter_names.items()},
+                "executor_mappings": {str(k): v for k, v in blueprint.executor_adapter_names.items()},
+                "validation": validation
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to get profile info: {e}")
+            return {"error": str(e)}
+
+
+# Add convenience functions at the end of the file
+
+def create_research_agent(enable_hitl: bool = True, **kwargs) -> ProfiledSentientAgent:
+    """
+    Create a research-focused agent using the DeepResearchAgent profile.
+    
+    Args:
+        enable_hitl: Whether to enable human-in-the-loop
+        **kwargs: Additional configuration options
+        
+    Returns:
+        ProfiledSentientAgent configured for research tasks
+    """
+    return ProfiledSentientAgent.create_with_profile(
+        profile_name="deep_research_agent",
+        enable_hitl=enable_hitl,
+        **kwargs
+    )
+
+
+
+
+def list_available_profiles() -> List[str]:
+    """
+    List all available agent profiles.
+    
+    Returns:
+        List of profile names
+    """
+    try:
+        from .hierarchical_agent_framework.agent_configs.profile_loader import ProfileLoader
+        loader = ProfileLoader()
+        return loader.list_available_profiles()
+    except Exception as e:
+        logger.error(f"Failed to list profiles: {e}")
+        return [] 

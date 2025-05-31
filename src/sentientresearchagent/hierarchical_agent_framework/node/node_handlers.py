@@ -17,6 +17,84 @@ from ..context.enhanced_context_builder import resolve_context_for_agent_with_pa
 from ..context.smart_context_utils import get_smart_child_context
 
 
+def get_planner_from_blueprint(blueprint: 'AgentBlueprint', task_type: TaskType, fallback_name: Optional[str] = None) -> Optional[str]:
+    """
+    Get the appropriate planner name from blueprint based on task type.
+    
+    Args:
+        blueprint: The agent blueprint
+        task_type: The task type needing planning
+        fallback_name: Fallback agent name if blueprint doesn't specify
+        
+    Returns:
+        Agent name to use for planning, or None if no suitable planner found
+    """
+    if not blueprint:
+        return fallback_name
+    
+    # 1. Try task-specific planner
+    if hasattr(blueprint, 'planner_adapter_names') and task_type in blueprint.planner_adapter_names:
+        planner_name = blueprint.planner_adapter_names[task_type]
+        logger.debug(f"Blueprint specifies planner for {task_type}: {planner_name}")
+        return planner_name
+    
+    # 2. Try default planner
+    if hasattr(blueprint, 'default_planner_adapter_name') and blueprint.default_planner_adapter_name:
+        planner_name = blueprint.default_planner_adapter_name
+        logger.debug(f"Blueprint specifies default planner: {planner_name}")
+        return planner_name
+    
+    # 3. Try legacy single planner (backward compatibility)
+    if hasattr(blueprint, 'planner_adapter_name') and blueprint.planner_adapter_name:
+        planner_name = blueprint.planner_adapter_name
+        logger.debug(f"Blueprint specifies legacy single planner: {planner_name}")
+        return planner_name
+    
+    # 4. Try prefix-based naming
+    if hasattr(blueprint, 'default_node_agent_name_prefix') and blueprint.default_node_agent_name_prefix:
+        planner_name = f"{blueprint.default_node_agent_name_prefix}Planner"
+        logger.debug(f"Blueprint suggests prefix-based planner: {planner_name}")
+        return planner_name
+    
+    return fallback_name
+
+
+def get_executor_from_blueprint(blueprint: 'AgentBlueprint', task_type: TaskType, fallback_name: Optional[str] = None) -> Optional[str]:
+    """
+    Get the appropriate executor name from blueprint based on task type.
+    
+    Args:
+        blueprint: The agent blueprint
+        task_type: The task type needing execution
+        fallback_name: Fallback agent name if blueprint doesn't specify
+        
+    Returns:
+        Agent name to use for execution, or None if no suitable executor found
+    """
+    if not blueprint:
+        return fallback_name
+    
+    # 1. Try task-specific executor
+    if hasattr(blueprint, 'executor_adapter_names') and task_type in blueprint.executor_adapter_names:
+        executor_name = blueprint.executor_adapter_names[task_type]
+        logger.debug(f"Blueprint specifies executor for {task_type}: {executor_name}")
+        return executor_name
+    
+    # 2. Try default executor
+    if hasattr(blueprint, 'default_executor_adapter_name') and blueprint.default_executor_adapter_name:
+        executor_name = blueprint.default_executor_adapter_name
+        logger.debug(f"Blueprint specifies default executor: {executor_name}")
+        return executor_name
+    
+    # 3. Try prefix-based naming
+    if hasattr(blueprint, 'default_node_agent_name_prefix') and blueprint.default_node_agent_name_prefix:
+        executor_name = f"{blueprint.default_node_agent_name_prefix}Executor"
+        logger.debug(f"Blueprint suggests prefix-based executor: {executor_name}")
+        return executor_name
+    
+    return fallback_name
+
+
 class ReadyPlanHandler(INodeHandler):
     """Handles a READY node that needs to be PLANNED."""
     async def handle(self, node: TaskNode, context: ProcessorContext) -> None:
@@ -27,14 +105,12 @@ class ReadyPlanHandler(INodeHandler):
         try:
             current_overall_objective = node.overall_objective or getattr(context.task_graph, 'overall_project_goal', "Undefined overall project goal")
             
-            lookup_name_for_planner = agent_name_at_entry
-            if context.current_agent_blueprint:
-                if context.current_agent_blueprint.planner_adapter_name:
-                    lookup_name_for_planner = context.current_agent_blueprint.planner_adapter_name
-                    logger.debug(f"        ReadyPlanHandler: Blueprint specifies planner: {lookup_name_for_planner}")
-                elif not lookup_name_for_planner and context.current_agent_blueprint.default_node_agent_name_prefix:
-                    lookup_name_for_planner = f"{context.current_agent_blueprint.default_node_agent_name_prefix}Planner"
-                    logger.debug(f"        ReadyPlanHandler: Blueprint suggests prefix for planner: {lookup_name_for_planner}")
+            # ENHANCED: Use new blueprint system for planner selection
+            lookup_name_for_planner = get_planner_from_blueprint(
+                context.current_agent_blueprint, 
+                node.task_type, 
+                agent_name_at_entry
+            )
 
             node.agent_name = lookup_name_for_planner 
             planner_adapter = get_agent_adapter(node, action_verb="plan")
@@ -54,13 +130,12 @@ class ReadyPlanHandler(INodeHandler):
             adapter_used_name = getattr(planner_adapter, 'agent_name', type(planner_adapter).__name__)
             logger.info(f"    ReadyPlanHandler: Using PLAN adapter '{adapter_used_name}' for node {node.task_id}")
 
-            context_builder_agent_name = agent_name_at_entry
-            if context.current_agent_blueprint and node.task_type:
-                specific_executor_name = context.current_agent_blueprint.executor_adapter_names.get(node.task_type)
-                if specific_executor_name:
-                    context_builder_agent_name = specific_executor_name
-                elif not context_builder_agent_name and context.current_agent_blueprint.default_node_agent_name_prefix:
-                    context_builder_agent_name = f"{context.current_agent_blueprint.default_node_agent_name_prefix}Executor"
+            # ENHANCED: Use blueprint for context builder agent selection too
+            context_builder_agent_name = get_executor_from_blueprint(
+                context.current_agent_blueprint,
+                node.task_type,
+                agent_name_at_entry
+            )
             
             agent_task_input_model = resolve_context_for_agent_with_parents(
                 current_task_id=node.task_id,
@@ -72,6 +147,7 @@ class ReadyPlanHandler(INodeHandler):
             )
             formatted_context = agent_task_input_model.formatted_full_context
             node.input_payload_dict = agent_task_input_model.model_dump()
+            
             plan_output: Optional[PlanOutput] = await planner_adapter.process(node, agent_task_input_model)
 
             if plan_output is None or not plan_output.sub_tasks:
@@ -89,37 +165,14 @@ class ReadyPlanHandler(INodeHandler):
             hitl_outcome_plan = await context.hitl_coordinator.review_plan_generation(
                 node=node, plan_output=plan_output, planner_input=agent_task_input_model
             )
-
-            if hitl_outcome_plan["status"] == "request_modification":
-                logger.info(f"Node {node.task_id}: Plan modification requested. Setting to NEEDS_REPLAN.")
-                modification_instructions = hitl_outcome_plan.get('modification_instructions', 'User requested modification.')
-                node.replan_details = ReplanRequestDetails(
-                    failed_sub_goal=node.goal, reason_for_failure_or_replan=modification_instructions,
-                    specific_guidance_for_replan=modification_instructions
-                )
-                node.aux_data['original_plan_for_modification'] = plan_output 
-                node.aux_data['user_modification_instructions'] = modification_instructions
-                node.replan_reason = f"User requested modification: {modification_instructions[:100]}..."
-                node.update_status(TaskStatus.NEEDS_REPLAN)
-                node.output_summary = "Initial plan requires user modification."
-                
-                # CRITICAL: Update the knowledge store immediately to ensure the status change is persisted
-                context.knowledge_store.add_or_update_record_from_node(node)
-                logger.info(f"✅ Node {node.task_id} status updated to NEEDS_REPLAN and persisted to knowledge store")
+            if hitl_outcome_plan["status"] != "approved":
                 return
-            elif hitl_outcome_plan["status"] != "approved":
-                return 
 
-            # NEW: Check if creating sub-nodes would exceed max recursion depth
-            logger.debug(f"    ReadyPlanHandler: Depth check for {node.task_id}: current_layer={node.layer}, max_planning_layer={context.config.max_planning_layer}, would_create_layer={node.layer + 1}")
-            
             if node.layer + 1 >= context.config.max_planning_layer:
                 logger.warning(f"    ReadyPlanHandler: Creating sub-nodes for {node.task_id} at layer {node.layer} would exceed max planning depth ({context.config.max_planning_layer}). Converting to atomic execution task.")
-                # Convert the plan to an atomic execution task instead of creating sub-nodes
                 node.node_type = NodeType.EXECUTE
-                node.result = plan_output  # Store the plan as the result for reference
+                node.result = plan_output
                 node.output_summary = f"Plan created but converted to atomic task due to max depth limit. Contains {len(plan_output.sub_tasks)} potential sub-tasks."
-                # Set status back to READY so it can be executed in the next cycle
                 node.update_status(TaskStatus.READY)
                 logger.info(f"    ReadyPlanHandler: Node {node.task_id} converted to atomic execution task due to depth limit and set to READY for execution.")
                 return
@@ -146,20 +199,19 @@ class ReadyExecuteHandler(INodeHandler):
         logger.info(f"    ReadyExecuteHandler: Executing node {node.task_id} (Blueprint: {blueprint_name_log}, Goal: '{node.goal[:50]}...', Original Agent Name at Entry: {agent_name_at_entry})")
 
         try:
-            context_builder_agent_name = agent_name_at_entry
-            if context.current_agent_blueprint and node.task_type:
-                specific_executor_name = context.current_agent_blueprint.executor_adapter_names.get(node.task_type)
-                if specific_executor_name:
-                    context_builder_agent_name = specific_executor_name
-                elif not context_builder_agent_name and context.current_agent_blueprint.default_node_agent_name_prefix:
-                    context_builder_agent_name = f"{context.current_agent_blueprint.default_node_agent_name_prefix}Executor"
+            # ENHANCED: Use blueprint for context builder agent selection
+            context_builder_agent_name = get_executor_from_blueprint(
+                context.current_agent_blueprint,
+                node.task_type,
+                agent_name_at_entry or "default_executor"
+            )
             
             agent_task_input_model = resolve_context_for_agent_with_parents(
                 current_task_id=node.task_id, 
                 current_goal=node.goal,
                 current_task_type=node.task_type.value if isinstance(node.task_type, TaskType) else str(node.task_type),
                 knowledge_store=context.knowledge_store, 
-                agent_name=context_builder_agent_name or "default_executor",
+                agent_name=context_builder_agent_name,
                 overall_project_goal=context.task_graph.overall_project_goal
             )
             node.input_payload_dict = agent_task_input_model.model_dump()
@@ -170,15 +222,12 @@ class ReadyExecuteHandler(INodeHandler):
             if hitl_outcome_exec["status"] != "approved":
                 return
 
-            lookup_name_for_executor = agent_name_at_entry
-            if context.current_agent_blueprint and node.task_type:
-                specific_executor_name = context.current_agent_blueprint.executor_adapter_names.get(node.task_type)
-                if specific_executor_name:
-                    lookup_name_for_executor = specific_executor_name
-                    logger.debug(f"        ReadyExecuteHandler: Blueprint specifies executor for {node.task_type}: {lookup_name_for_executor}")
-                elif not lookup_name_for_executor and context.current_agent_blueprint.default_node_agent_name_prefix:
-                    lookup_name_for_executor = f"{context.current_agent_blueprint.default_node_agent_name_prefix}Executor"
-                    logger.debug(f"        ReadyExecuteHandler: Blueprint suggests prefix for executor: {lookup_name_for_executor}")
+            # ENHANCED: Use new blueprint system for executor selection
+            lookup_name_for_executor = get_executor_from_blueprint(
+                context.current_agent_blueprint,
+                node.task_type,
+                agent_name_at_entry
+            )
 
             node.agent_name = lookup_name_for_executor 
             executor_adapter = get_agent_adapter(node, action_verb="execute")
@@ -196,29 +245,15 @@ class ReadyExecuteHandler(INodeHandler):
                 return
             
             adapter_used_name = getattr(executor_adapter, 'agent_name', type(executor_adapter).__name__)
-            logger.info(f"    ReadyExecuteHandler: Calling executor adapter '{adapter_used_name}' for node {node.task_id}")
+            logger.info(f"    ReadyExecuteHandler: Using EXECUTE adapter '{adapter_used_name}' for node {node.task_id}")
 
-            execution_result: Optional[Any] = await executor_adapter.process(node, agent_task_input_model)
+            node.update_status(TaskStatus.RUNNING)
+            execution_result = await executor_adapter.process(node, agent_task_input_model)
 
             if execution_result is not None:
                 node.result = execution_result
-                if isinstance(execution_result, BaseModel):
-                    try:
-                        if hasattr(execution_result, 'summary') and execution_result.summary: 
-                            node.output_summary = str(execution_result.summary) 
-                        elif hasattr(execution_result, 'content_summary') and execution_result.content_summary: 
-                            node.output_summary = str(execution_result.content_summary)
-                        elif isinstance(execution_result, CustomSearcherOutput):
-                            summary_text = str(execution_result)[:100] + "..." if len(str(execution_result)) > 100 else str(execution_result)
-                            annotation_count = len(execution_result.annotations) if execution_result.annotations else 0
-                            node.output_summary = f"Search result: \"{summary_text}\" ({annotation_count} annotations)"
-                        elif isinstance(execution_result, PlanOutput): 
-                            node.output_summary = f"Plan output from executor: {len(execution_result.sub_tasks)} sub-tasks."
-                        else:
-                            node.output_summary = f"Execution completed. Result type: {type(execution_result).__name__}"
-                    except Exception as e_summary:
-                        logger.warning(f"Error generating summary from BaseModel result for {node.task_id}: {e_summary}")
-                        node.output_summary = f"Execution completed. Result type: {type(execution_result).__name__} (summary error)."
+                if hasattr(execution_result, 'model_dump'):
+                    node.output_summary = f"Execution completed. Structured output stored."
                 elif isinstance(execution_result, str):
                     node.output_summary = execution_result[:250] + "..." if len(execution_result) > 250 else execution_result
                 else:

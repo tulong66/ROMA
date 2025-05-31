@@ -1,0 +1,43 @@
+# Deep Research Agent Profile
+# Specialized configuration for comprehensive research tasks
+
+profile:
+  name: "DeepResearchAgent"
+  description: "Comprehensive research agent with task-specific planners and specialized executors"
+  
+  # Task-specific planners - different planners for different task types
+  planner_adapter_names:
+    SEARCH: "CoreResearchPlanner"      # Specialized for search task planning
+    WRITE: "CoreResearchPlanner"       # Could use different planner if needed
+    THINK: "CoreResearchPlanner"       # Could use different planner if needed
+    
+  # Task-specific executors
+  executor_adapter_names:
+    SEARCH: "OpenAICustomSearcher"     # Advanced search capabilities
+    THINK: "SearchSynthesizer"         # Analysis and synthesis
+    WRITE: "BasicReportWriter"         # Report generation
+    
+  # Single agents for other actions
+  aggregator_adapter_name: "DefaultAggregator"
+  atomizer_adapter_name: "DefaultAtomizer"
+  plan_modifier_adapter_name: "PlanModifier"
+  
+  # Fallbacks
+  default_planner_adapter_name: "CoreResearchPlanner"
+  default_executor_adapter_name: "SearchSynthesizer"
+  default_node_agent_name_prefix: "DeepResearch"
+
+# Profile-specific agents (if any new ones are needed)
+# For now, we'll use existing agents from the main agents.yaml
+agents: []
+
+# Profile metadata
+metadata:
+  version: "1.0.0"
+  description: "Deep research agent profile using existing components"
+  use_case: "Comprehensive research tasks requiring multi-step analysis"
+  recommended_for:
+    - "Academic research"
+    - "Market analysis" 
+    - "Technical investigation"
+    - "Fact-checking and verification"
