@@ -24,6 +24,10 @@ const ProjectInput: React.FC = () => {
 
   // Default configuration
   const [config, setConfig] = useState<ProjectConfig>({
+    profile: {
+      name: 'deep_research_agent',
+      displayName: 'Deep Research Agent'
+    },
     llm: {
       provider: 'openai',
       model: 'gpt-4',

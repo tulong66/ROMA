@@ -78,6 +78,7 @@ class SystemManager:
         self.simple_agent_instance = None
         self._initialized = False
         self._websocket_hitl_ready = False
+        self._current_profile = None  # Track current profile
     
     def initialize(self) -> Dict[str, Any]:
         """
@@ -310,7 +311,9 @@ class SystemManager:
             "websocket_hitl": self.get_websocket_hitl_status(),
             "initialized": self._initialized,
             "websocket_hitl_ready": self.is_websocket_hitl_ready(),
-            "websocket_hitl_available": WEBSOCKET_HITL_AVAILABLE
+            "websocket_hitl_available": WEBSOCKET_HITL_AVAILABLE,
+            "current_profile": self._current_profile,  # Add current profile info
+            "available_profiles": self.get_available_profiles()
         }
     
     def _log_system_info(self):
@@ -331,12 +334,12 @@ class SystemManager:
         except Exception as e:
             logger.warning(f"Failed to log system info: {e}")
 
-    def initialize_with_profile(self, profile_name: str = "DeepResearchAgent") -> Dict[str, Any]:
+    def initialize_with_profile(self, profile_name: str = "deep_research_agent") -> Dict[str, Any]:
         """
         Initialize the system with a specific agent profile.
         
         Args:
-            profile_name: Name of the agent profile to use
+            profile_name: Name of the agent profile to use (default: deep_research_agent)
             
         Returns:
             Dictionary containing all initialized components
@@ -409,6 +412,7 @@ class SystemManager:
             )
             
             self._initialized = True
+            self._current_profile = profile_name  # Track the current profile
             logger.success(f"✅ System initialized successfully with profile: {profile_name}")
             
             return self.get_components()
@@ -450,3 +454,103 @@ class SystemManager:
         except Exception as e:
             logger.error(f"Failed to get available profiles: {e}")
             return []
+
+    def get_profile_details(self, profile_name: str) -> Dict[str, Any]:
+        """
+        Get detailed information about a specific profile.
+        
+        Args:
+            profile_name: Name of the profile to get details for
+            
+        Returns:
+            Dictionary containing profile details
+        """
+        try:
+            from ...hierarchical_agent_framework.agent_configs.profile_loader import ProfileLoader
+            from ...hierarchical_agent_framework.agent_configs.registry_integration import validate_profile
+            
+            loader = ProfileLoader()
+            blueprint = loader.load_profile(profile_name)
+            validation = validate_profile(profile_name)
+            
+            return {
+                "name": blueprint.name,
+                "description": blueprint.description,
+                "planner_mappings": {str(k): v for k, v in blueprint.planner_adapter_names.items()},
+                "executor_mappings": {str(k): v for k, v in blueprint.executor_adapter_names.items()},
+                "atomizer": blueprint.atomizer_adapter_name,
+                "aggregator": blueprint.aggregator_adapter_name,
+                "plan_modifier": blueprint.plan_modifier_adapter_name,
+                "default_planner": blueprint.default_planner_adapter_name,
+                "default_executor": blueprint.default_executor_adapter_name,
+                "validation": validation,
+                "is_valid": validation.get("blueprint_valid", False)
+            }
+        except Exception as e:
+            logger.error(f"Failed to get profile details for {profile_name}: {e}")
+            return {
+                "name": profile_name,
+                "error": str(e),
+                "is_valid": False
+            }
+
+    def get_current_profile(self) -> Optional[str]:
+        """Get the currently active profile name."""
+        return self._current_profile
+
+    def switch_profile(self, profile_name: str) -> Dict[str, Any]:
+        """
+        Switch to a different agent profile.
+        
+        Args:
+            profile_name: Name of the profile to switch to
+            
+        Returns:
+            Dictionary containing switch results and new system info
+        """
+        try:
+            logger.info(f"🔄 Switching to profile: {profile_name}")
+            
+            # Validate the profile first
+            from ...hierarchical_agent_framework.agent_configs.registry_integration import validate_profile
+            validation = validate_profile(profile_name)
+            
+            if not validation.get("blueprint_valid", False):
+                return {
+                    "success": False,
+                    "error": f"Profile '{profile_name}' is not valid",
+                    "validation": validation
+                }
+            
+            # Clear current state
+            if self._initialized:
+                logger.info("🧹 Clearing current system state...")
+                self.task_graph.nodes.clear()
+                self.task_graph.graphs.clear()
+                self.task_graph.root_graph_id = None
+                self.task_graph.overall_project_goal = None
+                
+                # Reset initialization flag to allow re-initialization
+                self._initialized = False
+            
+            # Re-initialize with new profile
+            components = self.initialize_with_profile(profile_name)
+            self._current_profile = profile_name
+            
+            logger.success(f"✅ Successfully switched to profile: {profile_name}")
+            
+            return {
+                "success": True,
+                "profile": profile_name,
+                "message": f"Successfully switched to {profile_name}",
+                "system_info": self.get_system_info(),
+                "profile_details": self.get_profile_details(profile_name)
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to switch profile to {profile_name}: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "profile": profile_name
+            }

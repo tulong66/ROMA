@@ -48,10 +48,15 @@ class SentientServer:
         self.app = create_app(self.config)
         self.socketio = create_socketio(self.app)
         
-        # Initialize core services
+        # Initialize core services with default profile
         logger.info("🔧 Initializing core services...")
         self.system_manager = SystemManager()
-        self.system_manager.initialize()
+        
+        # Use deep_research_agent as the default profile
+        default_profile = self.config.get('default_profile', 'deep_research_agent')
+        logger.info(f"🎯 Using default profile: {default_profile}")
+        
+        self.system_manager.initialize_with_profile(default_profile)
         
         # Setup WebSocket HITL integration IMMEDIATELY after system init
         logger.info("🔌 Setting up WebSocket HITL integration...")
@@ -100,6 +105,10 @@ class SentientServer:
         if self.system_manager.config.execution.enable_hitl:
             hitl_status = self.system_manager.get_websocket_hitl_status()
             logger.info(f"🎮 Final HITL Status: {hitl_status}")
+        
+        # Log current profile info
+        current_profile = self.system_manager.get_current_profile()
+        logger.info(f"🤖 Active Agent Profile: {current_profile}")
         
         logger.info("✅ Server created successfully!")
         return self.app, self.socketio

@@ -35,7 +35,12 @@ def register_websocket_events(socketio, project_service, execution_service):
     @socketio.on('disconnect')
     def handle_disconnect(auth=None):
         """Handle client disconnection."""
-        logger.info('👋 Client disconnected')
+        try:
+            logger.info('👋 Client disconnected')
+            # Don't emit anything on disconnect - client is already gone
+            # Just log and clean up any resources if needed
+        except Exception as e:
+            logger.error(f"Error in disconnect handler: {e}")
     
     @socketio.on('request_initial_state')
     def handle_request_initial_state():
@@ -57,6 +62,11 @@ def register_websocket_events(socketio, project_service, execution_service):
                 
         except Exception as e:
             logger.error(f"Error sending initial state: {e}")
+            # Only emit error if we're still connected
+            try:
+                emit('error', {'message': 'Failed to load initial state'})
+            except:
+                pass  # Client might have disconnected
     
     @socketio.on('start_project')
     def handle_start_project(data):
@@ -163,6 +173,7 @@ def register_websocket_events(socketio, project_service, execution_service):
     def default_error_handler(e):
         """Default error handler for WebSocket events."""
         logger.error(f"SocketIO error: {e}")
+        # Don't emit anything here - might cause more connection issues
 
 
 def _run_simple_streaming_execution(socketio, goal: str, options: dict):

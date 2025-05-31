@@ -412,4 +412,39 @@ if (typeof window !== 'undefined' && window) {
       hitlLogs: state.hitlLogs
     }
   }
+}
+
+// Add profile-related event handlers
+export const setupProfileEvents = (socket: any, profileStore: any) => {
+  // Listen for profile changes
+  socket.on('profile_changed', (data: any) => {
+    console.log('🔄 Profile changed:', data)
+    profileStore.setCurrentProfile(data.profile)
+    // Reload profiles to get updated state
+    profileStore.loadProfiles()
+  })
+
+  // Listen for profile switch success
+  socket.on('profile_switch_success', (data: any) => {
+    console.log('✅ Profile switch successful:', data)
+  })
+
+  // Listen for profile switch errors
+  socket.on('profile_switch_error', (data: any) => {
+    console.error('❌ Profile switch error:', data)
+    profileStore.setError(data.error)
+  })
+
+  // Listen for profiles list updates
+  socket.on('profiles_list', (data: any) => {
+    console.log('📋 Profiles list received:', data)
+    profileStore.setProfiles(data.profiles)
+    profileStore.setCurrentProfile(data.current_profile)
+  })
+
+  // Listen for profile errors
+  socket.on('profiles_error', (data: any) => {
+    console.error('❌ Profiles error:', data)
+    profileStore.setError(data.error)
+  })
 } 

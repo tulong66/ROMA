@@ -9,6 +9,7 @@ from flask_cors import CORS
 from flask_socketio import SocketIO
 from typing import Optional
 import os
+from .api.profiles import create_profile_routes
 
 
 def create_app(config: Optional[dict] = None) -> Flask:
@@ -65,14 +66,14 @@ def create_socketio(app: Flask) -> SocketIO:
 
 def register_routes(app: Flask, socketio: SocketIO, system_manager, project_service, execution_service):
     """
-    Register all routes and event handlers.
+    Register all API routes and WebSocket event handlers.
     
     Args:
-        app: Flask application
-        socketio: SocketIO instance  
-        system_manager: System manager instance
-        project_service: Project service instance
-        execution_service: Execution service instance
+        app: Flask application instance
+        socketio: SocketIO instance
+        system_manager: SystemManager instance
+        project_service: ProjectService instance
+        execution_service: ExecutionService instance
     """
     # Register REST API routes
     from .api.system import create_system_routes
@@ -89,3 +90,6 @@ def register_routes(app: Flask, socketio: SocketIO, system_manager, project_serv
     
     register_websocket_events(socketio, project_service, execution_service)
     register_hitl_events(socketio)
+    
+    # Profile management routes
+    create_profile_routes(app, system_manager)

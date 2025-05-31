@@ -9,10 +9,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
-import { Info, Settings, Zap, Database, MessageSquare, Layers, Clock, Target } from 'lucide-react'
+import { Info, Settings, Zap, Database, MessageSquare, Layers, Clock, Target, Loader2 } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import ProjectProfileSelector from '@/components/profile/ProjectProfileSelector'
 
 export interface ProjectConfig {
+  // Profile Configuration
+  profile?: {
+    name: string
+    displayName?: string
+  }
+  
   // LLM Configuration
   llm: {
     provider: string
@@ -83,6 +90,16 @@ const ProjectConfigPanel: React.FC<ProjectConfigPanelProps> = ({
     })
   }
 
+  const handleProfileChange = (profileName: string) => {
+    onChange({
+      ...config,
+      profile: {
+        name: profileName,
+        displayName: profileName === 'deep_research_agent' ? 'Deep Research Agent' : 'General Agent'
+      }
+    })
+  }
+
   return (
     <div className="max-w-4xl mx-auto p-6">
       <div className="mb-6">
@@ -93,8 +110,9 @@ const ProjectConfigPanel: React.FC<ProjectConfigPanelProps> = ({
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="project">Project</TabsTrigger>
+          <TabsTrigger value="profile">Agent Profile</TabsTrigger>
           <TabsTrigger value="execution">Execution</TabsTrigger>
           <TabsTrigger value="cache">Cache</TabsTrigger>
         </TabsList>
@@ -150,6 +168,13 @@ const ProjectConfigPanel: React.FC<ProjectConfigPanelProps> = ({
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="profile" className="space-y-6">
+          <ProjectProfileSelector
+            selectedProfile={config.profile?.name || 'deep_research_agent'}
+            onProfileChange={handleProfileChange}
+          />
         </TabsContent>
 
         <TabsContent value="execution" className="space-y-6">
@@ -389,12 +414,19 @@ const ProjectConfigPanel: React.FC<ProjectConfigPanelProps> = ({
       </Tabs>
 
       {/* Action Buttons */}
-      <div className="flex justify-end gap-3 pt-6 border-t">
-        <Button variant="outline" onClick={onCancel}>
+      <div className="flex justify-between mt-8">
+        <Button variant="outline" onClick={onCancel} disabled={isCreating}>
           Cancel
         </Button>
-        <Button onClick={onSubmit} disabled={!config.project.goal?.trim()}>
-          {isCreating ? 'Create Project' : 'Save Configuration'}
+        <Button onClick={onSubmit} disabled={isCreating}>
+          {isCreating ? (
+            <>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              Creating Project...
+            </>
+          ) : (
+            'Create Project'
+          )}
         </Button>
       </div>
     </div>

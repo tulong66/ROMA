@@ -2,7 +2,6 @@ import React from 'react'
 import { Button } from '@/components/ui/button'
 import { 
   Brain, 
-  Settings, 
   Download,
   Eye,
   EyeOff
@@ -94,11 +93,6 @@ const Header: React.FC = () => {
               </Button>
             </>
           )}
-
-          {/* Settings */}
-          <Button variant="ghost" size="icon">
-            <Settings className="w-4 h-4" />
-          </Button>
 
           {/* Theme Toggle */}
           <ThemeToggle />

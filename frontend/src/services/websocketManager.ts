@@ -1,4 +1,6 @@
 import { webSocketService } from './websocketService'
+import { useProfileStore } from '@/stores/profileStore'
+import { setupProfileEvents } from './websocketService'
 
 // Create a new file for better WebSocket management
 class WebSocketManager {
@@ -23,6 +25,12 @@ class WebSocketManager {
         console.log('🔌 WebSocketManager: Page unloading, disconnecting')
         webSocketService.disconnect()
       })
+
+      // Setup profile events
+      if (this.socket) {
+        const profileStore = useProfileStore.getState()
+        setupProfileEvents(this.socket, profileStore)
+      }
     }
   }
   
