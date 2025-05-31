@@ -75,7 +75,7 @@ const ProjectSidebar: React.FC = () => {
     execution: {
       max_concurrent_nodes: 3,
       max_execution_steps: 250,
-      max_recursion_depth: 5,
+      max_recursion_depth: 3,
       task_timeout_seconds: 300,
       enable_hitl: true,
       hitl_root_plan_only: false,
@@ -111,6 +111,65 @@ const ProjectSidebar: React.FC = () => {
   const isRootNodeCompleted = () => {
     const rootNode = getRootNode()
     return rootNode && rootNode.status === 'DONE' && (rootNode.full_result || rootNode.output_summary)
+  }
+
+  // Helper function to check if a project has completed results (for any project)
+  const hasProjectCompletedResults = (project: any) => {
+    // Check multiple conditions to determine if project has completed results
+    
+    // 1. Check if project has saved results flag
+    if (project.has_saved_results) {
+      return true
+    }
+    
+    // 2. Check if project status is completed
+    if (project.status === 'completed') {
+      return true
+    }
+    
+    // 3. If this is the current project, check if root node is completed
+    if (project.id === currentProjectId && Object.keys(nodes).length > 0) {
+      const rootNode = getRootNode()
+      return rootNode && rootNode.status === 'DONE' && (rootNode.full_result || rootNode.output_summary)
+    }
+    
+    // 4. For testing purposes, let's also check if the project has any nodes
+    // This is a fallback to show the button for projects that might have results
+    if (project.node_count > 0) {
+      return true
+    }
+    
+    return false
+  }
+
+  // Function to download results for a specific project
+  const downloadProjectResults = async (projectId: string, e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault()
+      e.stopPropagation()
+    }
+
+    try {
+      // If it's the current project and we have nodes loaded, use client-side download
+      if (projectId === currentProjectId && Object.keys(nodes).length > 0) {
+        await downloadRootNodeResult()
+        return
+      }
+
+      // Otherwise, try to download from server
+      await projectService.downloadProjectReport(projectId, 'markdown')
+      toast({
+        title: "Download Complete",
+        description: "Project report downloaded successfully",
+      })
+    } catch (error) {
+      console.error('Failed to download project results:', error)
+      toast({
+        title: "Error",
+        description: "Failed to download project results",
+        variant: "destructive",
+      })
+    }
   }
 
   // Function to download root node result (client-side)
@@ -498,45 +557,6 @@ const ProjectSidebar: React.FC = () => {
             </DialogContent>
           </Dialog>
 
-          {/* Project Actions */}
-          {currentProject && hasNodes && (
-            <div className="px-4 pb-4 space-y-2">
-              {/* Save Results Button */}
-              <Button
-                onClick={handleSaveResults}
-                className="w-full"
-                size="sm"
-                variant="outline"
-                disabled={isSaving}
-              >
-                {isSaving ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Save className="h-4 w-4 mr-2" />
-                    Save Results
-                  </>
-                )}
-              </Button>
-
-              {/* Download Buttons */}
-              {rootNodeCompleted && (
-                <Button
-                  onClick={downloadRootNodeResult}
-                  className="w-full"
-                  size="sm"
-                  variant="outline"
-                >
-                  <Download className="h-4 w-4 mr-2" />
-                  Download Final Report
-                </Button>
-              )}
-            </div>
-          )}
-
           {/* Current Project */}
           {currentProject && (
             <div className="px-4 pb-4">
@@ -575,7 +595,7 @@ const ProjectSidebar: React.FC = () => {
                   <div
                     key={project.id}
                     className={cn(
-                      "group rounded-lg p-3 cursor-pointer transition-colors hover:bg-muted/50",
+                      "group rounded-lg p-3 cursor-pointer transition-colors hover:bg-muted/50 relative",
                       project.id === currentProjectId && "bg-muted/30 border border-border"
                     )}
                     onClick={() => handleSwitchProject(project.id)}
@@ -614,7 +634,7 @@ const ProjectSidebar: React.FC = () => {
                             <MoreVertical className="h-4 w-4" />
                           </div>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
+                        <DropdownMenuContent align="end" side="top" className="w-48">
                           <DropdownMenuItem onClick={() => handleSwitchProject(project.id)}>
                             <Play className="mr-2 h-4 w-4" />
                             Switch to Project
@@ -623,8 +643,8 @@ const ProjectSidebar: React.FC = () => {
                             <Trash2 className="mr-2 h-4 w-4" />
                             Delete Project
                           </DropdownMenuItem>
-                          {project.has_saved_results && (
-                            <DropdownMenuItem onClick={() => handleDownloadReport(project.id)}>
+                          {hasProjectCompletedResults(project) && (
+                            <DropdownMenuItem onClick={() => downloadProjectResults(project.id)}>
                               <Download className="mr-2 h-4 w-4" />
                               Download Report
                             </DropdownMenuItem>
@@ -632,6 +652,19 @@ const ProjectSidebar: React.FC = () => {
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
+                    
+                    {/* Small download button positioned at bottom right */}
+                    {hasProjectCompletedResults(project) && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="absolute bottom-2 right-2 h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={(e) => downloadProjectResults(project.id, e)}
+                        title="Download results"
+                      >
+                        <Download className="h-3 w-3" />
+                      </Button>
+                    )}
                   </div>
                 ))}
               </div>

@@ -36,8 +36,8 @@ export interface ProjectConfig {
     hitl_after_modified_plan: boolean
     hitl_after_atomizer: boolean
     hitl_before_execute: boolean
-    max_replan_attempts: number
-    execution_timeout: number
+    max_replan_attempts?: number
+    execution_timeout?: number
   }
   
   // Cache Configuration
@@ -83,19 +83,6 @@ const ProjectConfigPanel: React.FC<ProjectConfigPanelProps> = ({
     })
   }
 
-  const updateNestedConfig = (section: keyof ProjectConfig, subsection: string, field: string, value: any) => {
-    onChange({
-      ...config,
-      [section]: {
-        ...config[section],
-        [subsection]: {
-          ...(config[section] as any)[subsection],
-          [field]: value
-        }
-      }
-    })
-  }
-
   return (
     <div className="max-w-4xl mx-auto p-6">
       <div className="mb-6">
@@ -107,15 +94,18 @@ const ProjectConfigPanel: React.FC<ProjectConfigPanelProps> = ({
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="llm">LLM</TabsTrigger>
+          <TabsTrigger value="project">Project</TabsTrigger>
           <TabsTrigger value="execution">Execution</TabsTrigger>
           <TabsTrigger value="cache">Cache</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="llm" className="space-y-6">
+        <TabsContent value="project" className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Project Details</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <Target className="h-5 w-5" />
+                Project Details
+              </CardTitle>
               <CardDescription>
                 Define your project goal and basic parameters
               </CardDescription>
@@ -165,7 +155,10 @@ const ProjectConfigPanel: React.FC<ProjectConfigPanelProps> = ({
         <TabsContent value="execution" className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Execution Settings</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <Zap className="h-5 w-5" />
+                Execution Settings
+              </CardTitle>
               <CardDescription>
                 Configure how the system executes tasks
               </CardDescription>
@@ -179,7 +172,7 @@ const ProjectConfigPanel: React.FC<ProjectConfigPanelProps> = ({
                     type="number"
                     min="1"
                     max="10"
-                    value={config.execution?.max_recursion_depth || 3}
+                    value={config.execution?.max_recursion_depth || 5}
                     onChange={(e) => updateConfig('execution', 'max_recursion_depth', parseInt(e.target.value))}
                   />
                   <p className="text-sm text-muted-foreground">
@@ -205,34 +198,111 @@ const ProjectConfigPanel: React.FC<ProjectConfigPanelProps> = ({
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="max_replan_attempts">Max Replan Attempts</Label>
+                  <Label htmlFor="max_execution_steps">Max Execution Steps</Label>
                   <Input
-                    id="max_replan_attempts"
+                    id="max_execution_steps"
                     type="number"
-                    min="1"
-                    max="10"
-                    value={config.execution?.max_replan_attempts || 3}
-                    onChange={(e) => updateConfig('execution', 'max_replan_attempts', parseInt(e.target.value))}
+                    min="10"
+                    max="1000"
+                    value={config.execution?.max_execution_steps || 250}
+                    onChange={(e) => updateConfig('execution', 'max_execution_steps', parseInt(e.target.value))}
                   />
-                  <p className="text-sm text-muted-foreground">
-                    Maximum number of replan attempts per node
-                  </p>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="execution_timeout">Execution Timeout (seconds)</Label>
+                  <Label htmlFor="task_timeout_seconds">Task Timeout (seconds)</Label>
                   <Input
-                    id="execution_timeout"
+                    id="task_timeout_seconds"
                     type="number"
                     min="30"
                     max="3600"
-                    value={config.execution?.execution_timeout || 300}
-                    onChange={(e) => updateConfig('execution', 'execution_timeout', parseInt(e.target.value))}
+                    value={config.execution?.task_timeout_seconds || 300}
+                    onChange={(e) => updateConfig('execution', 'task_timeout_seconds', parseInt(e.target.value))}
                   />
-                  <p className="text-sm text-muted-foreground">
-                    Timeout for individual task execution
-                  </p>
                 </div>
+              </div>
+
+              <Separator />
+
+              <div className="space-y-4">
+                <h4 className="font-medium">Human-in-the-Loop (HITL) Settings</h4>
+                
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="enable_hitl">Enable HITL</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Allow human intervention during execution
+                    </p>
+                  </div>
+                  <Switch
+                    id="enable_hitl"
+                    checked={config.execution?.enable_hitl || false}
+                    onCheckedChange={(checked) => updateConfig('execution', 'enable_hitl', checked)}
+                  />
+                </div>
+
+                {config.execution?.enable_hitl && (
+                  <div className="space-y-4 pl-4 border-l-2 border-muted">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="hitl_root_plan_only">Root Plan Only</Label>
+                      <Switch
+                        id="hitl_root_plan_only"
+                        checked={config.execution?.hitl_root_plan_only || false}
+                        onCheckedChange={(checked) => updateConfig('execution', 'hitl_root_plan_only', checked)}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="hitl_timeout_seconds">HITL Timeout (seconds)</Label>
+                      <Input
+                        id="hitl_timeout_seconds"
+                        type="number"
+                        min="60"
+                        max="3600"
+                        value={config.execution?.hitl_timeout_seconds || 300}
+                        onChange={(e) => updateConfig('execution', 'hitl_timeout_seconds', parseInt(e.target.value))}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="hitl_after_plan_generation">After Plan Generation</Label>
+                        <Switch
+                          id="hitl_after_plan_generation"
+                          checked={config.execution?.hitl_after_plan_generation || false}
+                          onCheckedChange={(checked) => updateConfig('execution', 'hitl_after_plan_generation', checked)}
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="hitl_after_modified_plan">After Modified Plan</Label>
+                        <Switch
+                          id="hitl_after_modified_plan"
+                          checked={config.execution?.hitl_after_modified_plan || false}
+                          onCheckedChange={(checked) => updateConfig('execution', 'hitl_after_modified_plan', checked)}
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="hitl_after_atomizer">After Atomizer</Label>
+                        <Switch
+                          id="hitl_after_atomizer"
+                          checked={config.execution?.hitl_after_atomizer || false}
+                          onCheckedChange={(checked) => updateConfig('execution', 'hitl_after_atomizer', checked)}
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="hitl_before_execute">Before Execute</Label>
+                        <Switch
+                          id="hitl_before_execute"
+                          checked={config.execution?.hitl_before_execute || false}
+                          onCheckedChange={(checked) => updateConfig('execution', 'hitl_before_execute', checked)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -270,7 +340,7 @@ const ProjectConfigPanel: React.FC<ProjectConfigPanelProps> = ({
                     <div className="space-y-2">
                       <Label htmlFor="cache_type">Cache Type</Label>
                       <Select
-                        value={config.cache.cache_type || 'file'}
+                        value={config.cache.cache_type || 'memory'}
                         onValueChange={(value) => updateConfig('cache', 'cache_type', value)}
                       >
                         <SelectTrigger>

@@ -34,6 +34,8 @@ const ProjectInput: React.FC = () => {
     execution: {
       max_concurrent_nodes: 3,
       max_execution_steps: 250,
+      max_recursion_depth: 3,
+      task_timeout_seconds: 300,
       enable_hitl: true,
       hitl_root_plan_only: false,
       hitl_timeout_seconds: 300,
@@ -197,8 +199,8 @@ const ProjectInput: React.FC = () => {
       <div className="mt-6 p-4 bg-muted/50 rounded-lg">
         <h4 className="text-sm font-medium mb-2">Current Configuration:</h4>
         <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-          <div>Model: {config.llm.provider}/{config.llm.model}</div>
-          <div>Temperature: {config.llm.temperature}</div>
+          <div>Recursion Depth: {config.execution.max_recursion_depth}</div>
+          <div>Cache: {config.cache.cache_type}</div>
           <div>Max Steps: {config.execution.max_execution_steps}</div>
           <div>HITL: {config.execution.enable_hitl ? 
             (config.execution.hitl_root_plan_only ? 'Root Only' : 'Full') : 
