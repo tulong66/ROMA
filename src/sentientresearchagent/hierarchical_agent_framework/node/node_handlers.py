@@ -297,18 +297,49 @@ class ReadyNodeHandler(INodeHandler):
         logger.info(f"  ReadyNodeHandler: Handling READY node {node.task_id} (Original NodeType: {node.node_type}, Goal: '{node.goal[:30]}...')")
         node.update_status(TaskStatus.RUNNING)
         
+        # 🔥 DEBUG: Log the node type and its type
+        logger.info(f"    🐛 DEBUG: node.node_type = {node.node_type} (type: {type(node.node_type)})")
+        
         # Check max planning depth BEFORE planning (move this check earlier)
         if node.node_type == NodeType.PLAN and node.layer >= context.config.max_planning_layer:
             logger.warning(f"    ReadyNodeHandler: Max planning depth ({context.config.max_planning_layer}) reached for {node.task_id} at layer {node.layer}. Forcing EXECUTE.")
             node.node_type = NodeType.EXECUTE 
+            logger.info(f"    🐛 DEBUG: After max depth check, node.node_type = {node.node_type}")
         
         current_action_type = node.node_type
-
+        logger.info(f"    🐛 DEBUG: current_action_type = {current_action_type} (type: {type(current_action_type)})")
+        
+        # 🔥 DEBUG: Check if we're entering the PLAN branch
         if current_action_type == NodeType.PLAN:
-            await self.ready_plan_handler.handle(node, context)
+            logger.info(f"    🐛 DEBUG: Entering PLAN branch for node {node.task_id}")
+            logger.info(f"    🐛 DEBUG: About to call atomize_node for {node.task_id}")
+            
+            try:
+                # ATOMIZE FIRST to determine if it's actually atomic
+                atomized_action = await context.node_atomizer.atomize_node(node, context)
+                logger.info(f"    🐛 DEBUG: atomize_node returned: {atomized_action} (type: {type(atomized_action)})")
+                
+                if atomized_action == NodeType.EXECUTE:
+                    logger.info(f"    🐛 DEBUG: Atomizer determined {node.task_id} should EXECUTE - calling ready_execute_handler")
+                    await self.ready_execute_handler.handle(node, context)
+                elif atomized_action == NodeType.PLAN:
+                    logger.info(f"    🐛 DEBUG: Atomizer determined {node.task_id} should PLAN - calling ready_plan_handler")
+                    await self.ready_plan_handler.handle(node, context)
+                else:
+                    logger.error(f"    🐛 DEBUG: Unexpected atomized_action: {atomized_action} for node {node.task_id}")
+                    
+            except Exception as e:
+                logger.error(f"    🐛 DEBUG: Exception in atomize_node for {node.task_id}: {e}")
+                logger.error(f"    🐛 DEBUG: Exception type: {type(e)}")
+                import traceback
+                logger.error(f"    🐛 DEBUG: Traceback: {traceback.format_exc()}")
+                raise
+                
         elif current_action_type == NodeType.EXECUTE:
+            logger.info(f"    🐛 DEBUG: Entering EXECUTE branch for node {node.task_id}")
             await self.ready_execute_handler.handle(node, context)
         else:
+            logger.error(f"    🐛 DEBUG: Entering ELSE branch for node {node.task_id}")
             logger.error(f"Node {node.task_id}: Unhandled or invalid NodeType '{current_action_type}' (type: {type(current_action_type)}) in ReadyNodeHandler. Expected NodeType.PLAN or NodeType.EXECUTE.")
             node.update_status(TaskStatus.FAILED, error_msg=f"Unhandled or invalid NodeType '{current_action_type}' for READY node.")
 

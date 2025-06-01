@@ -36,6 +36,13 @@ agents:
     prompt_source: "prompts.planner_prompts.DEEP_RESEARCH_PLANNER_SYSTEM_MESSAGE"
     response_model: "PlanOutput"
     registration:
+      action_keys:
+        - action_verb: "plan"
+          task_type: "WRITE"
+        - action_verb: "plan"
+          task_type: "THINK"
+        - action_verb: "plan"
+          task_type: "SEARCH"
       named_keys: ["DeepResearchPlanner"]
     enabled: true
 
@@ -133,7 +140,7 @@ agents:
     description: "Determines if tasks are atomic or need further planning"
     model:
       provider: "litellm"
-      model_id: "openrouter/anthropic/claude-3-7-sonnet"
+      model_id: "gemini/gemini-2.5-flash-preview-05-20"
     prompt_source: "prompts.atomizer_prompts.ATOMIZER_SYSTEM_MESSAGE"
     response_model: "AtomizerOutput"
     registration:
