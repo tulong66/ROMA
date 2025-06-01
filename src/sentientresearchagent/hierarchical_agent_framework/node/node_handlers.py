@@ -182,7 +182,25 @@ class ReadyPlanHandler(INodeHandler):
             hitl_outcome_plan = await context.hitl_coordinator.review_plan_generation(
                 node=node, plan_output=plan_output, planner_input=agent_task_input_model
             )
-            if hitl_outcome_plan["status"] != "approved":
+            if hitl_outcome_plan["status"] == "request_modification":
+                # User requested modification - set up node for replan
+                modification_instructions = hitl_outcome_plan.get('modification_instructions', 'User requested modification.')
+                
+                # Set up auxiliary data for the modification
+                node.aux_data['original_plan_for_modification'] = plan_output
+                node.aux_data['user_modification_instructions'] = modification_instructions
+                node.replan_reason = f"User requested modification: {modification_instructions[:100]}..."
+                
+                # Transition to NEEDS_REPLAN status
+                node.update_status(TaskStatus.NEEDS_REPLAN)
+                node.output_summary = "Plan requires user modification."
+                
+                # Update knowledge store to persist the status change
+                context.knowledge_store.add_or_update_record_from_node(node)
+                logger.info(f"✅ Node {node.task_id} set up for modification and transitioned to NEEDS_REPLAN")
+                return
+            elif hitl_outcome_plan["status"] != "approved":
+                # Handle other non-approved statuses (aborted, error, etc.)
                 return
 
             if node.layer + 1 >= context.config.max_planning_layer:
