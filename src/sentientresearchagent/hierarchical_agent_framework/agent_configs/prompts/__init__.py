@@ -15,7 +15,7 @@ from .plan_modifier_prompts import *
 __all__ = [
     # Planner prompts
     'PLANNER_SYSTEM_MESSAGE',
-    
+    'ENHANCED_SEARCH_PLANNER_SYSTEM_MESSAGE',     
     # Executor prompts
     'SEARCH_EXECUTOR_SYSTEM_MESSAGE',
     'SEARCH_SYNTHESIZER_SYSTEM_MESSAGE', 

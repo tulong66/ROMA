@@ -10,7 +10,7 @@ profile:
 
   # Task-specific planners for sub-tasks
   planner_adapter_names:
-    SEARCH: "CoreResearchPlanner"      # Specialized for search task planning
+    SEARCH: "EnhancedSearchPlanner"    # Enhanced search planner with date awareness and detailed planning
     WRITE: "CoreResearchPlanner"       # Could use different planner if needed
     THINK: "CoreResearchPlanner"       # Could use different planner if needed
 
@@ -33,7 +33,7 @@ profile:
 # Profile metadata
 metadata:
   version: "1.0.0"
-  description: "Deep research agent profile using existing components"
+  description: "Deep research agent profile using existing components with enhanced search planning"
   use_case: "Comprehensive research tasks requiring multi-step analysis"
   recommended_for:
     - "Academic research"
