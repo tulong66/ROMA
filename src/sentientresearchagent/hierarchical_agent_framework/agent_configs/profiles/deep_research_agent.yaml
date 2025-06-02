@@ -17,7 +17,7 @@ profile:
   # Task-specific executors
   executor_adapter_names:
     SEARCH: "OpenAICustomSearcher"     # Advanced search capabilities
-    THINK: "SearchSynthesizer"         # Analysis and synthesis
+    THINK: "BasicReasoningExecutor"         # Analysis and synthesis
     WRITE: "BasicReportWriter"         # Report generation
 
   # Other action agents
@@ -27,7 +27,7 @@ profile:
 
   # Fallbacks
   default_planner_adapter_name: "CoreResearchPlanner"
-  default_executor_adapter_name: "SearchSynthesizer"
+  default_executor_adapter_name: "BasicReasoningExecutor"
   default_node_agent_name_prefix: "DeepResearch"
 
 # Profile metadata
