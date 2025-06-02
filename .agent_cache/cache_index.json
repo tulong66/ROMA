@@ -1,137 +1,162 @@
 {
   "agent_responses:DefaultAtomizer:root:a1b8da0a84918ebb": {
     "file": "11235b04f165b7791380411e22e6c32af71cabde5ceb5837e591aa217280c058.cache",
-    "created_at": "2025-06-02T10:21:00.059602",
-    "expires_at": "2025-06-02T11:21:00.059602"
+    "created_at": "2025-06-02T11:44:25.523804",
+    "expires_at": "2025-06-02T12:44:25.523804"
   },
-  "agent_responses:DefaultAtomizer:1272b145d39dea45": {
-    "file": "17f0fb48ee055606888d5cda1ec2cec07b5612f5c085e9e080bf0c467ba59e49.cache",
-    "created_at": "2025-06-02T09:59:56.082707",
-    "expires_at": "2025-06-02T10:59:56.082707"
+  "agent_responses:DefaultAtomizer:38302c029512601c": {
+    "file": "b208cde90bc4dacdb81c347885a00242c7d75ea2c4fb257737749230a8b77d26.cache",
+    "created_at": "2025-06-02T11:26:40.079402",
+    "expires_at": "2025-06-02T12:26:40.079402"
   },
   "agent_responses:DeepResearchPlanner:root:a1b8da0a84918ebb": {
     "file": "c17f56dcfa48b707ac6d051b363ac100a40ab3993f6cdd966a09e8e6dba13c9d.cache",
-    "created_at": "2025-06-02T10:21:07.077977",
-    "expires_at": "2025-06-02T11:21:07.077977"
+    "created_at": "2025-06-02T11:44:31.495212",
+    "expires_at": "2025-06-02T12:44:31.495212"
   },
-  "agent_responses:DeepResearchPlanner:3199145145542c6d": {
-    "file": "507fc5a44bf08088a19bf368d315b43e2fbae1f437adface32745c27113bf3b3.cache",
-    "created_at": "2025-06-02T10:00:04.093910",
-    "expires_at": "2025-06-02T11:00:04.093910"
+  "agent_responses:DeepResearchPlanner:f28a9970148307e1": {
+    "file": "0c14eefee97b642c52dd4d782d1ebe7e048c36274e8ee9aa7289701d8c99d719.cache",
+    "created_at": "2025-06-02T11:26:48.009710",
+    "expires_at": "2025-06-02T12:26:48.009710"
   },
   "agent_responses:DefaultAtomizer:root.1:b4a8294f8aca63b0": {
     "file": "12dc4b73bf8f5521b6e2bbf7c1efa4e1735733823d65e8bde643af12c7ba3a68.cache",
-    "created_at": "2025-06-02T10:21:17.543805",
-    "expires_at": "2025-06-02T11:21:17.543805"
+    "created_at": "2025-06-02T11:29:15.135452",
+    "expires_at": "2025-06-02T12:29:15.135452"
   },
-  "agent_responses:DefaultAtomizer:7c1ea2a8096833f9": {
-    "file": "4057be8c4c0a6ae6fd211f8b5439c109e0cf5ef95c89373c7c575ca6426405ed.cache",
-    "created_at": "2025-06-02T10:00:10.565869",
-    "expires_at": "2025-06-02T11:00:10.565869"
-  },
-  "agent_responses:CoreResearchPlanner:root.1:b4a8294f8aca63b0": {
-    "file": "ff8e2d98d6e91363bf9aeb6e7212cee2db75f2c028401d0ec1d27378c72b71ca.cache",
-    "created_at": "2025-06-02T10:05:15.384647",
-    "expires_at": "2025-06-02T11:05:15.384647"
-  },
-  "agent_responses:CoreResearchPlanner:2f409bb5b2349767": {
-    "file": "ecd88501474f891e31828d30d7fec56e585bebe863335979f3990aff19b3c572.cache",
-    "created_at": "2025-06-02T10:00:21.161861",
-    "expires_at": "2025-06-02T11:00:21.161861"
-  },
-  "agent_responses:DefaultAtomizer:9b1c2c53285aa726": {
-    "file": "15637848a235f131e2f90b0adc8e9ac8c66e5eaf66ab932b4f785d1e4c19eb11.cache",
-    "created_at": "2025-06-02T10:04:48.924228",
-    "expires_at": "2025-06-02T11:04:48.924228"
-  },
-  "agent_responses:DeepResearchPlanner:713276eb851d8545": {
-    "file": "6a64e08c232651c1515c99ac3eaa9e99a05cdbbe97605e27ef8aa5c38c53de52.cache",
-    "created_at": "2025-06-02T10:04:56.865658",
-    "expires_at": "2025-06-02T11:04:56.865658"
-  },
-  "agent_responses:DefaultAtomizer:3977010e13dfb9a3": {
-    "file": "23b935dcbba5b0d7b43810065845519b23dc973294dd5d286bcd5712c8364674.cache",
-    "created_at": "2025-06-02T10:05:05.694184",
-    "expires_at": "2025-06-02T11:05:05.694184"
-  },
-  "agent_responses:CoreResearchPlanner:9eaece50a350729f": {
-    "file": "da9897b7dd1c13505c085aa38749b8eaac16bb163efcb6a6321c2007f23b64b1.cache",
-    "created_at": "2025-06-02T10:05:15.385697",
-    "expires_at": "2025-06-02T11:05:15.385697"
-  },
-  "agent_responses:DefaultAtomizer:6abdd1a30393e9a6": {
-    "file": "bce30cefee344e77a7f8bd54240b94d8b9f87489125b66942a2d6f4c719dcd44.cache",
-    "created_at": "2025-06-02T10:05:37.559465",
-    "expires_at": "2025-06-02T11:05:37.559465"
-  },
-  "agent_responses:DeepResearchPlanner:7fb2a1aa28f049ec": {
-    "file": "7d702aa7f509127dd21c15631cc95baa6ffa902008689010c5e7e075d40c50d6.cache",
-    "created_at": "2025-06-02T10:05:44.741873",
-    "expires_at": "2025-06-02T11:05:44.741873"
-  },
-  "agent_responses:DefaultAtomizer:addbf9b7b8fd1b6c": {
-    "file": "4d916917155bade3de1f384e58195a92b4729468d4ca07773ce50016d64e8ecc.cache",
-    "created_at": "2025-06-02T10:05:54.104443",
-    "expires_at": "2025-06-02T11:05:54.104443"
-  },
-  "agent_responses:DefaultAtomizer:65ae9165f39962b3": {
-    "file": "fd6312c63b46ace440a003fa1a2db1904fc8bf431bba077b1c7bd9874987aa7a.cache",
-    "created_at": "2025-06-02T10:08:54.080820",
-    "expires_at": "2025-06-02T11:08:54.080820"
-  },
-  "agent_responses:DeepResearchPlanner:9004ec5860a287f6": {
-    "file": "951475e72e2d4180b95c54e9e2312d5bbf9d42dc184175d44d23dbae617325e7.cache",
-    "created_at": "2025-06-02T10:09:01.608360",
-    "expires_at": "2025-06-02T11:09:01.608360"
-  },
-  "agent_responses:DefaultAtomizer:30c4f5934116791a": {
-    "file": "1d7c531345ec824cbd89e1d8d88b88b6c3e766c74d8146b835f4d509f78d97b0.cache",
-    "created_at": "2025-06-02T10:09:09.669837",
-    "expires_at": "2025-06-02T11:09:09.669837"
-  },
-  "agent_responses:DefaultAtomizer:b363bf902c159a50": {
-    "file": "44be95e68c19e2f60233a8c497a6221934d5f3693bd5fb8f16330912469688b0.cache",
-    "created_at": "2025-06-02T10:14:49.716790",
-    "expires_at": "2025-06-02T11:14:49.716790"
-  },
-  "agent_responses:DeepResearchPlanner:870a10d4a6805eb1": {
-    "file": "bb0d01597608f1e3fe45c732d6cfa623faabae963df48ffebcd7e6e6d7553d08.cache",
-    "created_at": "2025-06-02T10:14:57.008482",
-    "expires_at": "2025-06-02T11:14:57.008482"
-  },
-  "agent_responses:DefaultAtomizer:c1e6f7dfa1ad231d": {
-    "file": "0e5b75c06485ce08498a9e2d750632995fa2b102adb940b3f3051ff98b608705.cache",
-    "created_at": "2025-06-02T10:15:10.960996",
-    "expires_at": "2025-06-02T11:15:10.960996"
+  "agent_responses:DefaultAtomizer:6c9b9f5d9c5fe8c9": {
+    "file": "39fc997e02dedf56c0da7143815bf28f9c4974134dc3e9eac80de90b21109492.cache",
+    "created_at": "2025-06-02T11:26:59.793513",
+    "expires_at": "2025-06-02T12:26:59.793513"
   },
   "agent_responses:EnhancedSearchPlanner:root.1:b4a8294f8aca63b0": {
     "file": "f05306d902c6a213f5d72adf8b881554c422343681070e654b9ff97600eb3899.cache",
-    "created_at": "2025-06-02T10:21:33.926251",
-    "expires_at": "2025-06-02T11:21:33.926251"
+    "created_at": "2025-06-02T11:29:23.551451",
+    "expires_at": "2025-06-02T12:29:23.551451"
   },
-  "agent_responses:EnhancedSearchPlanner:9394cdbe596a498d": {
-    "file": "99796ce56eed8adefd73671e5012f0c8dd26d563c28a62a4746efd13a6d208b5.cache",
-    "created_at": "2025-06-02T10:15:18.782065",
-    "expires_at": "2025-06-02T11:15:18.782065"
+  "agent_responses:EnhancedSearchPlanner:f15419a8415298e5": {
+    "file": "f9abf9774e835581f582b2efbb8ed9b264a433fc0d5d6f926b202ba41bf5996b.cache",
+    "created_at": "2025-06-02T11:27:13.667144",
+    "expires_at": "2025-06-02T12:27:13.667144"
   },
-  "agent_responses:DefaultAtomizer:1999655ebf50fc81": {
-    "file": "5b60fccd2e2860f19aad15c2f83ad1980742797d6f280f609ccc1313fef6d0c6.cache",
-    "created_at": "2025-06-02T10:21:00.062117",
-    "expires_at": "2025-06-02T11:21:00.062117"
+  "agent_responses:DefaultAtomizer:d37ba1376bf0afeb": {
+    "file": "908cd6237a79af3eefe13dc28d7d1d2121fb863a234d444cac38401187e471ef.cache",
+    "created_at": "2025-06-02T11:29:00.846800",
+    "expires_at": "2025-06-02T12:29:00.846800"
   },
-  "agent_responses:DeepResearchPlanner:f0454076b6fc2509": {
-    "file": "eea45ba4d7c1225237099bb460e2bb245de6883cbe18a571feba995447e2af8b.cache",
-    "created_at": "2025-06-02T10:21:07.079694",
-    "expires_at": "2025-06-02T11:21:07.079694"
+  "agent_responses:DeepResearchPlanner:65fe6b7586b93564": {
+    "file": "2b77814602a2d8dc159a311400b49ee1380f6fdce98a8671bc3b3ef2f4c104dc.cache",
+    "created_at": "2025-06-02T11:29:08.379565",
+    "expires_at": "2025-06-02T12:29:08.379565"
   },
-  "agent_responses:DefaultAtomizer:d9393c761ee6cdce": {
-    "file": "207c0a4ca4e55d33a684449d57c7dd3e0a7cbdc655e433d597a48dc99449b8e9.cache",
-    "created_at": "2025-06-02T10:21:17.546635",
-    "expires_at": "2025-06-02T11:21:17.546635"
+  "agent_responses:DefaultAtomizer:7659f89d3b9aa067": {
+    "file": "4ed6600c1846cf1d1fe6d012541a78d3ced4c0af3e11ada542958c5b6f4ef1cc.cache",
+    "created_at": "2025-06-02T11:29:15.136841",
+    "expires_at": "2025-06-02T12:29:15.136841"
   },
-  "agent_responses:EnhancedSearchPlanner:41b66cba71ef343d": {
-    "file": "f26b64486ff4b956309942efac9287a4a588c26ad69467c7e51de8acc7916297.cache",
-    "created_at": "2025-06-02T10:21:33.928040",
-    "expires_at": "2025-06-02T11:21:33.928040"
+  "agent_responses:EnhancedSearchPlanner:f98f2c3e00f27a0e": {
+    "file": "40476ec295f358fec6096daf12cba2b55897faed9c77fd120f01fc5aed311838.cache",
+    "created_at": "2025-06-02T11:29:23.553495",
+    "expires_at": "2025-06-02T12:29:23.553495"
+  },
+  "agent_responses:DefaultAtomizer:5492c1ea548625d8": {
+    "file": "66414c729485aae0122141b7e4801071a96a37e56cc195db67e87749d130d4b2.cache",
+    "created_at": "2025-06-02T11:41:34.655672",
+    "expires_at": "2025-06-02T12:41:34.655672"
+  },
+  "agent_responses:DeepResearchPlanner:1c156d2a89e13e5c": {
+    "file": "1e85e95350e00e0de0082ac1b9f800ad41a82c2f1a4e42dc22437a1382686ccc.cache",
+    "created_at": "2025-06-02T11:41:42.481529",
+    "expires_at": "2025-06-02T12:41:42.481529"
+  },
+  "agent_responses:SearchSynthesizer:root.1:e067ab22d624b6ca": {
+    "file": "719a0befb3187803b94b02b71ed4a35a761ea33def6a34ea0708d12b192699bf.cache",
+    "created_at": "2025-06-02T11:42:13.203736",
+    "expires_at": "2025-06-02T12:42:13.203736"
+  },
+  "agent_responses:SearchSynthesizer:7cd47f778cc38024": {
+    "file": "0221fa3a5ec448eaf733930ac5d181e627e63dd6dad137e2599213c0ca0ffbec.cache",
+    "created_at": "2025-06-02T11:42:13.205427",
+    "expires_at": "2025-06-02T12:42:13.205427"
+  },
+  "agent_responses:SearchSynthesizer:root.4:e067ab22d624b6ca": {
+    "file": "2f3089769c1f13ffb809671d7eeb4eb54480a9715eaa6269c7c089f06b5efe47.cache",
+    "created_at": "2025-06-02T11:45:14.096469",
+    "expires_at": "2025-06-02T12:45:14.096469"
+  },
+  "agent_responses:SearchSynthesizer:36b8ac9fd4ae8f85": {
+    "file": "c5cc944813771992c9858f9e780db81bd1a4a8517ba3ff4ccd5a30a4f9b40f76.cache",
+    "created_at": "2025-06-02T11:42:25.018821",
+    "expires_at": "2025-06-02T12:42:25.018821"
+  },
+  "agent_responses:SearchSynthesizer:root.5:e067ab22d624b6ca": {
+    "file": "6da4f3f79ed1dd0dc64a1262bdb00220f2255fe4137fd13d0b27f033062eec82.cache",
+    "created_at": "2025-06-02T11:42:32.013446",
+    "expires_at": "2025-06-02T12:42:32.013446"
+  },
+  "agent_responses:SearchSynthesizer:32b167800c479f67": {
+    "file": "9c14230a64f69d101334b905375a8f8dac86e4149cad22d04f83cdee743f0799.cache",
+    "created_at": "2025-06-02T11:42:32.014564",
+    "expires_at": "2025-06-02T12:42:32.014564"
+  },
+  "agent_responses:BasicReportWriter:root.6:d4bef3ba34ffacd4": {
+    "file": "58b47ec09d955a0d573041f116791124c7813278782aba02dd6781a13292e1db.cache",
+    "created_at": "2025-06-02T11:42:41.593279",
+    "expires_at": "2025-06-02T12:42:41.593279"
+  },
+  "agent_responses:BasicReportWriter:fe8da35db1cee991": {
+    "file": "22a311e4da8a3a54ce3ab59211067588a18759da97671b266d10b1337aa2bb88.cache",
+    "created_at": "2025-06-02T11:42:41.595396",
+    "expires_at": "2025-06-02T12:42:41.595396"
+  },
+  "agent_responses:DefaultAggregator:root:a1b8da0a84918ebb": {
+    "file": "0ebf8bd3f718cecb157d0209490176c4dc62a8c2e532354554b18e62b4548d95.cache",
+    "created_at": "2025-06-02T11:45:36.222026",
+    "expires_at": "2025-06-02T12:45:36.222026"
+  },
+  "agent_responses:DefaultAggregator:d73bbbb24b9ba214": {
+    "file": "079cd2cc98fe58d6029e0ceb649de862b17d556963397833fec2b945a3da0ff6.cache",
+    "created_at": "2025-06-02T11:42:51.506588",
+    "expires_at": "2025-06-02T12:42:51.506588"
+  },
+  "agent_responses:DefaultAtomizer:7963b4d6380693e5": {
+    "file": "a93b97b9a226a54150f2d699f6524a800a26eb0a07db295804a4133b837f290f.cache",
+    "created_at": "2025-06-02T11:44:25.525795",
+    "expires_at": "2025-06-02T12:44:25.525795"
+  },
+  "agent_responses:DeepResearchPlanner:c7540fb333d3628e": {
+    "file": "42551a06471d65e72ed5fd38d38eadcdd7c140dba23c0e5919e47ac38a64c632.cache",
+    "created_at": "2025-06-02T11:44:31.497829",
+    "expires_at": "2025-06-02T12:44:31.497829"
+  },
+  "agent_responses:SearchSynthesizer:root.2:e067ab22d624b6ca": {
+    "file": "7ba3a12362f5d963608eeac585341c06ca4d6c2b6c4487013d3de6d3475c2008.cache",
+    "created_at": "2025-06-02T11:44:50.432431",
+    "expires_at": "2025-06-02T12:44:50.432431"
+  },
+  "agent_responses:SearchSynthesizer:92a24f75763390df": {
+    "file": "b862e4ccb957f46dc537fd28748227b685c147263c1dfb5f3fdd37915cdc72b0.cache",
+    "created_at": "2025-06-02T11:44:50.433480",
+    "expires_at": "2025-06-02T12:44:50.433480"
+  },
+  "agent_responses:SearchSynthesizer:90ad676de812985d": {
+    "file": "fdaa8b84fd520b10bda7f4a3ec37effbe91c1ac4d0da9e796189702108b301df.cache",
+    "created_at": "2025-06-02T11:45:14.098413",
+    "expires_at": "2025-06-02T12:45:14.098413"
+  },
+  "agent_responses:SearchSynthesizer:root.6:e067ab22d624b6ca": {
+    "file": "e4dea81dc48652c8cc815a4cd8b3ad0813876b3ec7e5f0f3cc9f39ad2dfb7d7f.cache",
+    "created_at": "2025-06-02T11:45:27.515974",
+    "expires_at": "2025-06-02T12:45:27.515974"
+  },
+  "agent_responses:SearchSynthesizer:b6c9c4d4b6849d00": {
+    "file": "0b367428c2b65f66791c774880aae5e66384fae414b411e3099f2b64d1e3143c.cache",
+    "created_at": "2025-06-02T11:45:27.517997",
+    "expires_at": "2025-06-02T12:45:27.517997"
+  },
+  "agent_responses:DefaultAggregator:52bba5efe08b0002": {
+    "file": "95a41d76612639b1a12e0d86037f704363b0777226c20c3bfd02111f18a42285.cache",
+    "created_at": "2025-06-02T11:45:36.224172",
+    "expires_at": "2025-06-02T12:45:36.224172"
   }
 }

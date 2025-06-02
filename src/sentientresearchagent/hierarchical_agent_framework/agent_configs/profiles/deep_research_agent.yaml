@@ -11,8 +11,8 @@ profile:
   # Task-specific planners for sub-tasks
   planner_adapter_names:
     SEARCH: "EnhancedSearchPlanner"    # Enhanced search planner with date awareness and detailed planning
-    WRITE: "CoreResearchPlanner"       # Could use different planner if needed
-    THINK: "CoreResearchPlanner"       # Could use different planner if needed
+    WRITE: "EnhancedWritePlanner"       # Could use different planner if needed
+    THINK: "EnhancedThinkPlanner"       # Could use different planner if needed
 
   # Task-specific executors
   executor_adapter_names:

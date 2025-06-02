@@ -19,8 +19,6 @@ agents:
       action_keys:
         - action_verb: "plan"
           task_type: "WRITE"
-        - action_verb: "plan"
-          task_type: "THINK"
       named_keys: ["CoreResearchPlanner", "default_planner"]
     enabled: true
 
@@ -30,7 +28,7 @@ agents:
     description: "Specialized planner optimized for search-focused research tasks with date awareness and parallel execution"
     model:
       provider: "litellm"
-      model_id: "gemini/gemini-2.5-flash-preview-05-20"
+      model_id: "openrouter/anthropic/claude-3-7-sonnet"
     prompt_source: "prompts.planner_prompts.ENHANCED_SEARCH_PLANNER_SYSTEM_MESSAGE"
     response_model: "PlanOutput"
     registration:
@@ -38,6 +36,38 @@ agents:
         - action_verb: "plan"
           task_type: "SEARCH"
       named_keys: ["EnhancedSearchPlanner", "search_planner"]
+    enabled: true
+  
+  - name: "EnhancedThinkPlanner"
+    type: "planner"
+    adapter_class: "PlannerAdapter"
+    description: "Specialized planner optimized for search-focused research tasks with date awareness and parallel execution"
+    model:
+      provider: "litellm"
+      model_id: "openrouter/anthropic/claude-3-7-sonnet"
+    prompt_source: "prompts.planner_prompts.ENHANCED_THINK_PLANNER_SYSTEM_MESSAGE"
+    response_model: "PlanOutput"
+    registration:
+      action_keys:
+        - action_verb: "plan"
+          task_type: "THINK"
+      named_keys: ["EnhancedThinkPlanner", "think_planner"]
+    enabled: true
+
+  - name: "EnhancedWritePlanner"
+    type: "planner"
+    adapter_class: "PlannerAdapter"
+    description: "Specialized planner optimized for search-focused research tasks with date awareness and parallel execution"
+    model:
+      provider: "litellm"
+      model_id: "openrouter/anthropic/claude-3-7-sonnet"
+    prompt_source: "prompts.planner_prompts.ENHANCED_WRITE_PLANNER_SYSTEM_MESSAGE"
+    response_model: "PlanOutput"
+    registration:
+      action_keys:
+        - action_verb: "plan"
+          task_type: "WRITE"
+      named_keys: ["EnhancedWritePlanner", "write_planner"]
     enabled: true
 
   - name: "DeepResearchPlanner"
@@ -53,8 +83,6 @@ agents:
       action_keys:
         - action_verb: "plan"
           task_type: "WRITE"
-        - action_verb: "plan"
-          task_type: "THINK"
       named_keys: ["DeepResearchPlanner"]
     enabled: true
 
