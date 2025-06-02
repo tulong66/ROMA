@@ -6,23 +6,51 @@ __pycache__/
 # C extensions
 *.so
 
-.agent_projects/*
-.agent_cache/*
-
+# Agent runtime data and cache
 .agent_cache/
 .agent_projects/
 
-**/__pycache__/
-**/.agent_cache/
-**/.agent_projects/
+# Runtime logs and output
+*.log
+output.txt
+current_run.log
+research_agent.log
 
-*.txt
+# Jupyter checkpoints
+.ipynb_checkpoints
+
+# Environment files
+.env
+.venv/
+env/
+venv/
+
+# PDM
+.pdm.toml
+.pdm-python
+.pdm-build/
+
+# Node modules (for frontend)
+node_modules/
+
+# Build outputs
+dist/
+build/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
 
 # Distribution / packaging
 .Python
-build/
 develop-eggs/
-dist/
 downloads/
 eggs/
 .eggs/
@@ -33,9 +61,6 @@ sdist/
 var/
 wheels/
 share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
 MANIFEST
 
 # PyInstaller
@@ -68,7 +93,6 @@ cover/
 *.pot
 
 # Django stuff:
-*.log
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
@@ -86,9 +110,6 @@ docs/_build/
 # PyBuilder
 .pybuilder/
 target/
-
-# Jupyter Notebook
-.ipynb_checkpoints
 
 # IPython
 profile_default/
@@ -132,15 +153,6 @@ celerybeat.pid
 
 # SageMath parsed files
 *.sage.py
-
-# Environments
-.env
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
 
 # Spyder project settings
 .spyderproject
