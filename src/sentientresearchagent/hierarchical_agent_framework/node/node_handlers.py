@@ -501,18 +501,17 @@ class NeedsReplanNodeHandler(INodeHandler):
             if active_adapter: is_modifier_agent = True
 
             if not active_adapter: 
-                logger.warning(f"    NeedsReplan: No '{action_verb_to_use}' adapter resolved (tried: {node.agent_name}). Falling back to 'plan' adapter.")
+                logger.warning(f"    NeedsReplan: No 'modify_plan' adapter resolved (tried: {node.agent_name}). Falling back to 'plan' adapter.")
                 action_verb_to_use = "plan"
                 is_modifier_agent = False
-                lookup_name_for_replan_op = agent_name_at_entry 
-
-                if context.current_agent_blueprint:
-                    if context.current_agent_blueprint.planner_adapter_name:
-                        lookup_name_for_replan_op = context.current_agent_blueprint.planner_adapter_name
-                        logger.debug(f"        NeedsReplan: Blueprint specifies planner for replan: {lookup_name_for_replan_op}")
-                    elif not lookup_name_for_replan_op and context.current_agent_blueprint.default_node_agent_name_prefix:
-                         lookup_name_for_replan_op = f"{context.current_agent_blueprint.default_node_agent_name_prefix}Planner"
-                         logger.debug(f"        NeedsReplan: Blueprint suggests prefix for planner (replan): {lookup_name_for_replan_op}")
+                # MODIFIED: Use get_planner_from_blueprint for consistent planner lookup
+                lookup_name_for_replan_op = get_planner_from_blueprint(
+                    context.current_agent_blueprint,
+                    node.task_type,
+                    agent_name_at_entry, # Fallback if blueprint provides nothing
+                    node # Pass the node for root planner consideration
+                )
+                logger.debug(f"        NeedsReplan: Fallback to 'plan' adapter. Blueprint lookup via get_planner_from_blueprint returned: {lookup_name_for_replan_op}")
                 
                 node.agent_name = lookup_name_for_replan_op
                 active_adapter = get_agent_adapter(node, action_verb=action_verb_to_use)
@@ -545,9 +544,15 @@ class NeedsReplanNodeHandler(INodeHandler):
                 else: 
                     logger.warning(f"Node {node.task_id}: Missing data for PlanModifier. Falling back to standard planner for replan.")
                     action_verb_to_use = "plan"; is_modifier_agent = False
-                    lookup_name_for_replan_op = agent_name_at_entry 
-                    if context.current_agent_blueprint and context.current_agent_blueprint.planner_adapter_name:
-                        lookup_name_for_replan_op = context.current_agent_blueprint.planner_adapter_name
+                    # MODIFIED: Use get_planner_from_blueprint for consistent planner lookup
+                    lookup_name_for_replan_op = get_planner_from_blueprint(
+                        context.current_agent_blueprint,
+                        node.task_type,
+                        agent_name_at_entry,
+                        node
+                    )
+                    logger.debug(f"        NeedsReplan: Fallback to 'plan' adapter (due to missing PlanModifierInput). Blueprint lookup returned: {lookup_name_for_replan_op}")
+
                     node.agent_name = lookup_name_for_replan_op # Set for planner lookup
                     active_adapter = get_agent_adapter(node, action_verb=action_verb_to_use) # Re-fetch adapter
                     
@@ -559,12 +564,14 @@ class NeedsReplanNodeHandler(INodeHandler):
                         node.update_status(TaskStatus.FAILED, error_msg="Fallback to Plan adapter failed during replan due to missing PlanModifier inputs & subsequent planner lookup failure.")
                         return
                     logger.info(f"    NeedsReplanNodeHandler: Switched to Plan adapter '{getattr(active_adapter, 'agent_name', type(active_adapter).__name__)}' for replan.")
+                    # Input for the standard planner
                     input_for_replan = resolve_input_for_planner_agent(
                         current_task_id=node.task_id, knowledge_store=context.knowledge_store,
                         overall_objective=current_overall_objective, planning_depth=node.layer,
                         replan_details=node.replan_details, global_constraints=getattr(context.task_graph, 'global_constraints', [])
                     )
             else: 
+                # Input for the standard planner (initial case or after 'modify_plan' adapter wasn't found first)
                 input_for_replan = resolve_input_for_planner_agent(
                     current_task_id=node.task_id, knowledge_store=context.knowledge_store,
                     overall_objective=current_overall_objective, planning_depth=node.layer,

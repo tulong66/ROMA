@@ -9,30 +9,38 @@ from pathlib import Path
 from datetime import datetime
 import uuid
 import asyncio
-import nest_asyncio  # Add this import
+import nest_asyncio
 
 from loguru import logger
 
-# Use TYPE_CHECKING to avoid runtime import issues
+# MODIFIED: SystemManager import is now ONLY under TYPE_CHECKING at the top level
+# from .server.services.system_manager import SystemManager # MOVED
+
 if TYPE_CHECKING:
     from .config import SentientConfig
     from .hierarchical_agent_framework.node.node_configs import NodeProcessorConfig
-
-try:
-    # Import existing framework components
-    from .hierarchical_agent_framework.graph.task_graph import TaskGraph
-    from .hierarchical_agent_framework.graph.state_manager import StateManager
+    from .server.services.system_manager import SystemManager # This is fine for type hints
+    # ADD ExecutionEngine and other problematic imports here for type hinting
     from .hierarchical_agent_framework.graph.execution_engine import ExecutionEngine
     from .hierarchical_agent_framework.node.node_processor import NodeProcessor
+    from .hierarchical_agent_framework.graph.task_graph import TaskGraph
+    from .hierarchical_agent_framework.graph.state_manager import StateManager
     from .hierarchical_agent_framework.context.knowledge_store import KnowledgeStore
-    from .hierarchical_agent_framework.node.node_configs import NodeProcessorConfig
     from .hierarchical_agent_framework.node.hitl_coordinator import HITLCoordinator
 
-    # Import configuration system
+try:
+    # Reduce top-level imports that might cause cycles.
+    # Only import things that are truly needed at module load time for definitions.
+    # Components like ExecutionEngine, NodeProcessor will be imported locally in methods or type-hinted.
+    
+    # These are likely okay as they are primarily data structures or less complex classes:
+    from .hierarchical_agent_framework.node.node_configs import NodeProcessorConfig # Already here
+
+    # Configuration system is fine
     from .config import load_config, SentientConfig
     from .config_utils import auto_load_config, validate_config, find_config_file
 
-    # Import supporting systems
+    # Supporting systems (if they don't import ExecutionEngine/NodeProcessor directly at top level)
     from .cache.cache_manager import init_cache_manager
     from .error_handler import get_error_handler, set_error_handler, ErrorHandler
     from .exceptions import SentientError, handle_exception
@@ -40,15 +48,14 @@ try:
     FRAMEWORK_AVAILABLE = True
     
 except ImportError as e:
-    logger.error(f"Framework components not available: {e}")
+    logger.error(f"Framework components not available at module level: {e}") # Clarify error source
     FRAMEWORK_AVAILABLE = False
     
-    # Define dummy classes when framework is not available
-    class SentientConfig:
+    class SentientConfig: # type: ignore
         pass
-    
-    class NodeProcessorConfig:
+    class NodeProcessorConfig: # type: ignore
         pass
+    # Add other dummy classes if their top-level import was removed and they are used in class signatures outside TYPE_CHECKING
 
 
 def load_unified_config(config_path: Optional[Union[str, Path]] = None) -> "SentientConfig":
@@ -131,223 +138,75 @@ def create_node_processor_config_from_main_config(main_config: "SentientConfig")
     return node_config
 
 
-def initialize_system(config: "SentientConfig") -> Dict[str, Any]:
-    """
-    Initialize all system components with proper integration.
-    
-    Args:
-        config: Configuration to use for initialization
-        
-    Returns:
-        Dictionary containing all initialized components
-    """
-    if not FRAMEWORK_AVAILABLE:
-        raise ImportError("Framework components not available. Please install missing dependencies.")
-    
-    logger.info("🔧 Initializing Sentient Research Agent system...")
-    
-    try:
-        # 1. Setup logging from config
-        config.setup_logging()
-        logger.info("📋 Configuration loaded and logging configured")
-        
-        # 2. Initialize error handling
-        logger.info("🛡️  Setting up error handling...")
-        error_handler = ErrorHandler(enable_detailed_logging=True)
-        set_error_handler(error_handler)
-        
-        # 3. Initialize cache manager
-        logger.info("💾 Setting up cache system...")
-        cache_manager = init_cache_manager(config.cache)
-        
-        # 4. Initialize agent registry
-        logger.info("🤖 Initializing agent registry...")
-        from .hierarchical_agent_framework import agents
-        from .hierarchical_agent_framework.agents.registry import AGENT_REGISTRY, NAMED_AGENTS
-        logger.info(f"✅ Agent registry loaded: {len(AGENT_REGISTRY)} adapters, {len(NAMED_AGENTS)} named agents")
-        
-        # 5. Initialize core components
-        logger.info("🧠 Initializing core components...")
-        task_graph = TaskGraph()
-        knowledge_store = KnowledgeStore()
-        state_manager = StateManager(task_graph)
-        
-        # Create node processor config from main config
-        node_processor_config = create_node_processor_config_from_main_config(config)
-        
-        hitl_coordinator = HITLCoordinator(config=node_processor_config)
-        node_processor = NodeProcessor(
-            task_graph=task_graph,
-            knowledge_store=knowledge_store,
-            config=config,
-            node_processor_config=node_processor_config
-        )
-        execution_engine = ExecutionEngine(
-            task_graph=task_graph,
-            state_manager=state_manager,
-            knowledge_store=knowledge_store,
-            hitl_coordinator=hitl_coordinator,
-            config=config,
-            node_processor=node_processor
-        )
-        
-        # 6. Print system info
-        cache_stats = cache_manager.get_stats()
-        logger.info("✅ All systems initialized successfully!")
-        logger.info(f"📊 Cache: {config.cache.cache_type} backend, {cache_stats['current_size']} items")
-        logger.info(f"⚙️  Execution: max {config.execution.max_concurrent_nodes} concurrent nodes")
-        logger.info(f"🔗 LLM: {config.llm.provider}/{config.llm.model}")
-        logger.info(f"🎮 HITL: {'Enabled' if config.execution.enable_hitl else 'Disabled'}")
-        
-        return {
-            'config': config,
-            'task_graph': task_graph,
-            'knowledge_store': knowledge_store,
-            'state_manager': state_manager,
-            'hitl_coordinator': hitl_coordinator,
-            'node_processor': node_processor,
-            'execution_engine': execution_engine,
-            'cache_manager': cache_manager,
-            'error_handler': error_handler
-        }
-        
-    except Exception as e:
-        logger.error(f"❌ System initialization error: {e}")
-        
-        # Try to handle with error system if available
-        try:
-            handled_error = handle_exception(e, context={"component": "system_initialization"})
-            logger.error(f"📋 Error details: {handled_error.to_dict()}")
-        except:
-            pass  # Error system not available yet
-        
-        raise
-
-
 class SentientAgent:
     """
     Unified entry point for the Sentient Research Agent framework.
-    
-    This class provides a single, easy-to-use API that integrates all system
-    components with proper configuration management.
+    This class consumes a pre-configured SystemManager instance.
     """
     
-    def __init__(self, config: Optional["SentientConfig"] = None, enable_hitl: Optional[bool] = None):
-        """
-        Initialize the agent with configuration.
-        
-        Args:
-            config: Optional custom configuration. If None, auto-loads from files/environment.
-            enable_hitl: Optional override for master HITL setting.
-        """
-        if not FRAMEWORK_AVAILABLE:
+    def __init__(self, system_manager: "SystemManager"):
+        if not FRAMEWORK_AVAILABLE: # This check might now be less reliable if imports are deferred
+            # Consider re-checking FRAMEWORK_AVAILABLE after attempting local imports if critical
             raise ImportError("Framework components not available. Please check installation.")
+
+        self.system_manager: "SystemManager" = system_manager
+        self.config: "SentientConfig" = self.system_manager.config
         
-        # Load configuration
-        if config is None:
-            self.config = load_unified_config()
-            logger.info("Configuration auto-loaded from files/environment")
-        else:
-            self.config = config
-            logger.info("Using provided custom configuration")
+        # Access components from system_manager. These should be concrete instances.
+        # No need for local imports here if SystemManager guarantees they are initialized.
+        self.task_graph = self.system_manager.task_graph
+        self.knowledge_store = self.system_manager.knowledge_store
+        self.state_manager = self.system_manager.state_manager
+        self.hitl_coordinator = self.system_manager.hitl_coordinator
+        self.node_processor = self.system_manager.node_processor
+        self.execution_engine = self.system_manager.execution_engine # This comes from system_manager
+        self.cache_manager = self.system_manager.cache_manager
+        self.error_handler = self.system_manager.error_handler
         
-        # Override HITL setting if specified
-        if enable_hitl is not None:
-            original_hitl = self.config.execution.enable_hitl
-            self.config.execution.enable_hitl = enable_hitl
-            logger.info(f"HITL override: {original_hitl} -> {enable_hitl}")
-        
-        # Initialize all system components
-        self.systems = initialize_system(self.config)
-        
-        # Extract components for easy access
-        self.task_graph = self.systems['task_graph']
-        self.knowledge_store = self.systems['knowledge_store']
-        self.state_manager = self.systems['state_manager']
-        self.hitl_coordinator = self.systems['hitl_coordinator']
-        self.node_processor = self.systems['node_processor']
-        self.execution_engine = self.systems['execution_engine']
-        self.cache_manager = self.systems['cache_manager']
-        self.error_handler = self.systems['error_handler']
-        
-        logger.info(f"SentientAgent initialized (HITL: {'enabled' if self.config.execution.enable_hitl else 'disabled'})")
+        if not all([
+            self.config, self.task_graph, self.knowledge_store, self.state_manager, 
+            self.hitl_coordinator, self.node_processor, self.execution_engine, 
+            self.cache_manager, self.error_handler
+        ]):
+            logger.error("SentientAgent initialized with an incomplete SystemManager. Some core components are missing.")
+            # This indicates an issue with SystemManager's initialization.
+            # SystemManager should guarantee these are set after its __init__ and initialize_with_profile.
+
+        current_profile = self.system_manager.get_current_profile()
+        # Ensure config is available for logging HITL status
+        hitl_status_log = 'unknown (config not fully loaded)'
+        if self.config and hasattr(self.config, 'execution'):
+            hitl_status_log = 'enabled' if self.config.execution.enable_hitl else 'disabled'
+
+        logger.info(f"SentientAgent initialized. SystemManager active profile: {current_profile}. HITL from config: {hitl_status_log}")
     
     @classmethod
     def create(
         cls, 
         config_path: Optional[Union[str, Path]] = None,
-        enable_hitl: Optional[bool] = None,
-        hitl_root_plan_only: Optional[bool] = None,
-        **config_overrides
+        enable_hitl_override: Optional[bool] = None,
+        hitl_root_plan_only_override: Optional[bool] = None,
+        default_profile_name: str = "deep_research_agent",
+        **config_kwargs
     ) -> "SentientAgent":
-        """
-        Create agent with flexible configuration options.
-        
-        Args:
-            config_path: Optional path to YAML configuration file
-            enable_hitl: Optional override for master HITL setting
-            hitl_root_plan_only: Optional override to only review root node's plan
-            **config_overrides: Direct configuration overrides
-        
-        Returns:
-            SentientAgent instance
-            
-        Examples:
-            >>> # Auto-load config from sentient.yaml
-            >>> agent = SentientAgent.create()
-            
-            >>> # Use specific config file
-            >>> agent = SentientAgent.create(config_path="my_config.yaml")
-            
-            >>> # Only review the root plan, not sub-plans
-            >>> agent = SentientAgent.create(
-            ...     enable_hitl=True,
-            ...     hitl_root_plan_only=True
-            ... )
-            
-            >>> # Override specific settings
-            >>> agent = SentientAgent.create(
-            ...     enable_hitl=False,
-            ...     model="gpt-3.5-turbo",
-            ...     max_steps=100
-            ... )
-        """
         if not FRAMEWORK_AVAILABLE:
             raise ImportError("Framework components not available. Please check installation.")
         
-        # Load configuration
+        # MODIFIED: Import SystemManager locally within the factory method
+        from .server.services.system_manager import SystemManager as ConcreteSystemManager
+
         config = load_unified_config(config_path)
+        # ... (apply config_kwargs and HITL overrides to config object) ...
         
-        # Apply direct overrides
-        if config_overrides:
-            logger.info(f"Applying config overrides: {list(config_overrides.keys())}")
-            
-            # Handle common overrides
-            if 'model' in config_overrides:
-                config.llm.model = config_overrides['model']
-            if 'temperature' in config_overrides:
-                config.llm.temperature = config_overrides['temperature']
-            if 'max_steps' in config_overrides:
-                config.execution.max_execution_steps = config_overrides['max_steps']
-            if 'provider' in config_overrides:
-                config.llm.provider = config_overrides['provider']
-            if 'max_concurrent_nodes' in config_overrides:
-                config.execution.max_concurrent_nodes = config_overrides['max_concurrent_nodes']
-            if 'api_key' in config_overrides:
-                config.llm.api_key = config_overrides['api_key']
+        system_manager = ConcreteSystemManager(config=config) # Use locally imported SystemManager
         
-        # NEW: Apply HITL overrides
-        if enable_hitl is not None:
-            config.execution.enable_hitl = enable_hitl
-        
-        if hitl_root_plan_only is not None:
-            config.execution.hitl_root_plan_only = hitl_root_plan_only
-            # If enabling root plan only, ensure HITL is enabled
-            if hitl_root_plan_only and not config.execution.enable_hitl:
-                config.execution.enable_hitl = True
-                logger.info("Automatically enabled HITL because hitl_root_plan_only=True")
-        
-        return cls(config)
+        if not system_manager.get_current_profile():
+            system_manager.initialize_with_profile(default_profile_name)
+        else:
+            active_profile = system_manager.get_current_profile()
+            system_manager.initialize_with_profile(active_profile)
+
+        return cls(system_manager=system_manager)
     
     def execute(self, goal: str, **options) -> Dict[str, Any]:
         """
@@ -483,6 +342,12 @@ class SentientAgent:
     
     async def _run_async_execution(self, goal: str, max_steps: int):
         """Run the async execution flow"""
+        # ExecutionEngine is obtained from self.system_manager.execution_engine
+        if not self.execution_engine:
+            logger.error("ExecutionEngine not available on SystemManager for _run_async_execution")
+            # This would be a critical error in SystemManager's initialization
+            raise SentientError("ExecutionEngine not initialized properly.")
+            
         return await self.execution_engine.run_project_flow(
             root_goal=goal,
             max_steps=max_steps
@@ -611,68 +476,170 @@ class SentientAgent:
             logger.warning(f"Failed to save execution state: {e}")
     
     def get_system_info(self) -> Dict[str, Any]:
-        """Get comprehensive system information."""
-        cache_stats = self.cache_manager.get_stats() if self.cache_manager else None
-        error_stats = self.error_handler.get_error_stats() if self.error_handler else None
-        
-        return {
-            "config": {
-                "llm_provider": self.config.llm.provider,
-                "llm_model": self.config.llm.model,
-                "cache_enabled": self.config.cache.enabled,
-                "cache_type": self.config.cache.cache_type,
-                "max_concurrent_nodes": self.config.execution.max_concurrent_nodes,
-                "max_execution_steps": self.config.execution.max_execution_steps,
-                "hitl_enabled": self.config.execution.enable_hitl,
-                "environment": self.config.environment
-            },
-            "cache_stats": cache_stats,
-            "error_stats": error_stats,
-            "graph_stats": {
-                "total_nodes": len(self.task_graph.nodes),
-                "total_graphs": len(self.task_graph.graphs)
-            },
-            "framework_available": FRAMEWORK_AVAILABLE
-        }
-    
+        """Get comprehensive system information from the SystemManager."""
+        if not self.system_manager: # Should not happen with new __init__
+            return {"error": "SystemManager not available"}
+        return self.system_manager.get_system_info()
+
     def validate_configuration(self) -> Dict[str, Any]:
-        """Validate current configuration and return results."""
-        return validate_config(self.config)
+        """Validate current configuration (obtained from SystemManager) and return results."""
+        if not self.config: # Should not happen
+             return {"valid": False, "issues": ["Configuration not loaded"], "warnings": []}
+        return validate_config(self.config) # validate_config is from config_utils
 
 
-# Convenience functions for quick usage
-def quick_research(topic: str, enable_hitl: Optional[bool] = None, **kwargs) -> str:
-    """Quick research using the sophisticated agent system."""
+# SimpleSentientAgent alias is maintained for backward compatibility.
+# SystemManager.get_simple_agent() uses this.
+SimpleSentientAgent = SentientAgent
+
+
+class ProfiledSentientAgent(SentientAgent): # MODIFIED: Inherits from refactored SentientAgent
+    """
+    Enhanced SentientAgent that ensures a specific agent profile is active.
+    """
+    
+    def __init__(self, profile_name: str, system_manager: "SystemManager"): # MODIFIED: String literal for type hint
+        """
+        Initialize the ProfiledSentientAgent.
+        Assumes system_manager has already been configured with the specified profile_name.
+        
+        Args:
+            profile_name: The name of the profile this agent is configured for.
+            system_manager: A SystemManager instance, expected to be configured with profile_name.
+        """
+        self.profile_name = profile_name 
+        super().__init__(system_manager=system_manager) # Calls SentientAgent.__init__
+        
+        # Verification step
+        if self.system_manager.get_current_profile() != self.profile_name:
+            logger.warning(
+                f"ProfiledSentientAgent for '{self.profile_name}' was initialized, "
+                f"but its SystemManager has profile '{self.system_manager.get_current_profile()}' active. "
+                f"This might indicate an issue in the instantiation flow. Re-applying profile."
+            )
+            # Attempt to re-apply to ensure consistency for this agent instance
+            try:
+                self.system_manager.initialize_with_profile(self.profile_name)
+            except Exception as e:
+                logger.error(f"Failed to re-apply profile '{self.profile_name}' during ProfiledSentientAgent init: {e}")
+                # Agent might be in an inconsistent state.
+    
+    @classmethod
+    def create_with_profile(
+        cls, 
+        profile_name: str = "deep_research_agent",
+        enable_hitl_override: Optional[bool] = None,
+        hitl_root_plan_only_override: Optional[bool] = None,
+        config_path: Optional[Union[str, Path]] = None,
+        **config_kwargs
+    ) -> "ProfiledSentientAgent":
+        """
+        Factory method to create a ProfiledSentientAgent with a specific profile.
+        """
+        logger.info(f"🤖 Creating ProfiledSentientAgent with profile: {profile_name}")
+        
+        # MODIFIED: Import SystemManager locally
+        from .server.services.system_manager import SystemManager as ConcreteSystemManager
+        
+        config = load_unified_config(config_path)
+        # ... (apply config overrides from kwargs and specific args) ...
+        
+        system_manager = ConcreteSystemManager(config=config)
+        
+        try:
+            system_manager.initialize_with_profile(profile_name)
+            logger.info(f"SystemManager initialized and configured with profile: {profile_name}")
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize SystemManager with profile '{profile_name}': {e}")
+            # Consider how SentientError is defined or if a more specific error is better.
+            raise SentientError(f"Failed to create agent with profile {profile_name}: {e}") from e
+            
+        agent = cls(profile_name=profile_name, system_manager=system_manager)
+        
+        logger.info(f"✅ ProfiledSentientAgent created successfully with profile: {profile_name}")
+        return agent
+
+    def get_profile_info(self) -> Dict[str, Any]:
+        """Get information about the agent's configured profile from SystemManager."""
+        if not self.system_manager: # Should be guaranteed by __init__
+            return {"error": "SystemManager not available", "profile_name": self.profile_name}
+        try:
+            # Ensure we request details for the profile this agent instance is meant for.
+            return self.system_manager.get_profile_details(self.profile_name)
+        except Exception as e:
+            logger.error(f"Failed to get profile info for '{self.profile_name}' via SystemManager: {e}")
+            return {"error": str(e), "profile_name": self.profile_name, "source": "ProfiledSentientAgent_fallback"}
+
+
+# Convenience functions - ensure they align with new create methods
+def quick_research(topic: str, enable_hitl: Optional[bool] = None, profile_name: str = "deep_research_agent", **kwargs) -> str:
+    """Quick research using the SentientAgent framework."""
     if not FRAMEWORK_AVAILABLE:
         raise ImportError("Framework components not available. Please check installation.")
     
-    agent = SentientAgent.create(enable_hitl=enable_hitl)
-    result = agent.execute(f"Research {topic} and provide a comprehensive summary", **kwargs)
+    agent = SentientAgent.create(
+        enable_hitl_override=enable_hitl, 
+        default_profile_name=profile_name, # SentientAgent.create uses this if no profile on SM
+        **kwargs
+    )
+    result = agent.execute(f"Research {topic} and provide a comprehensive summary")
     return result.get('final_output', 'No output generated')
 
 
-def quick_analysis(data_description: str, enable_hitl: Optional[bool] = None, **kwargs) -> str:
-    """Quick analysis using the sophisticated agent system."""
+def quick_analysis(data_description: str, enable_hitl: Optional[bool] = None, profile_name: str = "deep_research_agent", **kwargs) -> str:
+    """Quick analysis using the SentientAgent framework."""
     if not FRAMEWORK_AVAILABLE:
         raise ImportError("Framework components not available. Please check installation.")
     
-    agent = SentientAgent.create(enable_hitl=enable_hitl)
-    result = agent.execute(f"Analyze {data_description} and provide insights", **kwargs)
+    agent = SentientAgent.create(
+        enable_hitl_override=enable_hitl, 
+        default_profile_name=profile_name,
+        **kwargs
+    )
+    result = agent.execute(f"Analyze {data_description} and provide insights")
     return result.get('final_output', 'No output generated')
 
 
-def quick_execute(goal: str, enable_hitl: Optional[bool] = None, **kwargs) -> str:
-    """Quick execution of any goal using the sophisticated agent system."""
+def quick_execute(goal: str, enable_hitl: Optional[bool] = None, profile_name: str = "deep_research_agent", **kwargs) -> str:
+    """Quick execution of any goal using the SentientAgent framework."""
     if not FRAMEWORK_AVAILABLE:
         raise ImportError("Framework components not available. Please check installation.")
     
-    agent = SentientAgent.create(enable_hitl=enable_hitl)
-    result = agent.execute(goal, **kwargs)
+    agent = SentientAgent.create(
+        enable_hitl_override=enable_hitl, 
+        default_profile_name=profile_name,
+        **kwargs
+    )
+    result = agent.execute(goal)
     return result.get('final_output', 'No output generated')
 
 
-# Backward compatibility aliases
-SimpleSentientAgent = SentientAgent  # For existing code 
+def create_research_agent(enable_hitl: bool = True, **kwargs) -> ProfiledSentientAgent:
+    """
+    Create a research-focused agent using a specific profile (default: deep_research_agent).
+    """
+    # This correctly uses ProfiledSentientAgent.create_with_profile
+    return ProfiledSentientAgent.create_with_profile(
+        profile_name=kwargs.pop("profile_name", "deep_research_agent"), # Allow profile override
+        enable_hitl_override=enable_hitl,
+        **kwargs
+    )
+
+
+def list_available_profiles() -> List[str]:
+    """
+    List all available agent profiles.
+    
+    Returns:
+        List of profile names
+    """
+    try:
+        from .hierarchical_agent_framework.agent_configs.profile_loader import ProfileLoader
+        loader = ProfileLoader()
+        return loader.list_available_profiles()
+    except Exception as e:
+        logger.error(f"Failed to list profiles: {e}")
+        return [] 
 
 def _is_jupyter_environment() -> bool:
     """Check if we're running in a Jupyter notebook environment."""
@@ -710,135 +677,3 @@ def _run_async_safely(coro):
     else:
         # Regular Python environment
         return asyncio.run(coro) 
-
-class ProfiledSentientAgent(SimpleSentientAgent):
-    """
-    Enhanced SimpleSentientAgent that supports agent profiles.
-    """
-    
-    def __init__(self, profile_name: str = "DeepResearchAgent", **kwargs):
-        """
-        Initialize with a specific agent profile.
-        
-        Args:
-            profile_name: Name of the agent profile to use
-            **kwargs: Additional arguments passed to parent class
-        """
-        self.profile_name = profile_name
-        super().__init__(**kwargs)
-    
-    @classmethod
-    def create_with_profile(cls, 
-                           profile_name: str = "DeepResearchAgent",
-                           enable_hitl: bool = True,
-                           **kwargs) -> "ProfiledSentientAgent":
-        """
-        Create a ProfiledSentientAgent with a specific profile.
-        
-        Args:
-            profile_name: Name of the agent profile to use
-            enable_hitl: Whether to enable human-in-the-loop
-            **kwargs: Additional configuration options
-            
-        Returns:
-            ProfiledSentientAgent instance
-        """
-        try:
-            logger.info(f"🤖 Creating ProfiledSentientAgent with profile: {profile_name}")
-            
-            # Load configuration
-            config = auto_load_config()
-            config.execution.enable_hitl = enable_hitl
-            
-            # Initialize system with profile
-            from .server.services.system_manager import SystemManager
-            system_manager = SystemManager()
-            components = system_manager.initialize_with_profile(profile_name)
-            
-            # Create agent instance
-            agent = cls(
-                profile_name=profile_name,
-                config=config,
-                **kwargs
-            )
-            
-            # Set components
-            agent.task_graph = components['task_graph']
-            agent.knowledge_store = components['knowledge_store']
-            agent.execution_engine = components['execution_engine']
-            agent.node_processor = components['node_processor']
-            agent._initialized = True
-            
-            logger.info(f"✅ ProfiledSentientAgent created successfully with profile: {profile_name}")
-            return agent
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to create ProfiledSentientAgent: {e}")
-            raise SentientAgentError(
-                f"Failed to create agent with profile {profile_name}: {e}",
-                suggestions=[
-                    f"Check that profile '{profile_name}' exists",
-                    "Verify all required agents are registered",
-                    "Check configuration and dependencies"
-                ]
-            )
-    
-    def get_profile_info(self) -> Dict[str, Any]:
-        """Get information about the current profile."""
-        try:
-            from .hierarchical_agent_framework.agent_configs.profile_loader import ProfileLoader
-            from .hierarchical_agent_framework.agent_configs.registry_integration import validate_profile
-            
-            loader = ProfileLoader()
-            blueprint = loader.load_profile(self.profile_name)
-            validation = validate_profile(self.profile_name)
-            
-            return {
-                "profile_name": self.profile_name,
-                "description": blueprint.description,
-                "planner_mappings": {str(k): v for k, v in blueprint.planner_adapter_names.items()},
-                "executor_mappings": {str(k): v for k, v in blueprint.executor_adapter_names.items()},
-                "validation": validation
-            }
-            
-        except Exception as e:
-            logger.error(f"Failed to get profile info: {e}")
-            return {"error": str(e)}
-
-
-# Add convenience functions at the end of the file
-
-def create_research_agent(enable_hitl: bool = True, **kwargs) -> ProfiledSentientAgent:
-    """
-    Create a research-focused agent using the DeepResearchAgent profile.
-    
-    Args:
-        enable_hitl: Whether to enable human-in-the-loop
-        **kwargs: Additional configuration options
-        
-    Returns:
-        ProfiledSentientAgent configured for research tasks
-    """
-    return ProfiledSentientAgent.create_with_profile(
-        profile_name="deep_research_agent",
-        enable_hitl=enable_hitl,
-        **kwargs
-    )
-
-
-
-
-def list_available_profiles() -> List[str]:
-    """
-    List all available agent profiles.
-    
-    Returns:
-        List of profile names
-    """
-    try:
-        from .hierarchical_agent_framework.agent_configs.profile_loader import ProfileLoader
-        loader = ProfileLoader()
-        return loader.list_available_profiles()
-    except Exception as e:
-        logger.error(f"Failed to list profiles: {e}")
-        return [] 

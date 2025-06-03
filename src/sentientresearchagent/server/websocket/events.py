@@ -131,7 +131,7 @@ def register_websocket_events(socketio, project_service, execution_service):
         try:
             # Check framework availability
             try:
-                from ...simple_api import FRAMEWORK_AVAILABLE
+                from ...framework_entry import FRAMEWORK_AVAILABLE
             except ImportError:
                 FRAMEWORK_AVAILABLE = False
                 
@@ -188,7 +188,7 @@ def _run_simple_streaming_execution(socketio, goal: str, options: dict):
     try:
         # This would need access to the system manager to get the simple agent
         # For now, we'll import it directly
-        from ...simple_api import SimpleSentientAgent
+        from ...framework_entry import SimpleSentientAgent
         
         agent = SimpleSentientAgent.create(enable_hitl=False)
         if not agent:

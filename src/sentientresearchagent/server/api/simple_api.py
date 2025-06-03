@@ -84,7 +84,7 @@ def create_simple_api_routes(app, system_manager):
             logger.info(f"🔍 Simple research: {topic[:100]}... (HITL: {enable_hitl})")
             
             # Use the convenience function
-            from ...simple_api import quick_research
+            from ...framework_entry import quick_research
             result = quick_research(topic, enable_hitl=enable_hitl, **options)
             
             return jsonify({
@@ -120,7 +120,7 @@ def create_simple_api_routes(app, system_manager):
             logger.info(f"📊 Simple analysis: {data_description[:100]}... (HITL: {enable_hitl})")
             
             # Use the convenience function
-            from ...simple_api import quick_analysis
+            from ...framework_entry import quick_analysis
             result = quick_analysis(data_description, enable_hitl=enable_hitl, **options)
             
             return jsonify({
@@ -148,7 +148,7 @@ def create_simple_api_routes(app, system_manager):
             
             # Check framework availability
             try:
-                from ...simple_api import FRAMEWORK_AVAILABLE
+                from ...framework_entry import FRAMEWORK_AVAILABLE
             except ImportError:
                 FRAMEWORK_AVAILABLE = False
             

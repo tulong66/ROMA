@@ -29,6 +29,9 @@ from .cycle_manager import CycleManager
 # Import SentientConfig
 from sentientresearchagent.config import SentientConfig
 
+# ADDED: Import for NodeProcessorConfig creation if ExecutionEngine creates NodeProcessor
+from sentientresearchagent.framework_entry import create_node_processor_config_from_main_config 
+
 
 class ExecutionEngine:
     """Orchestrates the overall execution flow of tasks in the graph."""
@@ -38,31 +41,35 @@ class ExecutionEngine:
                  state_manager: StateManager,
                  knowledge_store: KnowledgeStore,
                  hitl_coordinator: HITLCoordinator,
-                 config: Optional[SentientConfig] = None,  # NEW: Add config parameter
-                 # Allow NodeProcessor to be passed in for testing or custom setups,
-                 # but create a default one if not provided.
-                 node_processor: Optional[NodeProcessor] = None, 
-                 initial_agent_blueprint_name: Optional[str] = "DeepResearchAgent" # MODIFIED: Added blueprint name with default
+                 config: SentientConfig, # MODIFIED: Made SentientConfig non-optional
+                 node_processor: Optional[NodeProcessor] = None
                 ):
         self.task_graph = task_graph
-        self.config = config or SentientConfig()  # NEW: Store config
+        self.config: SentientConfig = config # Store config
         
         if node_processor:
             self.node_processor = node_processor
+            logger.info("ExecutionEngine initialized with provided NodeProcessor.")
         else:
-            # MODIFIED: Pass agent_blueprint_name to NodeProcessor constructor
+            logger.warning("ExecutionEngine creating its own NodeProcessor instance (SystemManager should ideally provide one).")
+            # NodeProcessor will load blueprint based on self.config.active_profile_name
+            # It needs NodeProcessorConfig, derived from the main SentientConfig.
+            node_proc_config = create_node_processor_config_from_main_config(self.config)
             self.node_processor = NodeProcessor(
                 task_graph=self.task_graph,
                 knowledge_store=knowledge_store, 
-                config=self.config,  # NEW: Pass config
-                agent_blueprint_name=initial_agent_blueprint_name
+                config=self.config, 
+                node_processor_config=node_proc_config,
+                agent_blueprint=None # NodeProcessor will use active_profile_name from self.config
             )
+            logger.info("ExecutionEngine created a new NodeProcessor.")
             
         self.state_manager = state_manager
         self.knowledge_store = knowledge_store 
         self.hitl_coordinator = hitl_coordinator 
         self.project_initializer = ProjectInitializer() 
         self.cycle_manager = CycleManager() 
+        logger.info("ExecutionEngine initialized.")
         # self.node_processor.set_viz_handler(viz_handler) # If you re-add visualization
 
     def initialize_project(self, 

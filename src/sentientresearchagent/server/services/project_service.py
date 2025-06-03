@@ -14,7 +14,7 @@ import os
 from pathlib import Path
 
 from ...project_manager import ProjectManager
-from ...simple_api import create_node_processor_config_from_main_config
+from ...framework_entry import create_node_processor_config_from_main_config
 from ...hierarchical_agent_framework.graph.task_graph import TaskGraph
 from ...hierarchical_agent_framework.graph.state_manager import StateManager
 from ...hierarchical_agent_framework.graph.execution_engine import ExecutionEngine

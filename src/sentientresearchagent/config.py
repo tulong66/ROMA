@@ -159,6 +159,27 @@ class LoggingConfig(BaseModel):
             raise ValueError(f'Log level must be one of: {valid_levels}')
         return v.upper()
 
+class WebServerConfig(BaseModel):
+    """Configuration for the Flask/SocketIO web server."""
+    host: str = Field(default_factory=lambda: os.getenv("FLASK_HOST", "0.0.0.0"))
+    port: int = Field(default_factory=lambda: int(os.getenv("FLASK_PORT", 5000)))
+    debug: bool = Field(default_factory=lambda: os.getenv("FLASK_DEBUG", "false").lower() == "true")
+    secret_key: str = Field(default_factory=lambda: os.getenv("FLASK_SECRET_KEY", "a-secure-default-secret-key-please-change"))
+
+    @validator('port')
+    def validate_port(cls, v):
+        if not 1 <= v <= 65535:
+            raise ValueError("Port must be between 1 and 65535")
+        return v
+    
+    @validator('secret_key')
+    def validate_secret_key(cls, v):
+        if v == "a-secure-default-secret-key-please-change" and os.getenv("SENTIENT_ENV", "development").lower() == "production":
+            logger.warning("Using default FLASK_SECRET_KEY in production. Please set a strong, unique key.")
+        if not v:
+            raise ValueError("FLASK_SECRET_KEY cannot be empty.")
+        return v
+
 class SentientConfig(BaseModel):
     """Main configuration class for the Sentient Research Agent framework."""
     
@@ -167,10 +188,15 @@ class SentientConfig(BaseModel):
     cache: CacheConfig = Field(default_factory=CacheConfig)
     execution: ExecutionConfig = Field(default_factory=ExecutionConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
+    web_server: WebServerConfig = Field(default_factory=WebServerConfig)
     
     # Agent configurations
     agents: Dict[str, AgentConfig] = Field(default_factory=dict)
     
+    # Active Profile
+    active_profile_name: Optional[str] = None
+    default_profile: str = "deep_research_agent"
+
     # Custom configurations for extensions
     custom: Dict[str, Any] = Field(default_factory=dict)
     
@@ -179,7 +205,8 @@ class SentientConfig(BaseModel):
     environment: str = Field(default_factory=lambda: os.getenv("SENTIENT_ENV", "development"))
 
     class Config:
-        extra = "allow"  # Allow additional fields for extensibility
+        extra = "allow"
+        validate_assignment = True
 
     @classmethod
     def from_yaml(cls, path: Union[str, Path]) -> "SentientConfig":

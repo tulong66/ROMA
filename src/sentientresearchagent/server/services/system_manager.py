@@ -7,10 +7,11 @@ Centralized management of all Sentient Research Agent components.
 import sys
 import traceback
 import os
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, TYPE_CHECKING
 from loguru import logger
 import time
 
+from ...config import SentientConfig
 from ...config_utils import auto_load_config, validate_config
 from ...cache.cache_manager import init_cache_manager
 from ...error_handler import ErrorHandler, set_error_handler
@@ -21,7 +22,9 @@ from ...hierarchical_agent_framework.graph.state_manager import StateManager
 from ...hierarchical_agent_framework.node.hitl_coordinator import HITLCoordinator
 from ...hierarchical_agent_framework.node.node_processor import NodeProcessor
 from ...hierarchical_agent_framework.graph.execution_engine import ExecutionEngine
-from ...simple_api import create_node_processor_config_from_main_config, SimpleSentientAgent
+from ...framework_entry import create_node_processor_config_from_main_config
+from ...hierarchical_agent_framework.agent_configs.profile_loader import ProfileLoader
+from ...hierarchical_agent_framework.agent_configs.registry_integration import validate_profile
 
 # Import WebSocket HITL utils with error handling
 try:
@@ -56,6 +59,8 @@ except ImportError as e:
             "error": "WebSocket HITL functions not available"
         }
 
+if TYPE_CHECKING: # For type hints only
+    from ...framework_entry import SimpleSentientAgent
 
 class SystemManager:
     """
@@ -66,47 +71,51 @@ class SystemManager:
     and various services.
     """
     
-    def __init__(self):
-        self.config = None
-        self.task_graph = None
-        self.knowledge_store = None
-        self.state_manager = None
-        self.hitl_coordinator = None
-        self.node_processor = None
-        self.execution_engine = None
-        self.cache_manager = None
-        self.error_handler = None
-        self.simple_agent_instance = None
-        self._initialized = False
-        self._websocket_hitl_ready = False
-        self._current_profile = None  # Track current profile
-    
-    def initialize(self) -> Dict[str, Any]:
-        """
-        Initialize all Sentient systems with proper integration.
-        
-        Returns:
-            Dictionary containing all initialized components
-        """
-        if self._initialized:
-            logger.warning("System already initialized")
-            return self.get_components()
-            
-        try:
-            logger.info("🔧 Initializing Sentient Research Agent systems...")
-            
-            # 1. Load and validate configuration
-            logger.info("📋 Loading configuration...")
+    def __init__(self, config: Optional[SentientConfig] = None):
+        self.config: SentientConfig
+        if config is None:
+            logger.info("📋 SystemManager: No config provided, auto-loading...")
             self.config = auto_load_config()
+        else:
+            self.config = config
+        
+        self.task_graph: Optional[TaskGraph] = None
+        self.knowledge_store: Optional[KnowledgeStore] = None
+        self.state_manager: Optional[StateManager] = None
+        self.hitl_coordinator: Optional[HITLCoordinator] = None
+        self.node_processor: Optional[NodeProcessor] = None
+        self.execution_engine: Optional[ExecutionEngine] = None
+        self.cache_manager = None
+        self.error_handler: Optional[ErrorHandler] = None
+        self.simple_agent_instance: "Optional[SimpleSentientAgent]" = None
+        
+        self._initialized_core = False
+        self._websocket_hitl_ready = False
+        self._current_profile: Optional[str] = None
+
+        self._perform_core_initialization()
+
+    def _perform_core_initialization(self) -> None:
+        """
+        Initialize core non-profile-specific Sentient systems.
+        This is called by __init__.
+        """
+        if self._initialized_core:
+            logger.warning("SystemManager: Core systems already initialized.")
+            return
+
+        try:
+            logger.info("🔧 SystemManager: Initializing core systems...")
             
+            # 1. Validate configuration (already loaded in __init__)
             validation = validate_config(self.config)
             if not validation["valid"]:
-                logger.warning("Configuration issues found:")
+                logger.warning("SystemManager: Configuration issues found:")
                 for issue in validation["issues"]:
                     logger.warning(f"   - {issue}")
             
             if validation["warnings"]:
-                logger.warning("Configuration warnings:")
+                logger.warning("SystemManager: Configuration warnings:")
                 for warning in validation["warnings"]:
                     logger.warning(f"   - {warning}")
             
@@ -114,86 +123,152 @@ class SystemManager:
             self.config.setup_logging()
             
             # 3. Initialize error handling
-            logger.info("🛡️  Setting up error handling...")
+            logger.info("🛡️  SystemManager: Setting up error handling...")
             self.error_handler = ErrorHandler(enable_detailed_logging=True)
             set_error_handler(self.error_handler)
             
             # 4. Initialize cache manager
-            logger.info("💾 Setting up cache system...")
+            logger.info("💾 SystemManager: Setting up cache system...")
             self.cache_manager = init_cache_manager(self.config.cache)
             
-            # 5. Initialize agent registry
-            logger.info("🤖 Initializing agent registry...")
+            # 5. Initialize agent registry (foundational, profiles will select from this)
+            logger.info("🤖 SystemManager: Initializing agent registry...")
             from ...hierarchical_agent_framework import agents
             from ...hierarchical_agent_framework.agents.registry import AGENT_REGISTRY, NAMED_AGENTS
             
-            # NEW: Trigger YAML agent integration
-            logger.info("🔄 Integrating YAML-based agents...")
+            logger.info("🔄 SystemManager: Integrating YAML-based agents...")
             try:
-                # Call the lazy integration function
                 yaml_integration_results = agents.integrate_yaml_agents_lazy()
-                
                 if yaml_integration_results:
-                    logger.info(f"✅ YAML Integration Results:")
-                    logger.info(f"   📋 Action keys registered: {yaml_integration_results['registered_action_keys']}")
-                    logger.info(f"   🏷️  Named keys registered: {yaml_integration_results['registered_named_keys']}")
-                    logger.info(f"   ⏭️  Skipped agents: {yaml_integration_results['skipped_agents']}")
-                    logger.info(f"   ❌ Failed registrations: {yaml_integration_results['failed_registrations']}")
+                    logger.info(f"✅ YAML Integration Results: {yaml_integration_results}")
                 else:
-                    logger.warning("⚠️  YAML integration returned no results - using legacy agents only")
-                    
+                    logger.warning("⚠️ SystemManager: YAML integration returned no results.")
             except Exception as e:
-                logger.error(f"❌ YAML agent integration failed: {e}")
-                logger.info("Continuing with legacy agent system only...")
+                logger.error(f"❌ SystemManager: YAML agent integration failed: {e}")
             
-            logger.info(f"✅ Agent registry loaded: {len(AGENT_REGISTRY)} adapters, {len(NAMED_AGENTS)} named agents")
+            logger.info(f"✅ SystemManager: Agent registry loaded: {len(AGENT_REGISTRY)} adapters, {len(NAMED_AGENTS)} named agents")
             
-            # 6. Initialize core components
-            logger.info("🧠 Initializing core components...")
+            # 6. Initialize HAF core components (these are generally profile-agnostic structurally)
+            logger.info("🧠 SystemManager: Initializing HAF core components...")
             self.task_graph = TaskGraph()
             self.knowledge_store = KnowledgeStore()
             self.state_manager = StateManager(self.task_graph)
             
-            # Create node processor config from main config
-            node_processor_config = create_node_processor_config_from_main_config(self.config)
+            base_node_processor_config = create_node_processor_config_from_main_config(self.config)
+            self.hitl_coordinator = HITLCoordinator(config=base_node_processor_config)
+
+            self._initialized_core = True
+            logger.info("✅ SystemManager: Core systems initialized successfully!")
+            self._log_system_info()
             
-            self.hitl_coordinator = HITLCoordinator(config=node_processor_config)
+        except Exception as e:
+            logger.error(f"❌ SystemManager: Core system initialization error: {e}")
+            traceback.print_exc()
+            sys.exit(1)
+
+    def initialize_with_profile(self, profile_name: str = "deep_research_agent") -> Dict[str, Any]:
+        """
+        Initialize or reconfigure system components based on a specific agent profile.
+        Assumes core systems are already initialized by __init__.
+        Sets the active_profile_name in the main SentientConfig.
+        """
+        if not self._initialized_core:
+            logger.error("SystemManager: Core systems not initialized before applying profile. Forcing initialization.")
+            self._perform_core_initialization() 
+
+        logger.info(f"⚙️ SystemManager: Applying agent profile '{profile_name}'...")
+        
+        try:
+            # 1. Load profile blueprint (primarily for validation and info, not for modifying SentientConfig.agents directly here)
+            profile_loader = ProfileLoader() 
+            profile_blueprint = profile_loader.load_profile(profile_name) # This may raise if profile not found
+            if not profile_blueprint: # Should be redundant if load_profile raises
+                raise ValueError(f"Profile '{profile_name}' not found or failed to load.")
+            
+            # 2. MODIFIED: Set the active profile name in the main configuration.
+            # The NodeProcessor and ExecutionEngine will use this active_profile_name
+            # to look up the profile blueprint and select appropriate agents from the registry.
+            self.config.active_profile_name = profile_name
+            logger.info(f"Updated self.config.active_profile_name to '{profile_name}'.")
+            
+            # 3. Validate the profile integration (checks if agents in blueprint are registered)
+            profile_validation_result = validate_profile(profile_name) 
+            
+            is_profile_valid = False
+            validation_issues = []
+
+            if isinstance(profile_validation_result, dict):
+                is_profile_valid = profile_validation_result.get("valid", False) # Default to False if 'valid' key is missing
+                validation_issues = profile_validation_result.get("issues", [])
+                if not validation_issues and not is_profile_valid and not profile_validation_result: # Empty dict might mean valid if no issues
+                    is_profile_valid = True 
+            elif isinstance(profile_validation_result, list): # If it returns a list of issues
+                is_profile_valid = not bool(profile_validation_result) # Valid if list is empty
+                validation_issues = profile_validation_result
+            elif profile_validation_result is None: # Some validators return None for success
+                is_profile_valid = True
+            else:
+                logger.warning(f"Profile '{profile_name}' validation returned an unexpected type: {type(profile_validation_result)}. Assuming invalid.")
+                is_profile_valid = False
+                validation_issues = [f"Unexpected validation result type: {type(profile_validation_result)}"]
+
+
+            if not is_profile_valid:
+                logger.warning(f"Profile '{profile_name}' validation issues:")
+                for issue in validation_issues:
+                    logger.warning(f"  - {issue}")
+                # Decide if this is a fatal error. For now, we'll proceed but log warnings.
+                # If it should be fatal, raise an exception here.
+                # raise ValueError(f"Profile '{profile_name}' failed validation: {validation_issues}")
+            else:
+                logger.info(f"Profile '{profile_name}' validated successfully.")
+
+            # 4. Create NodeProcessorConfig based on the main config (which now knows the active_profile_name)
+            # create_node_processor_config_from_main_config internally uses main_config.execution settings.
+            node_processor_config = create_node_processor_config_from_main_config(self.config)
+
+            # 5. Re-initialize/Reconfigure components that depend on the profile and node_processor_config
+            if not self.task_graph or not self.knowledge_store or not self.state_manager or not self.hitl_coordinator:
+                 logger.error("SystemManager: Core HAF components not available for profile init! Re-creating.")
+                 self.task_graph = TaskGraph()
+                 self.knowledge_store = KnowledgeStore()
+                 self.state_manager = StateManager(self.task_graph)
+                 self.hitl_coordinator = HITLCoordinator(config=node_processor_config)
+            else:
+                # Update existing HITLCoordinator's config
+                self.hitl_coordinator.config = node_processor_config
+
+            # First, create the NodeProcessor fully configured
             self.node_processor = NodeProcessor(
                 task_graph=self.task_graph,
                 knowledge_store=self.knowledge_store,
-                config=self.config,
-                node_processor_config=node_processor_config
+                config=self.config, 
+                node_processor_config=node_processor_config, # This is NodeProcessorConfig
+                agent_blueprint=profile_blueprint 
             )
+            
+            # Then, pass the configured NodeProcessor instance to ExecutionEngine
             self.execution_engine = ExecutionEngine(
                 task_graph=self.task_graph,
                 state_manager=self.state_manager,
                 knowledge_store=self.knowledge_store,
-                hitl_coordinator=self.hitl_coordinator,
-                config=self.config,
-                node_processor=self.node_processor
+                hitl_coordinator=self.hitl_coordinator, # ExecutionEngine uses HITLCoordinator
+                config=self.config, 
+                node_processor=self.node_processor # Pass the created NodeProcessor instance
             )
             
-            self._initialized = True
-            logger.info("✅ All Sentient systems initialized successfully!")
+            self._current_profile = profile_name
+            logger.info(f"✅ SystemManager: Successfully applied profile '{profile_name}'. Execution components reconfigured.")
             
-            # Print system info
-            self._log_system_info()
-            
+            self._log_system_info() 
+
             return self.get_components()
-            
+
         except Exception as e:
-            logger.error(f"❌ System initialization error: {e}")
+            logger.error(f"❌ SystemManager: Failed to apply profile '{profile_name}': {e}")
             traceback.print_exc()
-            
-            # Try to handle with error system if available
-            try:
-                handled_error = handle_exception(e, context={"component": "system_initialization"})
-                logger.error(f"📋 Error details: {handled_error.to_dict()}")
-            except:
-                pass  # Error system not available yet
-            
-            sys.exit(1)
-    
+            raise
+
     def setup_websocket_hitl(self, socketio):
         """
         Setup WebSocket HITL integration.
@@ -201,7 +276,7 @@ class SystemManager:
         Args:
             socketio: SocketIO instance to use for HITL
         """
-        if not self._initialized:
+        if not self._initialized_core:
             raise RuntimeError("System must be initialized before setting up WebSocket HITL")
         
         if not WEBSOCKET_HITL_AVAILABLE:
@@ -244,22 +319,31 @@ class SystemManager:
             }
         return get_websocket_hitl_status()
     
-    def get_simple_agent(self) -> Optional[SimpleSentientAgent]:
+    def get_simple_agent(self) -> "Optional[SimpleSentientAgent]":
         """
         Get or create a SimpleSentientAgent instance optimized for API use.
-        
-        Returns:
-            SimpleSentientAgent instance or None if creation failed
+        It will use the currently configured SystemManager state (config, profile).
         """
+        if not self._initialized_core:
+            logger.warning("SystemManager: Core not initialized. Cannot create SimpleSentientAgent yet.")
+            self._perform_core_initialization()
+            if not self._current_profile:
+                logger.info("SystemManager: No profile active. Applying default for SimpleSentientAgent.")
+                self.initialize_with_profile()
+
+        if not self._current_profile and self._initialized_core:
+            logger.warning("SystemManager: No profile active even after init. Defaulting for SimpleSentientAgent.")
+            self.initialize_with_profile()
+
+        # MODIFIED: Local import for SimpleSentientAgent instantiation
+        from ...framework_entry import SimpleSentientAgent as ConcreteSimpleSentientAgent
+
         if self.simple_agent_instance is None:
-            try:
-                # Create Simple API agent with HITL disabled for API endpoints
-                # This allows the API to work without human intervention by default
-                self.simple_agent_instance = SimpleSentientAgent.create(enable_hitl=False)
-                logger.info("✅ SimpleSentientAgent initialized for API endpoints (HITL: disabled for automation)")
-            except Exception as e:
-                logger.error(f"❌ Failed to initialize SimpleSentientAgent: {e}")
-                return None
+            logger.info("SystemManager: Creating new SimpleSentientAgent instance...")
+            self.simple_agent_instance = ConcreteSimpleSentientAgent(system_manager=self)
+        else:
+            logger.debug("SystemManager: Reusing existing SimpleSentientAgent instance.")
+
         return self.simple_agent_instance
     
     def get_components(self) -> Dict[str, Any]:
@@ -288,7 +372,7 @@ class SystemManager:
         Returns:
             Dictionary containing system info
         """
-        if not self._initialized:
+        if not self._initialized_core:
             return {"error": "System not initialized"}
         
         cache_stats = self.cache_manager.get_stats() if self.cache_manager else None
@@ -310,10 +394,10 @@ class SystemManager:
                 "total_graphs": len(self.task_graph.graphs)
             },
             "websocket_hitl": self.get_websocket_hitl_status(),
-            "initialized": self._initialized,
+            "initialized": self._initialized_core,
             "websocket_hitl_ready": self.is_websocket_hitl_ready(),
             "websocket_hitl_available": WEBSOCKET_HITL_AVAILABLE,
-            "current_profile": self._current_profile,  # Add current profile info
+            "current_profile": self._current_profile,
             "available_profiles": self.get_available_profiles()
         }
     
@@ -335,134 +419,9 @@ class SystemManager:
         except Exception as e:
             logger.warning(f"Failed to log system info: {e}")
 
-    def initialize_with_profile(self, profile_name: str = "deep_research_agent") -> Dict[str, Any]:
-        """
-        Initialize the system with a specific agent profile.
-        
-        Args:
-            profile_name: Name of the agent profile to use (default: deep_research_agent)
-            
-        Returns:
-            Dictionary containing all initialized components
-        """
-        if self._initialized:
-            logger.warning("System already initialized")
-            return self.get_components()
-        
-        try:
-            logger.info(f"🔧 Initializing Sentient Research Agent with profile: {profile_name}")
-            
-            # Standard initialization steps 1-4 (config, logging, error handling, cache)
-            self._initialize_base_components()
-            
-            # 5. Initialize agent registry with profile
-            logger.info("🤖 Initializing agent registry with profile...")
-            from ...hierarchical_agent_framework import agents
-            from ...hierarchical_agent_framework.agents.registry import AGENT_REGISTRY, NAMED_AGENTS
-            from ...hierarchical_agent_framework.agent_configs.registry_integration import (
-                integrate_yaml_agents, validate_profile
-            )
-            
-            # Load base agents first
-            yaml_integration_results = agents.integrate_yaml_agents_lazy()
-            
-            if yaml_integration_results:
-                logger.info(f"✅ Base agent integration:")
-                logger.info(f"   📋 Action keys: {yaml_integration_results['registered_action_keys']}")
-                logger.info(f"   🏷️  Named keys: {yaml_integration_results['registered_named_keys']}")
-                
-                # Log which agents are now available
-                logger.info(f"📊 Available named agents: {list(NAMED_AGENTS.keys())}")
-            
-            # IMPORTANT: Validate the profile AFTER agents are loaded
-            logger.info(f"🔍 Validating profile: {profile_name}")
-            profile_validation = validate_profile(profile_name)
-            if not profile_validation.get("blueprint_valid", False):
-                logger.warning(f"⚠️  Profile validation issues for {profile_name}:")
-                for missing in profile_validation.get("missing_agents", []):
-                    logger.warning(f"   - Missing: {missing}")
-                
-                # Log available agents for debugging
-                logger.info(f"📋 Available agents for comparison: {profile_validation.get('available_agents', [])}")
-            else:
-                logger.info(f"✅ Profile {profile_name} validation passed")
-            
-            logger.info(f"✅ Agent registry loaded: {len(AGENT_REGISTRY)} adapters, {len(NAMED_AGENTS)} named agents")
-            
-            # 6. Initialize core components with profile
-            logger.info(f"🧠 Initializing core components with profile: {profile_name}")
-            self.task_graph = TaskGraph()
-            self.knowledge_store = KnowledgeStore()
-            self.state_manager = StateManager(self.task_graph)
-            
-            # Create node processor config from main config
-            node_processor_config = create_node_processor_config_from_main_config(self.config)
-            
-            self.hitl_coordinator = HITLCoordinator(config=node_processor_config)
-            
-            # Load the actual blueprint object for the NodeProcessor
-            from ...hierarchical_agent_framework.agent_configs.profile_loader import ProfileLoader
-            profile_loader = ProfileLoader()
-            agent_blueprint = profile_loader.load_profile(profile_name)
-            logger.info(f"🎯 Loaded blueprint '{agent_blueprint.name}' for NodeProcessor")
-            
-            self.node_processor = NodeProcessor(
-                task_graph=self.task_graph,
-                knowledge_store=self.knowledge_store,
-                config=self.config,
-                node_processor_config=node_processor_config,
-                agent_blueprint=agent_blueprint  # Pass the actual blueprint object instead of agent_blueprint_name
-            )
-            
-            # 7. Initialize execution engine
-            logger.info("⚙️  Initializing execution engine...")
-            self.execution_engine = ExecutionEngine(
-                task_graph=self.task_graph,
-                state_manager=self.state_manager,
-                knowledge_store=self.knowledge_store,
-                hitl_coordinator=self.hitl_coordinator,
-                config=self.config,
-                node_processor=self.node_processor
-            )
-            
-            self._initialized = True
-            self._current_profile = profile_name  # Track the current profile
-            logger.success(f"✅ System initialized successfully with profile: {profile_name}")
-            
-            return self.get_components()
-            
-        except Exception as e:
-            logger.error(f"❌ System initialization failed: {e}")
-            raise
-
-    def _initialize_base_components(self):
-        """Initialize base components (config, logging, error handling, cache)."""
-        # 1. Load and validate configuration
-        logger.info("📋 Loading configuration...")
-        self.config = auto_load_config()
-        
-        validation = validate_config(self.config)
-        if not validation["valid"]:
-            logger.warning("Configuration issues found:")
-            for issue in validation["issues"]:
-                logger.warning(f"   - {issue}")
-        
-        # 2. Setup logging from config
-        self.config.setup_logging()
-        
-        # 3. Initialize error handling
-        logger.info("🛡️  Setting up error handling...")
-        self.error_handler = ErrorHandler(enable_detailed_logging=True)
-        set_error_handler(self.error_handler)
-        
-        # 4. Initialize cache manager
-        logger.info("💾 Setting up cache system...")
-        self.cache_manager = init_cache_manager(self.config.cache)
-
     def get_available_profiles(self) -> List[str]:
         """Get list of available agent profiles."""
         try:
-            from ...hierarchical_agent_framework.agent_configs.profile_loader import ProfileLoader
             loader = ProfileLoader()
             return loader.list_available_profiles()
         except Exception as e:
@@ -480,9 +439,6 @@ class SystemManager:
             Dictionary containing profile details
         """
         try:
-            from ...hierarchical_agent_framework.agent_configs.profile_loader import ProfileLoader
-            from ...hierarchical_agent_framework.agent_configs.registry_integration import validate_profile
-            
             loader = ProfileLoader()
             blueprint = loader.load_profile(profile_name)
             validation = validate_profile(profile_name)
@@ -498,7 +454,7 @@ class SystemManager:
                 "plan_modifier": blueprint.plan_modifier_adapter_name,
                 "default_planner": blueprint.default_planner_adapter_name,
                 "default_executor": blueprint.default_executor_adapter_name,
-                "recommended_for": ["Research Projects", "Data Analysis", "Report Writing"],  # Add this field
+                "recommended_for": ["Research Projects", "Data Analysis", "Report Writing"],
                 "validation": validation,
                 "is_valid": validation.get("blueprint_valid", False)
             }
@@ -508,7 +464,7 @@ class SystemManager:
                 "name": profile_name,
                 "error": str(e),
                 "is_valid": False,
-                "recommended_for": []  # Add empty array for error case
+                "recommended_for": []
             }
 
     def get_current_profile(self) -> Optional[str]:
@@ -522,9 +478,7 @@ class SystemManager:
             available_profile_names = self.get_available_profiles()
             current_profile = self.get_current_profile()
             
-            # ✅ Auto-select deep_research_agent if no current profile is set
             if not current_profile and available_profile_names:
-                # Prefer deep_research_agent if available, otherwise use first available
                 if "deep_research_agent" in available_profile_names:
                     current_profile = "deep_research_agent"
                 else:
@@ -563,8 +517,6 @@ class SystemManager:
         try:
             logger.info(f"🔄 Switching to profile: {profile_name}")
             
-            # Validate the profile first
-            from ...hierarchical_agent_framework.agent_configs.registry_integration import validate_profile
             validation = validate_profile(profile_name)
             
             if not validation.get("blueprint_valid", False):
@@ -574,18 +526,15 @@ class SystemManager:
                     "validation": validation
                 }
             
-            # Clear current state
-            if self._initialized:
+            if self._initialized_core:
                 logger.info("🧹 Clearing current system state...")
                 self.task_graph.nodes.clear()
                 self.task_graph.graphs.clear()
                 self.task_graph.root_graph_id = None
                 self.task_graph.overall_project_goal = None
                 
-                # Reset initialization flag to allow re-initialization
-                self._initialized = False
+                self._initialized_core = False
             
-            # Re-initialize with new profile
             components = self.initialize_with_profile(profile_name)
             self._current_profile = profile_name
             

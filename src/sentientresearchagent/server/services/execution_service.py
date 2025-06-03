@@ -12,7 +12,7 @@ from typing import Dict, Any, Optional
 from loguru import logger
 from datetime import datetime
 
-from ...simple_api import create_node_processor_config_from_main_config
+from ...framework_entry import create_node_processor_config_from_main_config
 from ...config import SentientConfig
 
 
