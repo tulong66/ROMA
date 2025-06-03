@@ -12,8 +12,8 @@ from .app import create_app, create_socketio, register_routes
 from .services import ProjectService, ExecutionService
 from ..core.system_manager import SystemManager
 from .utils import BroadcastManager
-from ..config import SentientConfig
-from ..config_utils import auto_load_config
+from ..config import SentientConfig, auto_load_config
+from ..config import auto_load_config
 
 
 class SentientServer:

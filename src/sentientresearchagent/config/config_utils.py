@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Optional, Union, Dict, Any
 from loguru import logger
 
-from sentientresearchagent.config import SentientConfig, load_config
+from .config import SentientConfig, load_config
 
 def find_config_file() -> Optional[Path]:
     """

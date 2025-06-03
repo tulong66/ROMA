@@ -37,8 +37,7 @@ try:
     from .hierarchical_agent_framework.node.node_configs import NodeProcessorConfig # Already here
 
     # Configuration system is fine
-    from .config import load_config, SentientConfig
-    from .config_utils import find_config_file
+    from .config import load_config, SentientConfig, find_config_file
 
     FRAMEWORK_AVAILABLE = True
     

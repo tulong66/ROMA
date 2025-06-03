@@ -11,7 +11,7 @@ from typing import Dict, Any, Optional, List, TYPE_CHECKING
 from loguru import logger
 
 from ..config import SentientConfig
-from ..config_utils import auto_load_config, validate_config
+from ..config import auto_load_config, validate_config
 from ..cache.cache_manager import init_cache_manager
 from .error_handler import ErrorHandler, set_error_handler
 from ..hierarchical_agent_framework.graph.task_graph import TaskGraph
