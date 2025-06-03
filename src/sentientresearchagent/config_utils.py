@@ -2,7 +2,6 @@
 Utility functions for working with configurations.
 """
 
-import os
 from pathlib import Path
 from typing import Optional, Union, Dict, Any
 from loguru import logger
@@ -70,11 +69,8 @@ def validate_config(config: SentientConfig) -> Dict[str, Any]:
         issues.append(f"Missing API keys: {', '.join(missing_keys)}")
     
     # Check execution settings
-    if config.execution.max_concurrent_nodes > 10:
-        warnings.append(f"High concurrency ({config.execution.max_concurrent_nodes}) may cause rate limiting")
-    
-    if config.execution.rate_limit_rpm > 100:
-        warnings.append(f"High rate limit ({config.execution.rate_limit_rpm} RPM) may cause API errors")
+    if config.execution.max_concurrent_nodes > 10 and config.execution.max_concurrent_nodes <= 20:
+        warnings.append(f"High concurrency ({config.execution.max_concurrent_nodes}) may cause rate limiting. Max recommended for some LLMs is 10-20.")
     
     # Check cache settings
     if config.cache.enabled and config.cache.cache_type == "redis" and not config.cache.redis_url:

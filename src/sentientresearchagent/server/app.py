@@ -9,32 +9,46 @@ from flask_cors import CORS
 from flask_socketio import SocketIO
 from typing import Optional
 import os
+
+from loguru import logger
+from ..config import SentientConfig
 from .api.profiles import create_profile_routes
 
 
-def create_app(config: Optional[dict] = None) -> Flask:
+def create_app(main_config: Optional[SentientConfig] = None) -> Flask:
     """
     Create and configure Flask application.
     
     Args:
-        config: Optional configuration dictionary
+        main_config: Optional SentientConfig instance. 
+                     If None, app uses basic defaults (not recommended for full server).
         
     Returns:
         Configured Flask application
     """
     app = Flask(__name__)
     
-    # Default configuration
-    app.config.update({
-        'SECRET_KEY': os.getenv('FLASK_SECRET_KEY', 'your-secret-key-here'),
-        'DEBUG': os.getenv('FLASK_DEBUG', 'false').lower() == 'true',
-    })
-    
-    # Apply custom config if provided
-    if config:
-        app.config.update(config)
-    
-    # Setup CORS
+    if main_config and main_config.web_server:
+        # Use settings from SentientConfig.web_server
+        app.config.update({
+            'SECRET_KEY': main_config.web_server.secret_key,
+            'DEBUG': main_config.web_server.debug,
+            # Add any other Flask specific app.config settings here
+            # e.g., 'SESSION_COOKIE_SECURE': not main_config.web_server.debug,
+        })
+        logger.info(f"Flask app configured from SentientConfig.web_server (Debug: {main_config.web_server.debug})")
+    else:
+        # Fallback to basic defaults if no config provided (e.g., for standalone app testing)
+        # This path should ideally not be hit when running the full SentientServer
+        app.config.update({
+            'SECRET_KEY': os.getenv('FLASK_SECRET_KEY', 'fallback-default-secret-key'),
+            'DEBUG': os.getenv('FLASK_DEBUG', 'false').lower() == 'true',
+        })
+        logger.warning("Flask app created with basic fallback defaults as SentientConfig was not provided to create_app.")
+
+    # Example: If CORS origins were part of WebServerConfig:
+    # cors_origins = main_config.web_server.cors_origins if main_config and main_config.web_server else ["http://localhost:3000", "http://127.0.0.1:3000"]
+    # For now, keeping CORS static as it was.
     CORS(app, origins=[
         "http://localhost:3000", 
         "http://127.0.0.1:3000"
@@ -49,16 +63,19 @@ def create_socketio(app: Flask) -> SocketIO:
     
     Args:
         app: Flask application instance
+        // main_config: Optional[SentientConfig] = None (if needed)
         
     Returns:
         Configured SocketIO instance
     """
+    # Example: if async_mode or other SocketIO params needed to be configurable via SentientConfig.web_server
+    # async_mode = main_config.web_server.socketio_async_mode if main_config and main_config.web_server else 'threading'
     socketio = SocketIO(
         app,
-        cors_allowed_origins="*",
-        async_mode='threading',
-        logger=True,
-        engineio_logger=True
+        cors_allowed_origins="*", # This could also come from main_config.web_server.cors_allowed_origins
+        async_mode='threading', # Example: could be configurable
+        logger=True,            # Example: could be configurable via main_config.logging or main_config.web_server
+        engineio_logger=True    # Example: could be configurable
     )
     
     return socketio

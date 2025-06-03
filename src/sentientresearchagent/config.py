@@ -12,7 +12,7 @@ import os
 import yaml
 from pathlib import Path
 from typing import Optional, Dict, Any, List, Union
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, validator, root_validator
 from loguru import logger
 import logging
 
@@ -57,6 +57,15 @@ class CacheConfig(BaseModel):
         if v.lower() not in valid_types:
             raise ValueError(f'Cache type must be one of: {valid_types}')
         return v.lower()
+
+    @root_validator(pre=False, skip_on_failure=True)
+    def check_redis_config(cls, values):
+        enabled = values.get('enabled')
+        cache_type = values.get('cache_type')
+        redis_url = values.get('redis_url')
+        if enabled and cache_type == "redis" and not redis_url:
+            raise ValueError("Redis cache enabled but no redis_url provided")
+        return values
 
 class ExecutionConfig(BaseModel):
     """Configuration for task execution."""
@@ -112,6 +121,14 @@ class ExecutionConfig(BaseModel):
         if v and not values.get('enable_hitl', True):
             logger.info("hitl_root_plan_only disabled due to master enable_hitl=False")
             return False  # Auto-disable instead of just warning
+        return v
+
+    @validator('rate_limit_rpm')
+    def validate_rate_limit_rpm(cls, v):
+        if v > 100:
+            logger.warning(f"High rate limit ({v} RPM) may cause API errors or rate limiting from providers.")
+        if v < 1:
+            raise ValueError("rate_limit_rpm must be at least 1.")
         return v
 
 class AgentConfig(BaseModel):

@@ -6,10 +6,12 @@ Contains the main server class and factory functions.
 
 from loguru import logger
 import os
+from typing import Optional
 
 from .app import create_app, create_socketio, register_routes
 from .services import SystemManager, ProjectService, ExecutionService
 from .utils import BroadcastManager
+from ..config import SentientConfig
 
 
 class SentientServer:
@@ -156,12 +158,12 @@ class SentientServer:
             traceback.print_exc()
 
 
-def create_server(config: dict = None) -> SentientServer:
+def create_server(config: Optional[SentientConfig] = None) -> SentientServer:
     """
     Factory function to create a server instance.
     
     Args:
-        config: Optional configuration dictionary
+        config: Optional SentientConfig instance. If None, it will be auto-loaded.
         
     Returns:
         SentientServer instance
@@ -170,11 +172,17 @@ def create_server(config: dict = None) -> SentientServer:
 
 
 # For backward compatibility with the original server
-def main():
-    """Main entry point for the server."""
-    server = create_server()
-    server.run()
+# This main() function now also benefits from the auto-loaded SentientConfig
+# DEPRECATED: Consider removing if direct module execution is not the primary way to start.
+# The __main__.py in the server package or visualization_server.py are preferred entry points.
+# def main():
+# """Main entry point for the server."""
+# server = create_server() 
+# server.run() 
 
 
-if __name__ == '__main__':
-    main() 
+# if __name__ == '__main__':
+# # This allows running the server module directly.
+# # Example: python -m src.sentientresearchagent.server
+# # (Assuming __main__.py in the server package calls this main function or similar)
+# main() 
