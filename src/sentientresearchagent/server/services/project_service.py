@@ -589,27 +589,73 @@ class ProjectService:
                 logger.warning("🚨 System not fully ready for execution, but proceeding...")
                 # Don't block execution, just warn
             
-            # Load the project if not already loaded
+            project_data = self.get_project(project_id)
+            if not project_data or not project_data.get("project"):
+                return {
+                    "success": False,
+                    "error": f"Project {project_id} not found."
+                }
+            
+            project_goal = project_data["project"].get("goal")
+            max_steps = project_data["project"].get("max_steps", self.system_manager.config.execution.max_execution_steps)
+
+            if not project_goal:
+                 return {
+                    "success": False,
+                    "error": f"Project {project_id} has no goal defined."
+                }
+
+            # Load the project if not already loaded (ensures HAF components are ready)
             if not self.load_project_into_graph(project_id):
                 return {
                     "success": False,
-                    "error": f"Failed to load project {project_id}"
+                    "error": f"Failed to load project {project_id} into graph."
                 }
             
-            # Switch to this project
-            if not self.switch_project(project_id):
+            # Switch to this project if not current (ensures display consistency)
+            if self.project_manager.get_current_project_id() != project_id:
+                if not self.switch_project(project_id):
+                    return {
+                        "success": False,
+                        "error": f"Failed to switch to project {project_id}"
+                    }
+            
+            # Start execution using the ExecutionService from SystemManager
+            if not hasattr(self.system_manager, 'execution_service') or not self.system_manager.execution_service:
+                logger.error("ExecutionService not found on SystemManager.")
                 return {
                     "success": False,
-                    "error": f"Failed to switch to project {project_id}"
+                    "error": "ExecutionService not available."
                 }
-            
-            # Start execution using the execution service
-            execution_result = self.execution_service.start_execution()
+
+            # Determine if a custom config is being used for this project
+            custom_config_for_project = self.project_configs.get(project_id)
+
+            if custom_config_for_project:
+                logger.info(f"Starting configured execution for project {project_id} via ProjectService.")
+                # Ensure custom_config_for_project is a SentientConfig instance
+                from ...config import SentientConfig
+                if not isinstance(custom_config_for_project, SentientConfig):
+                    logger.warning(f"Custom config for project {project_id} is not a SentientConfig instance. Attempting to use as is.")
+                
+                success = self.system_manager.execution_service.start_configured_project_execution(
+                    project_id=project_id,
+                    goal=project_goal,
+                    max_steps=max_steps,
+                    config=custom_config_for_project 
+                )
+            else:
+                logger.info(f"Starting standard execution for project {project_id} via ProjectService.")
+                success = self.system_manager.execution_service.start_project_execution(
+                    project_id=project_id,
+                    goal=project_goal,
+                    max_steps=max_steps
+                )
             
             return {
-                "success": True,
+                "success": success,
                 "project_id": project_id,
-                "execution_status": execution_result
+                "message": "Execution started." if success else "Failed to start execution."
             }
             
         except Exception as e:
