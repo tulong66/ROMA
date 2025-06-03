@@ -8,7 +8,7 @@ import functools
 from typing import Any, Optional, Dict, Callable, Union
 from loguru import logger
 
-from sentientresearchagent.cache.cache_manager import get_cache_manager
+from sentientresearchagent.core.cache.cache_manager import get_cache_manager
 
 def cache_result(
     namespace: str,

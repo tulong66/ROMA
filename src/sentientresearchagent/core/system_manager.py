@@ -12,7 +12,7 @@ from loguru import logger
 
 from ..config import SentientConfig
 from ..config import auto_load_config, validate_config
-from ..cache.cache_manager import init_cache_manager
+from .cache.cache_manager import init_cache_manager
 from .error_handler import ErrorHandler, set_error_handler
 from ..hierarchical_agent_framework.graph.task_graph import TaskGraph
 from ..hierarchical_agent_framework.context.knowledge_store import KnowledgeStore
