@@ -1,15 +1,16 @@
-
 """
 Broadcasting Utilities
 
 Handles real-time updates and broadcasting to WebSocket clients.
 """
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, TYPE_CHECKING
 import traceback
 from loguru import logger
 from datetime import datetime
 
+if TYPE_CHECKING:
+    from ...core.system_manager import SystemManager
 
 class BroadcastManager:
     """

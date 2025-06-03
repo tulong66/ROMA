@@ -1,8 +1,9 @@
 import uuid
-from typing import Optional, Any, List, Dict
+from typing import Optional, Any, List, Dict, Union, Callable, TYPE_CHECKING
 from pydantic import BaseModel, Field
 from datetime import datetime
 from loguru import logger
+from enum import Enum
 
 from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models import ReplanRequestDetails
 # Import from our consolidated types module
@@ -10,7 +11,10 @@ from sentientresearchagent.hierarchical_agent_framework.types import (
     TaskStatus, NodeType, TaskType, safe_task_status
 )
 from sentientresearchagent.exceptions import InvalidTaskStateError, TaskError
-from sentientresearchagent.error_handler import safe_execute
+from sentientresearchagent.core.error_handler import safe_execute
+
+if TYPE_CHECKING:
+    from ...core.system_manager import SystemManager
 
 class TaskNode(BaseModel):
     """Represents a single task unit in the hierarchy."""

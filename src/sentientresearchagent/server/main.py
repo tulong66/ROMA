@@ -9,7 +9,8 @@ import os
 from typing import Optional
 
 from .app import create_app, create_socketio, register_routes
-from .services import SystemManager, ProjectService, ExecutionService
+from .services import ProjectService, ExecutionService
+from ..core.system_manager import SystemManager
 from .utils import BroadcastManager
 from ..config import SentientConfig
 from ..config_utils import auto_load_config

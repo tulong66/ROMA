@@ -9,26 +9,24 @@ import traceback
 import os
 from typing import Dict, Any, Optional, List, TYPE_CHECKING
 from loguru import logger
-import time
 
-from ...config import SentientConfig
-from ...config_utils import auto_load_config, validate_config
-from ...cache.cache_manager import init_cache_manager
-from ...error_handler import ErrorHandler, set_error_handler
-from ...exceptions import handle_exception
-from ...hierarchical_agent_framework.graph.task_graph import TaskGraph
-from ...hierarchical_agent_framework.context.knowledge_store import KnowledgeStore
-from ...hierarchical_agent_framework.graph.state_manager import StateManager
-from ...hierarchical_agent_framework.node.hitl_coordinator import HITLCoordinator
-from ...hierarchical_agent_framework.node.node_processor import NodeProcessor
-from ...hierarchical_agent_framework.graph.execution_engine import ExecutionEngine
-from ...framework_entry import create_node_processor_config_from_main_config
-from ...hierarchical_agent_framework.agent_configs.profile_loader import ProfileLoader
-from ...hierarchical_agent_framework.agent_configs.registry_integration import validate_profile
+from ..config import SentientConfig
+from ..config_utils import auto_load_config, validate_config
+from ..cache.cache_manager import init_cache_manager
+from .error_handler import ErrorHandler, set_error_handler
+from ..hierarchical_agent_framework.graph.task_graph import TaskGraph
+from ..hierarchical_agent_framework.context.knowledge_store import KnowledgeStore
+from ..hierarchical_agent_framework.graph.state_manager import StateManager
+from ..hierarchical_agent_framework.node.hitl_coordinator import HITLCoordinator
+from ..hierarchical_agent_framework.node.node_processor import NodeProcessor
+from ..hierarchical_agent_framework.graph.execution_engine import ExecutionEngine
+from ..framework_entry import create_node_processor_config_from_main_config
+from ..hierarchical_agent_framework.agent_configs.profile_loader import ProfileLoader
+from ..hierarchical_agent_framework.agent_configs.registry_integration import validate_profile
 
 # Import WebSocket HITL utils with error handling
 try:
-    from ...hierarchical_agent_framework.utils.websocket_hitl_utils import (
+    from ..hierarchical_agent_framework.utils.websocket_hitl_utils import (
         set_socketio_instance, 
         set_hitl_timeout, 
         is_websocket_hitl_ready,
@@ -60,7 +58,7 @@ except ImportError as e:
         }
 
 if TYPE_CHECKING: # For type hints only
-    from ...framework_entry import SimpleSentientAgent
+    from ..framework_entry import SimpleSentientAgent
 
 class SystemManager:
     """
@@ -133,8 +131,8 @@ class SystemManager:
             
             # 5. Initialize agent registry (foundational, profiles will select from this)
             logger.info("🤖 SystemManager: Initializing agent registry...")
-            from ...hierarchical_agent_framework import agents
-            from ...hierarchical_agent_framework.agents.registry import AGENT_REGISTRY, NAMED_AGENTS
+            from ..hierarchical_agent_framework import agents
+            from ..hierarchical_agent_framework.agents.registry import AGENT_REGISTRY, NAMED_AGENTS
             
             logger.info("🔄 SystemManager: Integrating YAML-based agents...")
             try:
@@ -336,7 +334,7 @@ class SystemManager:
             self.initialize_with_profile()
 
         # MODIFIED: Local import for SimpleSentientAgent instantiation
-        from ...framework_entry import SimpleSentientAgent as ConcreteSimpleSentientAgent
+        from ..framework_entry import SimpleSentientAgent as ConcreteSimpleSentientAgent
 
         if self.simple_agent_instance is None:
             logger.info("SystemManager: Creating new SimpleSentientAgent instance...")

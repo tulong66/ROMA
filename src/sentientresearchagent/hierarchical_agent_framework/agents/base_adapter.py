@@ -20,7 +20,7 @@ from sentientresearchagent.exceptions import (
     AgentExecutionError, AgentTimeoutError, AgentRateLimitError,
     handle_exception, create_error_context
 )
-from sentientresearchagent.error_handler import handle_agent_errors, ErrorRecovery
+from sentientresearchagent.core.error_handler import handle_agent_errors, ErrorRecovery
 from sentientresearchagent.cache.decorators import cache_agent_response, cache_get, cache_set
 
 InputType = TypeVar('InputType')

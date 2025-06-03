@@ -19,7 +19,7 @@ from loguru import logger
 if TYPE_CHECKING:
     from .config import SentientConfig
     from .hierarchical_agent_framework.node.node_configs import NodeProcessorConfig
-    from .server.services.system_manager import SystemManager # This is fine for type hints
+    from .core.system_manager import SystemManager # This is fine for type hints
     # ADD ExecutionEngine and other problematic imports here for type hinting
     from .hierarchical_agent_framework.graph.execution_engine import ExecutionEngine
     from .hierarchical_agent_framework.node.node_processor import NodeProcessor
@@ -38,12 +38,7 @@ try:
 
     # Configuration system is fine
     from .config import load_config, SentientConfig
-    from .config_utils import auto_load_config, validate_config, find_config_file
-
-    # Supporting systems (if they don't import ExecutionEngine/NodeProcessor directly at top level)
-    from .cache.cache_manager import init_cache_manager
-    from .error_handler import get_error_handler, set_error_handler, ErrorHandler
-    from .exceptions import SentientError, handle_exception
+    from .config_utils import find_config_file
 
     FRAMEWORK_AVAILABLE = True
     
@@ -193,7 +188,7 @@ class SentientAgent:
             raise ImportError("Framework components not available. Please check installation.")
         
         # MODIFIED: Import SystemManager locally within the factory method
-        from .server.services.system_manager import SystemManager as ConcreteSystemManager
+        from .core.system_manager import SystemManager as ConcreteSystemManager
 
         config = load_unified_config(config_path)
         # ... (apply config_kwargs and HITL overrides to config object) ...
@@ -539,7 +534,7 @@ class ProfiledSentientAgent(SentientAgent): # MODIFIED: Inherits from refactored
         logger.info(f"🤖 Creating ProfiledSentientAgent with profile: {profile_name}")
         
         # MODIFIED: Import SystemManager locally
-        from .server.services.system_manager import SystemManager as ConcreteSystemManager
+        from .core.system_manager import SystemManager as ConcreteSystemManager
         
         config = load_unified_config(config_path)
         # ... (apply config overrides from kwargs and specific args) ...

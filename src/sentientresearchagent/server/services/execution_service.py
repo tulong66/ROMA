@@ -8,13 +8,15 @@ import asyncio
 import threading
 import time
 import traceback
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, TYPE_CHECKING
 from loguru import logger
 from datetime import datetime
 
 from ...framework_entry import create_node_processor_config_from_main_config
 from ...config import SentientConfig
 
+if TYPE_CHECKING:
+    from ...server.services.system_manager import SystemManager
 
 class RealtimeExecutionWrapper:
     """

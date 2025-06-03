@@ -4,12 +4,11 @@ Flask Application Factory
 Creates and configures the Flask app and SocketIO instance.
 """
 
-from flask import Flask
+from flask import Flask, current_app
 from flask_cors import CORS
 from flask_socketio import SocketIO
 from typing import Optional
 import os
-
 from loguru import logger
 from ..config import SentientConfig
 from .api.profiles import create_profile_routes

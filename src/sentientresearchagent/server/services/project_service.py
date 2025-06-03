@@ -5,7 +5,7 @@ Handles project management logic including project graphs, state management,
 and synchronization with the display.
 """
 
-from typing import Dict, Any, Optional, Callable, List
+from typing import Dict, Any, Optional, Callable, List, TYPE_CHECKING
 import traceback
 from loguru import logger
 from datetime import datetime
@@ -13,7 +13,7 @@ import json
 import os
 from pathlib import Path
 
-from ...project_manager import ProjectManager
+from ...core.project_manager import ProjectManager
 from ...framework_entry import create_node_processor_config_from_main_config
 from ...hierarchical_agent_framework.graph.task_graph import TaskGraph
 from ...hierarchical_agent_framework.graph.state_manager import StateManager
@@ -23,6 +23,8 @@ from ...hierarchical_agent_framework.node.hitl_coordinator import HITLCoordinato
 from ...hierarchical_agent_framework.node.task_node import TaskNode
 from ...hierarchical_agent_framework.types import TaskStatus, TaskType, NodeType
 
+if TYPE_CHECKING:
+    from ...core.system_manager import SystemManager
 
 class ProjectService:
     """
@@ -35,7 +37,7 @@ class ProjectService:
     - Real-time updates and callbacks
     """
     
-    def __init__(self, system_manager, broadcast_callback: Optional[Callable] = None):
+    def __init__(self, system_manager: "SystemManager", broadcast_callback: Optional[Callable] = None):
         """
         Initialize ProjectService.
         
