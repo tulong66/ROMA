@@ -3,8 +3,8 @@ from loguru import logger
 # Import the agent instance
 from .definitions.utility_agents import context_summarizer_agno_agent
 
-MAX_SUMMARY_LENGTH_FALLBACK_CHARS = 800 # Character limit fallback
-TARGET_WORD_COUNT_FOR_CTX_SUMMARIES = 300 # Default target for LLM summary
+MAX_SUMMARY_LENGTH_FALLBACK_CHARS = 4200  # ~600 words * 7 chars/word average
+TARGET_WORD_COUNT_FOR_CTX_SUMMARIES = 600  # Middle of your 500-700 range
 
 def get_context_summary(content: Any, target_word_count: int = TARGET_WORD_COUNT_FOR_CTX_SUMMARIES) -> str:
     if not content:
@@ -60,7 +60,7 @@ def get_context_summary(content: Any, target_word_count: int = TARGET_WORD_COUNT
         logger.info(f"ContextSummarizer: Generated summary (length {len(summary)}): '{summary[:100]}...'")
 
         # Enforce hard character limit if LLM summary is too verbose, even after word count instruction.
-        if len(summary) > MAX_SUMMARY_LENGTH_FALLBACK_CHARS * 1.2: # Allow some leeway
+        if len(summary) > MAX_SUMMARY_LENGTH_FALLBACK_CHARS * 1.2: # Allow some leeway (5040 chars)
              logger.warning(f"ContextSummarizer: LLM summary exceeded fallback char limit ({len(summary)} > {MAX_SUMMARY_LENGTH_FALLBACK_CHARS * 1.2}). Truncating.")
              summary = summary[:MAX_SUMMARY_LENGTH_FALLBACK_CHARS] + "..."
         return summary

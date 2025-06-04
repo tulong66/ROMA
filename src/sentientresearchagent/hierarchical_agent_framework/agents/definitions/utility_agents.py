@@ -11,9 +11,9 @@ LLM_MODEL_ID_SUMMARIZER = "openrouter/anthropic/claude-3-7-sonnet"
 # The actual content to be summarized will be passed in the .run() method.
 SUMMARIZER_SYSTEM_MESSAGE = """You are an expert summarization assistant. \
 Your task is to summarize the provided text content that you will receive.
-The summary MUST be concise and under approximately 150 words.
+The summary should be comprehensive and between 500-700 words.
 It should capture the most critical information relevant for an AI agent that will use this summary for planning its next steps.
-Focus on key outcomes, decisions, facts, and figures. Avoid conversational fluff.
+Focus on key outcomes, decisions, facts, and figures. Include important details while avoiding conversational fluff.
 Output only the summarized text. Do NOT include any preambles, apologies, or self-references like 'Here is the summary:'. Just the summary text itself.
 """
 
