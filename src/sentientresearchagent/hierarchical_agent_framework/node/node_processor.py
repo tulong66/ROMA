@@ -1,4 +1,4 @@
-from typing import List, Optional, Any, Dict
+from typing import List, Optional, Any, Dict, TYPE_CHECKING
 from pydantic import BaseModel
 from loguru import logger
 
@@ -6,7 +6,6 @@ from sentientresearchagent.hierarchical_agent_framework.node.hitl_coordinator im
 from sentientresearchagent.hierarchical_agent_framework.node.inode_handler import INodeHandler
 from sentientresearchagent.hierarchical_agent_framework.node.node_handlers import AggregatingNodeHandler, NeedsReplanNodeHandler, ReadyExecuteHandler, ReadyNodeHandler, ReadyPlanHandler
 from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode, TaskStatus, NodeType, TaskType
-from sentientresearchagent.hierarchical_agent_framework.graph.task_graph import TaskGraph
 from sentientresearchagent.hierarchical_agent_framework.context.knowledge_store import KnowledgeStore
 from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models import (
     AgentTaskInput, PlanOutput, AtomizerOutput, ContextItem,
@@ -28,6 +27,8 @@ from .node_atomizer_utils import NodeAtomizer
 from .node_configs import NodeProcessorConfig
 from sentientresearchagent.config import SentientConfig
 
+if TYPE_CHECKING:
+    from sentientresearchagent.hierarchical_agent_framework.graph.task_graph import TaskGraph
 
 
 MAX_REPLAN_ATTEMPTS = 1
@@ -37,7 +38,7 @@ MAX_REPLAN_ATTEMPTS = 1
 class ProcessorContext:
     """Holds shared resources and configurations for node handlers."""
     def __init__(self,
-                 task_graph: TaskGraph,
+                 task_graph: "TaskGraph",
                  knowledge_store: KnowledgeStore,
                  config: NodeProcessorConfig,
                  hitl_coordinator: HITLCoordinator,
@@ -60,7 +61,7 @@ class NodeProcessor:
     """
 
     def __init__(self,
-                 task_graph: TaskGraph,
+                 task_graph: "TaskGraph",
                  knowledge_store: KnowledgeStore,
                  config: Optional[SentientConfig] = None,
                  node_processor_config: Optional[NodeProcessorConfig] = None,
@@ -118,7 +119,7 @@ class NodeProcessor:
         logger.info(f"NodeProcessor initialized with handlers for statuses: {list(self.handler_strategies.keys())}")
 
 
-    async def process_node(self, node: TaskNode, task_graph: TaskGraph, knowledge_store: KnowledgeStore):
+    async def process_node(self, node: TaskNode, task_graph: "TaskGraph", knowledge_store: KnowledgeStore):
         """
         Processes a node based on its current status using a strategy pattern.
         """

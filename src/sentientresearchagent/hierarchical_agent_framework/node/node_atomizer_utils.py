@@ -1,8 +1,7 @@
-from typing import Optional, Callable, Any, Dict
+from typing import Optional, Callable, Any, Dict, TYPE_CHECKING
 from loguru import logger
 
 from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode, TaskType, NodeType, TaskStatus
-from sentientresearchagent.hierarchical_agent_framework.graph.task_graph import TaskGraph
 from sentientresearchagent.hierarchical_agent_framework.context.knowledge_store import KnowledgeStore
 from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models import AtomizerOutput, AgentTaskInput
 from sentientresearchagent.hierarchical_agent_framework.agents.registry import get_agent_adapter
@@ -11,6 +10,8 @@ from sentientresearchagent.hierarchical_agent_framework.agents.utils import get_
 from .hitl_coordinator import HITLCoordinator
 from .inode_handler import ProcessorContext
 
+if TYPE_CHECKING:
+    from sentientresearchagent.hierarchical_agent_framework.graph.task_graph import TaskGraph
 
 class NodeAtomizer:
     """
@@ -33,8 +34,8 @@ class NodeAtomizer:
         """
         logger.info(f"    🐛 DEBUG: atomize_node called for {node.task_id}")
         
-        knowledge_store = context.knowledge_store 
-        task_graph = context.task_graph       
+        knowledge_store: KnowledgeStore = context.knowledge_store
+        task_graph: 'TaskGraph' = context.task_graph
         blueprint_name_log = context.current_agent_blueprint.name if context.current_agent_blueprint else "N/A"
         
         # Preserve the node's agent_name as it was upon entering this atomizer step

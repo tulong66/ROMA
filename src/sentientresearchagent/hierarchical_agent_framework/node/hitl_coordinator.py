@@ -1,18 +1,20 @@
-from typing import Optional, Any, Dict, Union
+from typing import Optional, Any, Dict, Union, TYPE_CHECKING
 from loguru import logger
 
-from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode, TaskStatus
+from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode
 from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models import (
     PlannerInput, PlanOutput, AgentTaskInput, PlanModifierInput
 )
 from .node_configs import NodeProcessorConfig # For HITL feature flags
 from sentientresearchagent.hierarchical_agent_framework.utils.hitl_utils import request_human_review
 from sentientresearchagent.hierarchical_agent_framework.agents.utils import get_context_summary, TARGET_WORD_COUNT_FOR_CTX_SUMMARIES
-from sentientresearchagent.hierarchical_agent_framework.graph.task_graph import TaskGraph
 from sentientresearchagent.hierarchical_agent_framework.context.knowledge_store import KnowledgeStore
 from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskType # For type hinting
 
 from agno.exceptions import StopAgentRun
+
+if TYPE_CHECKING:
+    from sentientresearchagent.hierarchical_agent_framework.graph.task_graph import TaskGraph
 
 
 class HITLCoordinator:
@@ -220,9 +222,9 @@ class HITLCoordinator:
         )
 
     async def review_initial_project_goal(
-        self, 
-        root_node: TaskNode, 
-        task_graph: TaskGraph, # Needed to update overall_project_goal
+        self,
+        root_node: TaskNode,
+        task_graph: "TaskGraph",
         knowledge_store: KnowledgeStore # Needed to log node updates
     ) -> None:
         """

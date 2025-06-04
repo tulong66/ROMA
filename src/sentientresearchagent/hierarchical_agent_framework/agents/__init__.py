@@ -35,7 +35,7 @@ def integrate_yaml_agents_lazy():
         return None
 
 # Store the lazy loader for later use
-_yaml_integration_loader = integrate_yaml_agents_lazy
+# _yaml_integration_loader = integrate_yaml_agents_lazy # This line seems redundant if the function above is not renamed
 
 # Final check
 if not AGENT_REGISTRY and not NAMED_AGENTS:
@@ -43,3 +43,9 @@ if not AGENT_REGISTRY and not NAMED_AGENTS:
     logger.warning("The system might not find agents to process tasks.")
 else:
     logger.info("✅ Agent system initialization completed successfully")
+
+__all__ = [
+    "AGENT_REGISTRY",
+    "NAMED_AGENTS",
+    "integrate_yaml_agents_lazy",
+]

@@ -1,15 +1,18 @@
 from loguru import logger
+from typing import TYPE_CHECKING
 from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode, TaskType, NodeType
-from sentientresearchagent.hierarchical_agent_framework.graph.task_graph import TaskGraph
 from sentientresearchagent.hierarchical_agent_framework.context.knowledge_store import KnowledgeStore
 from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models import PlanOutput
+
+if TYPE_CHECKING:
+    from sentientresearchagent.hierarchical_agent_framework.graph.task_graph import TaskGraph
 
 class SubNodeCreator:
     """
     Responsible for creating sub-TaskNodes based on a plan and adding them
     to the TaskGraph and KnowledgeStore.
     """
-    def __init__(self, task_graph: TaskGraph, knowledge_store: KnowledgeStore):
+    def __init__(self, task_graph: "TaskGraph", knowledge_store: KnowledgeStore):
         self.task_graph = task_graph
         self.knowledge_store = knowledge_store
 
