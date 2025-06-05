@@ -312,54 +312,87 @@ class ReadyNodeHandler(INodeHandler):
         self.ready_execute_handler = ready_execute_handler
 
     async def handle(self, node: TaskNode, context: ProcessorContext) -> None:
-        logger.info(f"  ReadyNodeHandler: Handling READY node {node.task_id} (Original NodeType: {node.node_type}, Goal: '{node.goal[:30]}...')")
-        node.update_status(TaskStatus.RUNNING)
+        logger.info(f"  ReadyNodeHandler: Handling READY node {node.task_id} (Initial NodeType: {node.node_type}, Layer: {node.layer}, Goal: '{node.goal[:30]}...')")
+        node.update_status(TaskStatus.RUNNING) # Set status to RUNNING early
+
+        # Use the max_planning_layer from the NodeProcessorConfig
+        # This layer defines the threshold related to planning depth.
+        # A node at layer L, if it's a PLAN node, its children would be at L+1.
+        # ReadyPlanHandler converts a node at layer L to EXECUTE if (L+1) >= max_planning_layer.
+        # This means a node at (max_planning_layer - 1) will be converted to EXECUTE by ReadyPlanHandler.
+        max_planning_layer = context.config.max_planning_layer
         
-        # 🔥 DEBUG: Log the node type and its type
-        logger.info(f"    🐛 DEBUG: node.node_type = {node.node_type} (type: {type(node.node_type)})")
+        # --- Pre-Atomizer Depth Checks ---
+
+        # 1. If the node itself is at a layer where it absolutely cannot be a PLAN node
+        #    whose children would be within valid depth (i.e., node.layer >= max_planning_layer),
+        #    force it to EXECUTE and skip atomization.
+        #    (e.g. if max_planning_layer = 5, nodes at layer 5 or deeper are forced EXECUTE here)
+        if node.layer >= max_planning_layer:
+            logger.warning(
+                f"    ReadyNodeHandler: Node {node.task_id} (Layer {node.layer}) is at or exceeds max_planning_layer "
+                f"({max_planning_layer}). Forcing to EXECUTE. Atomizer is skipped."
+            )
+            node.node_type = NodeType.EXECUTE
+            await self.ready_execute_handler.handle(node, context)
+            return
+
+        # At this point: node.layer < max_planning_layer.
+        # This means the node *could* potentially be a PLAN node based on its own depth.
+
+        # --- Run Atomizer ---
+        # Atomizer runs for nodes that are not yet at the absolute max depth for planning.
+        logger.info(f"    ReadyNodeHandler: Node {node.task_id} (Layer {node.layer}, Initial NodeType: {node.node_type}) "
+                    f"proceeding to atomization (layer < {max_planning_layer}).")
         
-        # Check max planning depth BEFORE planning (move this check earlier)
-        if node.node_type == NodeType.PLAN and node.layer >= context.config.max_planning_layer:
-            logger.warning(f"    ReadyNodeHandler: Max planning depth ({context.config.max_planning_layer}) reached for {node.task_id} at layer {node.layer}. Forcing EXECUTE.")
-            node.node_type = NodeType.EXECUTE 
-            logger.info(f"    🐛 DEBUG: After max depth check, node.node_type = {node.node_type}")
-        
-        current_action_type = node.node_type
-        logger.info(f"    🐛 DEBUG: current_action_type = {current_action_type} (type: {type(current_action_type)})")
-        
-        # 🔥 DEBUG: Check if we're entering the PLAN branch
-        if current_action_type == NodeType.PLAN:
-            logger.info(f"    🐛 DEBUG: Entering PLAN branch for node {node.task_id}")
-            logger.info(f"    🐛 DEBUG: About to call atomize_node for {node.task_id}")
+        atomizer_decision_type: Optional[NodeType] = None
+        try:
+            atomizer_decision_type = await context.node_atomizer.atomize_node(node, context)
             
-            try:
-                # ATOMIZE FIRST to determine if it's actually atomic
-                atomized_action = await context.node_atomizer.atomize_node(node, context)
-                logger.info(f"    🐛 DEBUG: atomize_node returned: {atomized_action} (type: {type(atomized_action)})")
-                
-                if atomized_action == NodeType.EXECUTE:
-                    logger.info(f"    🐛 DEBUG: Atomizer determined {node.task_id} should EXECUTE - calling ready_execute_handler")
-                    await self.ready_execute_handler.handle(node, context)
-                elif atomized_action == NodeType.PLAN:
-                    logger.info(f"    🐛 DEBUG: Atomizer determined {node.task_id} should PLAN - calling ready_plan_handler")
-                    await self.ready_plan_handler.handle(node, context)
-                else:
-                    logger.error(f"    🐛 DEBUG: Unexpected atomized_action: {atomized_action} for node {node.task_id}")
-                    
-            except Exception as e:
-                logger.error(f"    🐛 DEBUG: Exception in atomize_node for {node.task_id}: {e}")
-                logger.error(f"    🐛 DEBUG: Exception type: {type(e)}")
-                import traceback
-                logger.error(f"    🐛 DEBUG: Traceback: {traceback.format_exc()}")
-                raise
-                
-        elif current_action_type == NodeType.EXECUTE:
-            logger.info(f"    🐛 DEBUG: Entering EXECUTE branch for node {node.task_id}")
+            if atomizer_decision_type is None:
+                raise ValueError("Atomizer returned None NodeType, which is unexpected.")
+            
+            logger.info(f"    ReadyNodeHandler: Atomizer for node {node.task_id} determined NodeType: {atomizer_decision_type}")
+
+        except Exception as e:
+            logger.exception(f"    ReadyNodeHandler: Error during atomization for node {node.task_id}. Marking FAILED.")
+            node.update_status(TaskStatus.FAILED, error_msg=f"Error during node atomization: {str(e)}")
+            return # Stop processing if atomization itself fails
+
+        # --- Post-Atomizer Decision Logic ---
+        final_node_type = atomizer_decision_type
+
+        # 2. Critical Depth Constraint for Atomizer's PLAN decision:
+        # If the atomizer suggests PLAN, but the node is at the layer (max_planning_layer - 1),
+        # it would be converted to EXECUTE by ReadyPlanHandler (because its children would be at max_planning_layer).
+        # This would lead to the infinite loop if ReadyPlanHandler sets status to READY.
+        # So, we override the atomizer's PLAN decision to EXECUTE here to prevent the loop.
+        # (e.g. if max_planning_layer = 5, nodes at layer 4 decided PLAN by atomizer are forced EXECUTE here)
+        if atomizer_decision_type == NodeType.PLAN and node.layer == (max_planning_layer - 1):
+            logger.warning(
+                f"    ReadyNodeHandler: Node {node.task_id} (Layer {node.layer}) determined PLAN by atomizer, "
+                f"but is at critical depth (max_planning_layer - 1 = {max_planning_layer - 1}). "
+                f"Overriding to EXECUTE to prevent planning loop."
+            )
+            final_node_type = NodeType.EXECUTE
+        
+        # --- Dispatch Based on Final Determined Node Type ---
+        node.node_type = final_node_type # Set the node's type definitively
+
+        if node.node_type == NodeType.PLAN:
+            # This implies node.layer < (max_planning_layer - 1).
+            # ReadyPlanHandler can create sub-nodes without this parent node being forced back into a loop-inducing state.
+            logger.info(f"    ReadyNodeHandler: Node {node.task_id} is NodeType.PLAN. Calling ready_plan_handler.")
+            await self.ready_plan_handler.handle(node, context)
+        elif node.node_type == NodeType.EXECUTE:
+            logger.info(f"    ReadyNodeHandler: Node {node.task_id} is NodeType.EXECUTE. Calling ready_execute_handler.")
             await self.ready_execute_handler.handle(node, context)
         else:
-            logger.error(f"    🐛 DEBUG: Entering ELSE branch for node {node.task_id}")
-            logger.error(f"Node {node.task_id}: Unhandled or invalid NodeType '{current_action_type}' (type: {type(current_action_type)}) in ReadyNodeHandler. Expected NodeType.PLAN or NodeType.EXECUTE.")
-            node.update_status(TaskStatus.FAILED, error_msg=f"Unhandled or invalid NodeType '{current_action_type}' for READY node.")
+            logger.error(
+                f"    ReadyNodeHandler: Node {node.task_id} has an unexpected final NodeType '{node.node_type}' "
+                f"after atomization and depth checks. Expected NodeType.PLAN or NodeType.EXECUTE."
+            )
+            node.update_status(TaskStatus.FAILED, error_msg=f"Node has unhandled final NodeType: {node.node_type}")
 
 
 class AggregatingNodeHandler(INodeHandler):
@@ -513,63 +546,23 @@ class NeedsReplanNodeHandler(INodeHandler):
                 )
                 logger.debug(f"        NeedsReplan: Fallback to 'plan' adapter. Blueprint lookup via get_planner_from_blueprint returned: {lookup_name_for_replan_op}")
                 
-                node.agent_name = lookup_name_for_replan_op
-                active_adapter = get_agent_adapter(node, action_verb=action_verb_to_use)
+                node.agent_name = lookup_name_for_replan_op # Set for planner lookup
+                active_adapter = get_agent_adapter(node, action_verb=action_verb_to_use) # Re-fetch adapter
+                
+                if not active_adapter and agent_name_at_entry and node.agent_name != agent_name_at_entry : 
+                    node.agent_name = agent_name_at_entry
+                    active_adapter = get_agent_adapter(node, action_verb=action_verb_to_use)
 
-            if not active_adapter and agent_name_at_entry and node.agent_name != agent_name_at_entry:
-                logger.debug(f"        NeedsReplan: Blueprint lookups failed. Trying original entry agent_name: {agent_name_at_entry} with verb {action_verb_to_use}")
-                node.agent_name = agent_name_at_entry
-                active_adapter = get_agent_adapter(node, action_verb=action_verb_to_use)
-                if action_verb_to_use == "modify_plan" and active_adapter: is_modifier_agent = True # Re-check if original was modifier
-
-            if not active_adapter:
-                final_tried_name = node.agent_name or lookup_name_for_replan_op or agent_name_at_entry
-                error_msg = f"No suitable PLAN or MODIFY_PLAN adapter found for node {node.task_id} for replanning (Effective Agent Name tried: {final_tried_name or 'None'})"
-                logger.error(error_msg)
-                node.update_status(TaskStatus.FAILED, error_msg=error_msg)
-                return
-
-            adapter_used_name = getattr(active_adapter, 'agent_name', type(active_adapter).__name__)
-            logger.info(f"    NeedsReplanNodeHandler: Using {'PlanModifier' if is_modifier_agent else 'Plan'} adapter '{adapter_used_name}' for replan of node {node.task_id}")
-
-            input_for_replan: Any
-            if is_modifier_agent:
-                original_plan = node.aux_data.get('original_plan_for_modification')
-                user_instructions = node.aux_data.get('user_modification_instructions')
-                if isinstance(original_plan, PlanOutput) and user_instructions:
-                    input_for_replan = PlanModifierInput(
-                        overall_objective=current_overall_objective, original_plan=original_plan,
-                        user_modification_instructions=user_instructions, replan_request_details=node.replan_details
-                    )
-                else: 
-                    logger.warning(f"Node {node.task_id}: Missing data for PlanModifier. Falling back to standard planner for replan.")
-                    action_verb_to_use = "plan"; is_modifier_agent = False
-                    # MODIFIED: Use get_planner_from_blueprint for consistent planner lookup
-                    lookup_name_for_replan_op = get_planner_from_blueprint(
-                        context.current_agent_blueprint,
-                        node.task_type,
-                        agent_name_at_entry,
-                        node
-                    )
-                    logger.debug(f"        NeedsReplan: Fallback to 'plan' adapter (due to missing PlanModifierInput). Blueprint lookup returned: {lookup_name_for_replan_op}")
-
-                    node.agent_name = lookup_name_for_replan_op # Set for planner lookup
-                    active_adapter = get_agent_adapter(node, action_verb=action_verb_to_use) # Re-fetch adapter
-                    
-                    if not active_adapter and agent_name_at_entry and node.agent_name != agent_name_at_entry : 
-                        node.agent_name = agent_name_at_entry
-                        active_adapter = get_agent_adapter(node, action_verb=action_verb_to_use)
-
-                    if not active_adapter: # Still no planner? Fail.
-                        node.update_status(TaskStatus.FAILED, error_msg="Fallback to Plan adapter failed during replan due to missing PlanModifier inputs & subsequent planner lookup failure.")
-                        return
-                    logger.info(f"    NeedsReplanNodeHandler: Switched to Plan adapter '{getattr(active_adapter, 'agent_name', type(active_adapter).__name__)}' for replan.")
-                    # Input for the standard planner
-                    input_for_replan = resolve_input_for_planner_agent(
-                        current_task_id=node.task_id, knowledge_store=context.knowledge_store,
-                        overall_objective=current_overall_objective, planning_depth=node.layer,
-                        replan_details=node.replan_details, global_constraints=getattr(context.task_graph, 'global_constraints', [])
-                    )
+                if not active_adapter: # Still no planner? Fail.
+                    node.update_status(TaskStatus.FAILED, error_msg="Fallback to Plan adapter failed during replan due to missing PlanModifier inputs & subsequent planner lookup failure.")
+                    return
+                logger.info(f"    NeedsReplanNodeHandler: Switched to Plan adapter '{getattr(active_adapter, 'agent_name', type(active_adapter).__name__)}' for replan.")
+                # Input for the standard planner
+                input_for_replan = resolve_input_for_planner_agent(
+                    current_task_id=node.task_id, knowledge_store=context.knowledge_store,
+                    overall_objective=current_overall_objective, planning_depth=node.layer,
+                    replan_details=node.replan_details, global_constraints=getattr(context.task_graph, 'global_constraints', [])
+                )
             else: 
                 # Input for the standard planner (initial case or after 'modify_plan' adapter wasn't found first)
                 input_for_replan = resolve_input_for_planner_agent(
