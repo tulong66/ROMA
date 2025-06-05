@@ -41,7 +41,7 @@ const ProjectInput: React.FC = () => {
       max_recursion_depth: 3,
       task_timeout_seconds: 300,
       enable_hitl: true,
-      hitl_root_plan_only: false,
+      hitl_root_plan_only: true,
       hitl_timeout_seconds: 300,
       hitl_after_plan_generation: true,
       hitl_after_modified_plan: true,

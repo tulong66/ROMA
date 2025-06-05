@@ -8,5 +8,5 @@ class NodeProcessorConfig(BaseModel):
     max_planning_layer: int = 5
     max_replan_attempts: int = 5
 
-    # NEW: Flag to indicate root plan only mode
-    hitl_root_plan_only: bool = False
+    # CHANGED: Default to root plan only mode
+    hitl_root_plan_only: bool = True

@@ -1,4 +1,4 @@
-from typing import Optional, Any, Dict, Union, TYPE_CHECKING
+from typing import Optional, Any, Dict, Union, TYPE_CHECKING, List
 from loguru import logger
 
 from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode
@@ -88,19 +88,30 @@ class HITLCoordinator:
     async def review_plan_generation(
         self, node: TaskNode, plan_output: PlanOutput, planner_input: Union[PlannerInput, PlanModifierInput], is_replan: bool = False
     ) -> Dict[str, Any]:
+        # COMPREHENSIVE DEBUG: Log all HITL decision factors
+        logger.debug(f"🐛 HITL DEBUG [review_plan_generation]: Node {node.task_id} (layer {node.layer})")
+        logger.debug(f"🐛 HITL DEBUG: config.hitl_root_plan_only = {getattr(self.config, 'hitl_root_plan_only', 'NOT_SET')}")
+        logger.debug(f"🐛 HITL DEBUG: config.enable_hitl_after_plan_generation = {self.config.enable_hitl_after_plan_generation}")
+        logger.debug(f"🐛 HITL DEBUG: is_replan = {is_replan}")
+        logger.debug(f"🐛 HITL DEBUG: node.layer = {node.layer}")
+        
         # NEW: Check for root plan only mode
         if hasattr(self.config, 'hitl_root_plan_only') and self.config.hitl_root_plan_only:
             # In root plan only mode, only review root node (layer 0) initial plans
             if not (self.config.enable_hitl_after_plan_generation and node.layer == 0 and not is_replan):
+                logger.debug(f"🐛 HITL DEBUG: SKIPPING plan generation HITL - root plan only mode (non-root or replan)")
                 return {"status": "approved", "message": "HITL for plan generation skipped - root plan only mode (non-root or replan)."}
-        else:
-            # Original logic - review based on configuration and layer
-            if not (self.config.enable_hitl_after_plan_generation and node.layer == 0):
-                return {"status": "approved", "message": "HITL for plan generation skipped by configuration or node layer."}
+        elif not self.config.enable_hitl_after_plan_generation:
+            logger.debug(f"🐛 HITL DEBUG: SKIPPING plan generation HITL - disabled by configuration")
+            return {"status": "approved", "message": "HITL for plan generation skipped by configuration."}
 
+        logger.debug(f"🐛 HITL DEBUG: PROCEEDING with plan generation HITL for {node.task_id}")
+        
+        # FIXED: Move all expensive operations AFTER the HITL checks
         hitl_context_msg = f"Review {'re-generated plan' if is_replan else 'initial plan'} for task '{node.task_id}'. Goal: {node.goal}"
         plan_for_review = plan_output.model_dump(mode='json') if plan_output else {}
         
+        # Prepare context items but don't summarize yet
         context_items_for_summary = []
         overall_objective_for_hitl = ""
         current_task_goal_for_hitl = ""
@@ -115,6 +126,7 @@ class HITLCoordinator:
             overall_objective_for_hitl = planner_input.overall_objective
             current_task_goal_for_hitl = node.goal 
 
+        # FIXED: Only do expensive context summarization when we know HITL will actually run
         hitl_data = {
             "task_goal": node.goal,
             "proposed_plan": plan_for_review,
@@ -124,6 +136,7 @@ class HITLCoordinator:
                 "context_summary": get_context_summary(context_items_for_summary, TARGET_WORD_COUNT_FOR_CTX_SUMMARIES)
             }
         }
+        
         if is_replan and isinstance(planner_input, PlanModifierInput):
             hitl_data["user_modification_instructions"] = planner_input.user_modification_instructions
             if node.replan_details:
@@ -138,10 +151,27 @@ class HITLCoordinator:
 
     async def review_atomizer_output(
         self, node: TaskNode, original_goal: str, updated_goal: str, 
-        is_atomic: bool, proposed_next_action: str, context_summary: str
+        is_atomic: bool, proposed_next_action: str, context_items: List = None
     ) -> Dict[str, Any]:
+        # COMPREHENSIVE DEBUG: Log all HITL decision factors
+        logger.debug(f"🐛 HITL DEBUG [review_atomizer_output]: Node {node.task_id} (layer {node.layer})")
+        logger.debug(f"🐛 HITL DEBUG: config.hitl_root_plan_only = {getattr(self.config, 'hitl_root_plan_only', 'NOT_SET')}")
+        logger.debug(f"🐛 HITL DEBUG: config.enable_hitl_after_atomizer = {self.config.enable_hitl_after_atomizer}")
+        
+        # FIXED: Add root plan only check for atomizer
+        if hasattr(self.config, 'hitl_root_plan_only') and self.config.hitl_root_plan_only:
+            if node.layer != 0:  # Only review root node (layer 0) atomizer decisions
+                logger.debug(f"🐛 HITL DEBUG: SKIPPING atomizer HITL - root plan only mode (non-root node)")
+                return {"status": "approved", "message": "HITL for atomizer output skipped (root plan only mode, non-root node)."}
+        
         if not self.config.enable_hitl_after_atomizer:
+            logger.debug(f"🐛 HITL DEBUG: SKIPPING atomizer HITL - disabled by configuration")
             return {"status": "approved", "message": "HITL for atomizer output skipped by configuration."}
+
+        logger.debug(f"🐛 HITL DEBUG: PROCEEDING with atomizer HITL for {node.task_id}")
+
+        # FIXED: Only do expensive context summarization when we know HITL will actually run
+        context_summary = get_context_summary(context_items or []) if context_items else "No context available"
 
         hitl_context_msg = (f"Review Atomizer output for task '{node.task_id}'. "
                             f"Original goal: '{original_goal[:100]}...'. "
@@ -158,10 +188,26 @@ class HITLCoordinator:
     async def review_before_execution(
         self, node: TaskNode, agent_task_input: AgentTaskInput
     ) -> Dict[str, Any]:
+        # COMPREHENSIVE DEBUG: Log all HITL decision factors
+        logger.debug(f"🐛 HITL DEBUG [review_before_execution]: Node {node.task_id} (layer {node.layer})")
+        logger.debug(f"🐛 HITL DEBUG: config.hitl_root_plan_only = {getattr(self.config, 'hitl_root_plan_only', 'NOT_SET')}")
+        logger.debug(f"🐛 HITL DEBUG: config.enable_hitl_before_execute = {self.config.enable_hitl_before_execute}")
+        
+        # FIXED: Add root plan only check for before execution
+        if hasattr(self.config, 'hitl_root_plan_only') and self.config.hitl_root_plan_only:
+            if node.layer != 0:  # Only review root node (layer 0) before execution
+                logger.debug(f"🐛 HITL DEBUG: SKIPPING before execution HITL - root plan only mode (non-root node)")
+                return {"status": "approved", "message": "HITL before execution skipped (root plan only mode, non-root node)."}
+        
         if not self.config.enable_hitl_before_execute:
+            logger.debug(f"🐛 HITL DEBUG: SKIPPING before execution HITL - disabled by configuration")
             return {"status": "approved", "message": "HITL before execution skipped by configuration."}
 
+        logger.debug(f"🐛 HITL DEBUG: PROCEEDING with before execution HITL for {node.task_id}")
+
         hitl_context_msg = f"Review task before execution: '{node.goal}'. Agent: {node.agent_name or 'Default Executor'}"
+        
+        # FIXED: Only do expensive context summarization after confirming HITL is enabled
         hitl_data = {
             "task_id": node.task_id,
             "goal": node.goal,
@@ -174,13 +220,23 @@ class HITLCoordinator:
     async def review_modified_plan(
         self, node: TaskNode, modified_plan: PlanOutput, replan_attempt_count: int
     ) -> Dict[str, Any]:
+        # COMPREHENSIVE DEBUG: Log all HITL decision factors
+        logger.debug(f"🐛 HITL DEBUG [review_modified_plan]: Node {node.task_id} (layer {node.layer})")
+        logger.debug(f"🐛 HITL DEBUG: config.hitl_root_plan_only = {getattr(self.config, 'hitl_root_plan_only', 'NOT_SET')}")
+        logger.debug(f"🐛 HITL DEBUG: config.enable_hitl_after_modified_plan = {self.config.enable_hitl_after_modified_plan}")
+        logger.debug(f"🐛 HITL DEBUG: replan_attempt_count = {replan_attempt_count}")
+        
         if not self.config.enable_hitl_after_modified_plan:
+            logger.debug(f"🐛 HITL DEBUG: SKIPPING modified plan HITL - disabled by configuration")
             return {"status": "approved", "message": "HITL for modified plan skipped by configuration."}
 
         # NEW: Check for root plan only mode (same as in review_plan_generation)
         if hasattr(self.config, 'hitl_root_plan_only') and self.config.hitl_root_plan_only:
             if node.layer != 0:  # Only review root node (layer 0) plans
+                logger.debug(f"🐛 HITL DEBUG: SKIPPING modified plan HITL - root plan only mode (non-root node)")
                 return {"status": "approved", "message": "HITL for modified plan skipped (root plan only mode, non-root node)."}
+
+        logger.debug(f"🐛 HITL DEBUG: PROCEEDING with modified plan HITL for {node.task_id}")
 
         checkpoint_name = f"PostModifiedPlanReview_Attempt_{replan_attempt_count}"
         hitl_context_msg = (

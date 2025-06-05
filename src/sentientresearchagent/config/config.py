@@ -80,8 +80,8 @@ class ExecutionConfig(BaseModel):
     enable_hitl: bool = True  # Master HITL switch
     hitl_timeout_seconds: float = 300.0  # 5 minutes
     
-    # NEW: Root plan only option - review only the initial high-level plan
-    hitl_root_plan_only: bool = False  # Only review root node's initial plan
+    # CHANGED: Default to root plan only - review only the initial high-level plan
+    hitl_root_plan_only: bool = True  # Only review root node's initial plan
     
     # Specific HITL Checkpoints (when enable_hitl is True and hitl_root_plan_only is False)
     hitl_after_plan_generation: bool = True   # Review plans after generation

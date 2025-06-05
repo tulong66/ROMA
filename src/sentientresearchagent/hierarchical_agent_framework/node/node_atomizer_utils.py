@@ -117,14 +117,22 @@ class NodeAtomizer:
                 
                 action_to_take = NodeType.EXECUTE if atomizer_output.is_atomic else NodeType.PLAN
                 logger.info(f"    Atomizer determined {node.task_id} as {action_to_take.name}.")
+                
+                # COMPREHENSIVE DEBUG: Log HITL decision factors before calling
+                logger.debug(f"🐛 ATOMIZER DEBUG: About to call HITL review for {node.task_id}")
+                logger.debug(f"🐛 ATOMIZER DEBUG: Node layer = {node.layer}")
+                logger.debug(f"🐛 ATOMIZER DEBUG: HITL coordinator config = {self.hitl_coordinator.config}")
+                logger.debug(f"🐛 ATOMIZER DEBUG: hitl_root_plan_only = {getattr(self.hitl_coordinator.config, 'hitl_root_plan_only', 'NOT_SET')}")
+                logger.debug(f"🐛 ATOMIZER DEBUG: enable_hitl_after_atomizer = {self.hitl_coordinator.config.enable_hitl_after_atomizer}")
+                
                 logger.info(f"    🐛 DEBUG: About to call HITL review")
 
                 hitl_outcome_atomizer = await self.hitl_coordinator.review_atomizer_output(
                     node=node, original_goal=original_goal_for_hitl,
-                    updated_goal=suggested_goal_for_hitl,  # Show what atomizer suggested, but don't apply it
+                    updated_goal=suggested_goal_for_hitl,
                     is_atomic=atomizer_output.is_atomic, 
                     proposed_next_action=action_to_take.value, 
-                    context_summary=get_context_summary(atomizer_input_model.relevant_context_items)
+                    context_items=atomizer_input_model.relevant_context_items  # Pass items, not summary
                 )
                 logger.info(f"    🐛 DEBUG: HITL review returned: {hitl_outcome_atomizer}")
                 
