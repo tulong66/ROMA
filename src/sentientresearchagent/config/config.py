@@ -145,10 +145,11 @@ class AgentConfig(BaseModel):
 class LoggingConfig(BaseModel):
     """Configuration for logging."""
     level: str = "INFO"
-    format: str = "<green>{time:HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
-    file_path: Optional[str] = "sentient_agent.log"
-    file_rotation: str = "1 day"
-    file_retention: str = "1 week"
+    # Much cleaner format - shorter timestamps, no module paths
+    format: str = "<green>{time:HH:mm:ss}</green> | <level>{level: <5}</level> | <level>{message}</level>"
+    file_path: Optional[str] = "sentient.log"  # Single log file
+    file_rotation: str = "10 MB"  # Rotate by size instead of time
+    file_retention: str = "3 files"  # Keep only 3 files
     enable_console: bool = True
     enable_file: bool = True
     
@@ -381,7 +382,7 @@ class SentientConfig(BaseModel):
         # Remove existing handlers
         logger.remove()
         
-        # Console handler
+        # Console handler with clean format
         if self.logging.enable_console:
             logger.add(
                 sink=lambda msg: print(msg, end=""),
@@ -390,13 +391,14 @@ class SentientConfig(BaseModel):
                 colorize=True
             )
         
-        # File handler
+        # File handler with clean format (no colors)
         if self.logging.enable_file and self.logging.file_path:
+            clean_format = (
+                "{time:HH:mm:ss} | {level: <5} | {message}"
+            )
             logger.add(
                 sink=self.logging.file_path,
-                format=self.logging.format.replace("<green>", "").replace("</green>", "")
-                      .replace("<level>", "").replace("</level>", "")
-                      .replace("<cyan>", "").replace("</cyan>", ""),
+                format=clean_format,
                 level=self.logging.level,
                 rotation=self.logging.file_rotation,
                 retention=self.logging.file_retention,
@@ -404,18 +406,6 @@ class SentientConfig(BaseModel):
             )
         
         logger.info(f"Logging configured: level={self.logging.level}, file={self.logging.file_path}")
-
-        # Check for clean logging environment variable
-        clean_logs = os.getenv('CLEAN_LOGS', 'false').lower() == 'true'
-        
-        if clean_logs:
-            # Ultra-clean format for development
-            formatter = logging.Formatter('%(levelname)s | %(message)s')
-        else:
-            # Keep the existing detailed format
-            formatter = logging.Formatter(
-                fmt='%(asctime)s | %(levelname)s | %(name)s:%(funcName)s:%(lineno)d - %(message)s'
-            )
 
 # Default configuration instance
 default_config = SentientConfig()

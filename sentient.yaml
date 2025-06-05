@@ -32,12 +32,12 @@ execution:
   hitl_after_atomizer: false
   hitl_before_execute: false
 
-# Logging (for debugging your complex agents)
+# Logging - Clean and readable
 logging:
-  level: "INFO"  # More detailed for sophisticated system
+  level: "INFO"
   enable_console: true
   enable_file: true
-  file_path: "research_agent.log"
+  file_path: "sentient.log"
 
 # Environment
 environment: "research"
