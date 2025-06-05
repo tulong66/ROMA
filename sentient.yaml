@@ -37,7 +37,9 @@ logging:
   level: "INFO"
   enable_console: true
   enable_file: true
-  file_path: "sentient.log"
+  file_path: "sentient.log"  # Single log file
+  file_rotation: "10 MB"     # Rotate by size
+  file_retention: 3          # Keep only 3 files (must be number, not string)
 
 # Environment
 environment: "research"

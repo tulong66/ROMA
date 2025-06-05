@@ -149,7 +149,7 @@ class LoggingConfig(BaseModel):
     format: str = "<green>{time:HH:mm:ss}</green> | <level>{level: <5}</level> | <level>{message}</level>"
     file_path: Optional[str] = "sentient.log"  # Single log file
     file_rotation: str = "10 MB"  # Rotate by size instead of time
-    file_retention: str = "3 files"  # Keep only 3 files
+    file_retention: int = 3  # Keep only 3 files (must be int, not string)
     enable_console: bool = True
     enable_file: bool = True
     
@@ -401,7 +401,7 @@ class SentientConfig(BaseModel):
                 format=clean_format,
                 level=self.logging.level,
                 rotation=self.logging.file_rotation,
-                retention=self.logging.file_retention,
+                retention=self.logging.file_retention,  # Now correctly an int
                 colorize=False
             )
         
