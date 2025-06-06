@@ -118,6 +118,12 @@ class CustomSearcherOutput(BaseModel):
         return self.output_text_with_citations
 
 
+class ExecutorOutput(BaseModel):
+    """A generic wrapper for any executor agent's output."""
+    result: Any = Field(..., description="The direct output from the executor agent (e.g., text, a Pydantic model like WebSearchResultsOutput).")
+    replan_request: Optional['ReplanRequestDetails'] = Field(None, description="If the agent determines the plan is flawed, it can request a replan by providing details here.")
+
+
 # --- New Planner Input Schemas (for the enhanced PLANNER_SYSTEM_MESSAGE) ---
 
 class ExecutionHistoryItem(BaseModel):
