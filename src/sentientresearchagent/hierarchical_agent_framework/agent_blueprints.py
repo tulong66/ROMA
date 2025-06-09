@@ -64,8 +64,40 @@ DEFAULT_DEEP_RESEARCH_BLUEPRINT = AgentBlueprint(
     default_node_agent_name_prefix="DeepResearch"
 )
 
+DEFAULT_GENERAL_AGENT_BLUEPRINT = AgentBlueprint(
+    name="GeneralAgent",
+    description="A general agent for solving complex tasks",
+    # Root-specific planner for initial task decomposition
+    root_planner_adapter_name="GeneralTaskSolver",
+    
+    # Task-specific planners for sub-tasks
+    planner_adapter_names={
+        TaskType.SEARCH: "CoreResearchPlanner",      # Specialized for search planning
+        TaskType.WRITE: "CoreResearchPlanner",       # Could be different if needed
+        TaskType.THINK: "CoreResearchPlanner",       # Could be different if needed
+    },
+    
+    # Task-specific executors
+    executor_adapter_names={
+        TaskType.SEARCH: "OpenAICustomSearcher",
+        TaskType.THINK: "SearchSynthesizer",
+        TaskType.WRITE: "BasicReportWriter",
+    },
+    
+    # Single agents for other actions
+    atomizer_adapter_name="DefaultAtomizer",
+    aggregator_adapter_name="DefaultAggregator",
+    plan_modifier_adapter_name="PlanModifier",
+    
+    # Fallbacks
+    default_planner_adapter_name="CoreResearchPlanner",
+    default_executor_adapter_name="SearchSynthesizer",
+    default_node_agent_name_prefix="GeneralTaskSolver"
+)
+
 AVAILABLE_AGENT_BLUEPRINTS: List[AgentBlueprint] = [
     DEFAULT_DEEP_RESEARCH_BLUEPRINT,
+    DEFAULT_GENERAL_AGENT_BLUEPRINT,
 ]
 
 def get_blueprint_by_name(name: str) -> Optional[AgentBlueprint]:

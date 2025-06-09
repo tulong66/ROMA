@@ -477,7 +477,10 @@ class SystemManager:
             current_profile = self.get_current_profile()
             
             if not current_profile and available_profile_names:
-                if "deep_research_agent" in available_profile_names:
+                # Prioritize general_agent for data analysis tasks
+                if "general_agent" in available_profile_names:
+                    current_profile = "general_agent"
+                elif "deep_research_agent" in available_profile_names:
                     current_profile = "deep_research_agent"
                 else:
                     current_profile = available_profile_names[0]

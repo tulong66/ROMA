@@ -13,6 +13,8 @@ import nest_asyncio
 
 from loguru import logger
 
+from .exceptions import SentientError
+
 # MODIFIED: SystemManager import is now ONLY under TYPE_CHECKING at the top level
 # from .server.services.system_manager import SystemManager # MOVED
 
@@ -27,15 +29,14 @@ if TYPE_CHECKING:
     from .hierarchical_agent_framework.graph.state_manager import StateManager
     from .hierarchical_agent_framework.context.knowledge_store import KnowledgeStore
     from .hierarchical_agent_framework.node.hitl_coordinator import HITLCoordinator
+    # ADD TaskNode here for type hinting
+    from .hierarchical_agent_framework.node.task_node import TaskNode
 
 try:
     # Reduce top-level imports that might cause cycles.
     # Only import things that are truly needed at module load time for definitions.
     # Components like ExecutionEngine, NodeProcessor will be imported locally in methods or type-hinted.
     
-    # These are likely okay as they are primarily data structures or less complex classes:
-    from .hierarchical_agent_framework.node.node_configs import NodeProcessorConfig # Already here
-
     # Configuration system is fine
     from .config import load_config, SentientConfig, find_config_file
 
@@ -89,6 +90,9 @@ def create_node_processor_config_from_main_config(main_config: "SentientConfig")
     """
     if not FRAMEWORK_AVAILABLE:
         raise ImportError("Framework components not available. Please install missing dependencies.")
+    
+    # MOVED: Import is now deferred to within the function.
+    from .hierarchical_agent_framework.node.node_configs import NodeProcessorConfig
     
     node_config = NodeProcessorConfig()
     

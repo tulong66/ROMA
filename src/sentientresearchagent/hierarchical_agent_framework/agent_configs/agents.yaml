@@ -86,6 +86,22 @@ agents:
       named_keys: ["DeepResearchPlanner"]
     enabled: true
 
+  - name: "GeneralTaskSolver"
+    type: "planner"
+    adapter_class: "PlannerAdapter"
+    description: "Master planner specialized in high-level research project decomposition and strategy"
+    model:
+      provider: "litellm"
+      model_id: "openrouter/anthropic/claude-sonnet-4"
+    prompt_source: "prompts.planner_prompts.GENERAL_TASK_SOLVER_SYSTEM_MESSAGE"
+    response_model: "PlanOutput"
+    registration:
+      action_keys:
+        - action_verb: "plan"
+          task_type: "WRITE"
+      named_keys: ["GeneralTaskSolver"]
+    enabled: true
+
   # =============================================================================
   # EXECUTOR AGENTS - Execute atomic tasks (search, write, think)
   # =============================================================================

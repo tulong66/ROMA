@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronDown, User, Settings, Cpu, AlertCircle, CheckCircle, Layers, Zap } from 'lucide-react';
+import { ChevronDown, User, Settings, Cpu, AlertCircle, CheckCircle, Layers, Zap, Loader2 } from 'lucide-react';
 
 interface Profile {
-  name: string;
+  name: string; // This is the display name from inside the file
+  filename?: string; // This is the actual filename used for API calls
   description: string;
   root_planner: string;
   default_planner: string;
@@ -15,6 +16,7 @@ interface Profile {
   validation_issues?: string[];
   recommended_for?: string[];
   is_valid: boolean;
+  is_current?: boolean;
 }
 
 interface ProjectProfileSelectorProps {
@@ -30,6 +32,7 @@ const ProjectProfileSelector: React.FC<ProjectProfileSelectorProps> = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isOpen, setIsOpen] = useState(false);
+  const [switching, setSwitching] = useState<string | null>(null);
 
   useEffect(() => {
     const loadProfiles = async () => {
@@ -45,9 +48,15 @@ const ProjectProfileSelector: React.FC<ProjectProfileSelectorProps> = ({
         const data = await response.json();
         console.log('✅ Parsed data:', data);
         
-        setProfiles(data.profiles || []);
+        // Map the profiles to include both display name and filename
+        const mappedProfiles = (data.profiles || []).map((profile: any) => ({
+          ...profile,
+          filename: getFilenameFromDisplayName(profile.name) // Map display name to filename
+        }));
         
-        // ✅ Auto-select the current profile from backend
+        setProfiles(mappedProfiles);
+        
+        // Auto-select the current profile from backend
         if (data.current_profile && (!currentProfile || currentProfile !== data.current_profile)) {
           console.log('🎯 Auto-selecting current profile:', data.current_profile);
           onProfileChange?.(data.current_profile);
@@ -61,9 +70,76 @@ const ProjectProfileSelector: React.FC<ProjectProfileSelectorProps> = ({
     };
 
     loadProfiles();
-  }, []); // Remove currentProfile dependency to avoid infinite loops
+  }, []);
 
-  const selectedProfileData = profiles.find(p => p.name === currentProfile);
+  // Helper function to map display names to filenames
+  const getFilenameFromDisplayName = (displayName: string): string => {
+    const nameMap: Record<string, string> = {
+      'DataAnalysisAgent': 'general_agent',
+      'DeepResearchAgent': 'deep_research_agent'
+    };
+    return nameMap[displayName] || displayName.toLowerCase().replace(/\s+/g, '_');
+  };
+
+  // Helper function to get the profile filename for API calls
+  const getProfileFilename = (profile: Profile): string => {
+    return profile.filename || getFilenameFromDisplayName(profile.name);
+  };
+
+  // Handle profile switching with backend API call
+  const handleProfileSwitch = async (profile: Profile) => {
+    const profileFilename = getProfileFilename(profile);
+    
+    if (profileFilename === currentProfile) {
+      setIsOpen(false);
+      return;
+    }
+
+    setSwitching(profile.name);
+    setError(null);
+
+    try {
+      console.log(`🔄 Switching to profile: ${profile.name} (filename: ${profileFilename})`);
+      
+      // Call the backend API using the filename, not the display name
+      const response = await fetch(`/api/profiles/${profileFilename}/switch`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        console.log(`✅ Successfully switched to profile: ${profile.name}`);
+        
+        // Update local state with the filename (what the backend uses)
+        onProfileChange(profileFilename);
+        
+        // Update the profiles list to reflect the change
+        setProfiles(prevProfiles => 
+          prevProfiles.map(p => ({
+            ...p,
+            is_current: getProfileFilename(p) === profileFilename
+          }))
+        );
+        
+        setIsOpen(false);
+      } else {
+        console.error(`❌ Failed to switch to profile: ${profile.name}`, result);
+        setError(result.error || `Failed to switch to ${profile.name}`);
+      }
+    } catch (error) {
+      console.error('❌ Profile switch error:', error);
+      setError(error instanceof Error ? error.message : 'Failed to switch profile');
+    } finally {
+      setSwitching(null);
+    }
+  };
+
+  // Find the selected profile by comparing filenames
+  const selectedProfileData = profiles.find(p => getProfileFilename(p) === currentProfile);
 
   if (loading) {
     return (
@@ -95,12 +171,16 @@ const ProjectProfileSelector: React.FC<ProjectProfileSelectorProps> = ({
           type="button"
           onClick={() => setIsOpen(!isOpen)}
           className="w-full flex items-center justify-between px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-white text-left focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          disabled={switching !== null}
         >
           <div className="flex items-center space-x-2">
             <User className="h-4 w-4 text-gray-500" />
             <span className="text-sm">
               {selectedProfileData?.name || 'Select Profile'}
             </span>
+            {switching && (
+              <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
+            )}
           </div>
           <ChevronDown className={`h-4 w-4 text-gray-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
         </button>
@@ -111,17 +191,20 @@ const ProjectProfileSelector: React.FC<ProjectProfileSelectorProps> = ({
               <button
                 key={profile.name}
                 type="button"
-                onClick={() => {
-                  onProfileChange(profile.name);
-                  setIsOpen(false);
-                }}
-                className={`w-full px-3 py-3 text-left hover:bg-gray-50 focus:outline-none focus:bg-gray-50 border-b border-gray-100 last:border-b-0 ${
-                  currentProfile === profile.name ? 'bg-blue-50' : ''
+                onClick={() => handleProfileSwitch(profile)}
+                disabled={switching !== null}
+                className={`w-full px-3 py-3 text-left hover:bg-gray-50 focus:outline-none focus:bg-gray-50 border-b border-gray-100 last:border-b-0 disabled:opacity-50 disabled:cursor-not-allowed ${
+                  getProfileFilename(profile) === currentProfile ? 'bg-blue-50' : ''
                 }`}
               >
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="font-medium text-sm">{profile.name}</span>
+                    <div className="flex items-center space-x-2">
+                      <span className="font-medium text-sm">{profile.name}</span>
+                      {switching === profile.name && (
+                        <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
+                      )}
+                    </div>
                     {profile.is_valid ? (
                       <CheckCircle className="h-4 w-4 text-green-500" />
                     ) : (
@@ -160,6 +243,16 @@ const ProjectProfileSelector: React.FC<ProjectProfileSelectorProps> = ({
           </div>
         )}
       </div>
+
+      {/* Show error message if profile switch failed */}
+      {error && (
+        <div className="mt-2 p-2 bg-red-50 rounded border border-red-200">
+          <div className="flex items-center space-x-1 text-red-700 text-xs">
+            <AlertCircle className="h-3 w-3" />
+            <span>{error}</span>
+          </div>
+        </div>
+      )}
 
       {selectedProfileData && (
         <div className="mt-3 p-3 bg-gray-50 rounded-md">
