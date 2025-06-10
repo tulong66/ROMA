@@ -488,6 +488,24 @@ class SentientAgent:
              return {"valid": False, "issues": ["Configuration not loaded"], "warnings": []}
         return validate_config(self.config) # validate_config is from config_utils
 
+    def close(self):
+        """
+        Cleanly shuts down the agent and its underlying components, releasing resources.
+        This should be called when the agent is no longer needed.
+        """
+        logger.info("Shutting down SentientAgent and its components...")
+        if self.system_manager:
+            self.system_manager.close()
+        logger.info("SentientAgent shutdown complete.")
+
+    async def __aenter__(self):
+        """Asynchronous context manager entry."""
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Asynchronous context manager exit."""
+        self.close()
+
 
 # SimpleSentientAgent alias is maintained for backward compatibility.
 # SystemManager.get_simple_agent() uses this.

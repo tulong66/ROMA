@@ -35,6 +35,8 @@ from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models 
 )
 from ..types import TaskType
 from sentientresearchagent.hierarchical_agent_framework.agents.base_adapter import BaseAdapter
+from sentientresearchagent.hierarchical_agent_framework.agents.registry import AgentRegistry
+from sentientresearchagent.hierarchical_agent_framework.agent_blueprints import AgentBlueprint
 
 
 class AgentFactory:
@@ -456,53 +458,65 @@ class AgentFactory:
         
         return created_agents
 
-    def validate_blueprint_agents(self, blueprint: 'AgentBlueprint') -> Dict[str, Any]:
+    def validate_blueprint_agents(self, blueprint: 'AgentBlueprint', agent_registry: AgentRegistry) -> Dict[str, Any]:
         """
-        Validate that all agents referenced in a blueprint exist in the registry.
+        Validate that all agents referenced in a blueprint exist in the given registry instance.
         
         Args:
-            blueprint: AgentBlueprint to validate
+            blueprint: AgentBlueprint to validate.
+            agent_registry: The AgentRegistry instance to check against.
             
         Returns:
-            Validation results
+            Validation results.
         """
-        from ..agents.registry import NAMED_AGENTS
-        
         validation = {
             "valid": True,
             "missing_agents": [],
-            "available_agents": list(NAMED_AGENTS.keys()),
+            "issues": [], # Added for consistency
+            "available_agents": list(agent_registry.get_all_named_agents().keys()),
             "blueprint_agents": []
         }
         
+        # Get all named agents from the instance
+        named_agents = agent_registry.get_all_named_agents()
+
         # Check planners
         for task_type, planner_name in blueprint.planner_adapter_names.items():
             validation["blueprint_agents"].append(f"Planner({task_type.value}): {planner_name}")
-            if planner_name not in NAMED_AGENTS:
+            if planner_name not in named_agents:
                 validation["missing_agents"].append(f"Planner: {planner_name}")
                 validation["valid"] = False
         
         # Check executors
         for task_type, executor_name in blueprint.executor_adapter_names.items():
             validation["blueprint_agents"].append(f"Executor({task_type.value}): {executor_name}")
-            if executor_name not in NAMED_AGENTS:
+            if executor_name not in named_agents:
                 validation["missing_agents"].append(f"Executor: {executor_name}")
                 validation["valid"] = False
         
         # Check other agents
         other_agents = [
+            ("Root Planner", blueprint.root_planner_adapter_name),
             ("Aggregator", blueprint.aggregator_adapter_name),
             ("Atomizer", blueprint.atomizer_adapter_name),
             ("PlanModifier", blueprint.plan_modifier_adapter_name),
+            ("Default Planner", blueprint.default_planner_adapter_name),
+            ("Default Executor", blueprint.default_executor_adapter_name),
         ]
         
         for agent_type, agent_name in other_agents:
             if agent_name:
                 validation["blueprint_agents"].append(f"{agent_type}: {agent_name}")
-                if agent_name not in NAMED_AGENTS:
+                if agent_name not in named_agents:
                     validation["missing_agents"].append(f"{agent_type}: {agent_name}")
                     validation["valid"] = False
         
+        if validation["missing_agents"]:
+            validation["issues"].extend([
+                f"Agent '{name}' referenced in blueprint '{blueprint.name}' is not registered."
+                for name in validation["missing_agents"]
+            ])
+
         return validation
 
 

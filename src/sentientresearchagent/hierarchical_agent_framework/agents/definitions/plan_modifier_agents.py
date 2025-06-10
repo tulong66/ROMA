@@ -24,7 +24,7 @@ except ImportError:
 
 PLAN_MODIFIER_AGENT_NAME = "PlanModifier_Agno"
 # Consider using a highly capable model for plan modification, as it's a complex reasoning task.
-PLAN_MODIFIER_MODEL_NAME = "openrouter/anthropic/claude-3-7-sonnet"
+PLAN_MODIFIER_MODEL_NAME = "openrouter/anthropic/claude-4-sonnet"
 
 # System prompt tailored for plan modification
 PLAN_MODIFIER_SYSTEM_PROMPT = """

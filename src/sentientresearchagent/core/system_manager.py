@@ -22,6 +22,7 @@ from ..hierarchical_agent_framework.node.node_processor import NodeProcessor
 from ..hierarchical_agent_framework.graph.execution_engine import ExecutionEngine
 from ..framework_entry import create_node_processor_config_from_main_config
 from ..hierarchical_agent_framework.agent_configs.profile_loader import ProfileLoader
+from ..hierarchical_agent_framework.agents.registry import AgentRegistry
 from ..hierarchical_agent_framework.agent_configs.registry_integration import validate_profile
 
 # Import WebSocket HITL utils with error handling
@@ -77,6 +78,9 @@ class SystemManager:
         else:
             self.config = config
         
+        # Create an isolated agent registry for this instance
+        self.agent_registry = AgentRegistry()
+        
         self.task_graph: Optional[TaskGraph] = None
         self.knowledge_store: Optional[KnowledgeStore] = None
         self.state_manager: Optional[StateManager] = None
@@ -130,13 +134,14 @@ class SystemManager:
             self.cache_manager = init_cache_manager(self.config.cache)
             
             # 5. Initialize agent registry (foundational, profiles will select from this)
+            # This now uses the instance-specific registry.
             logger.info("🤖 SystemManager: Initializing agent registry...")
             from ..hierarchical_agent_framework import agents
-            from ..hierarchical_agent_framework.agents.registry import AGENT_REGISTRY, NAMED_AGENTS
             
-            logger.info("🔄 SystemManager: Integrating YAML-based agents...")
+            logger.info("🔄 SystemManager: Integrating YAML-based agents into instance registry...")
             try:
-                yaml_integration_results = agents.integrate_yaml_agents_lazy()
+                # Pass the instance registry to be populated
+                yaml_integration_results = agents.integrate_yaml_agents_lazy(self.agent_registry)
                 if yaml_integration_results:
                     logger.info(f"✅ YAML Integration Results: {yaml_integration_results}")
                 else:
@@ -144,7 +149,10 @@ class SystemManager:
             except Exception as e:
                 logger.error(f"❌ SystemManager: YAML agent integration failed: {e}")
             
-            logger.info(f"✅ SystemManager: Agent registry loaded: {len(AGENT_REGISTRY)} adapters, {len(NAMED_AGENTS)} named agents")
+            # Log from the instance registry
+            num_adapters = len(self.agent_registry.get_all_registered_agents())
+            num_named_agents = len(self.agent_registry.get_all_named_agents())
+            logger.info(f"✅ SystemManager: Agent registry loaded: {num_adapters} adapters, {num_named_agents} named agents")
             
             # 6. Initialize HAF core components (these are generally profile-agnostic structurally)
             logger.info("🧠 SystemManager: Initializing HAF core components...")
@@ -190,7 +198,8 @@ class SystemManager:
             logger.info(f"Updated self.config.active_profile_name to '{profile_name}'.")
             
             # 3. Validate the profile integration (checks if agents in blueprint are registered)
-            profile_validation_result = validate_profile(profile_name) 
+            # Pass the instance-specific registry for validation
+            profile_validation_result = validate_profile(profile_name, self.agent_registry) 
             
             is_profile_valid = False
             validation_issues = []
@@ -240,6 +249,7 @@ class SystemManager:
             self.node_processor = NodeProcessor(
                 task_graph=self.task_graph,
                 knowledge_store=self.knowledge_store,
+                agent_registry=self.agent_registry, # Pass the registry instance
                 config=self.config, 
                 node_processor_config=node_processor_config, # This is NodeProcessorConfig
                 agent_blueprint=profile_blueprint 
@@ -439,7 +449,7 @@ class SystemManager:
         try:
             loader = ProfileLoader()
             blueprint = loader.load_profile(profile_name)
-            validation = validate_profile(profile_name)
+            validation = validate_profile(profile_name, self.agent_registry)
             
             return {
                 "name": blueprint.name,
@@ -518,7 +528,7 @@ class SystemManager:
         try:
             logger.info(f"🔄 Switching to profile: {profile_name}")
             
-            validation = validate_profile(profile_name)
+            validation = validate_profile(profile_name, self.agent_registry)
             
             if not validation.get("blueprint_valid", False):
                 return {

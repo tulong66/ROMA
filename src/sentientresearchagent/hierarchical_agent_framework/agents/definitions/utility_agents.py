@@ -5,7 +5,7 @@ from loguru import logger
 # Choose a model that's fast and good at summarization, potentially cheaper.
 # Example: "openrouter/anthropic/claude-3-haiku-20240307"
 # Example: "gpt-3.5-turbo" (via configured LiteLLM)
-LLM_MODEL_ID_SUMMARIZER = "openrouter/anthropic/claude-3-7-sonnet"
+LLM_MODEL_ID_SUMMARIZER = "openrouter/anthropic/claude-4-sonnet"
 
 # This system message guides the LLM's summarization style.
 # The actual content to be summarized will be passed in the .run() method.

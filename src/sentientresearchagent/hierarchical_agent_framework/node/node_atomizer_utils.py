@@ -4,11 +4,13 @@ from loguru import logger
 from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode, TaskType, NodeType, TaskStatus
 from sentientresearchagent.hierarchical_agent_framework.context.knowledge_store import KnowledgeStore
 from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models import AtomizerOutput, AgentTaskInput
-from sentientresearchagent.hierarchical_agent_framework.agents.registry import get_agent_adapter
+# No longer importing get_agent_adapter from registry
 from sentientresearchagent.hierarchical_agent_framework.context.context_builder import resolve_context_for_agent
 from sentientresearchagent.hierarchical_agent_framework.agents.utils import get_context_summary
 from .hitl_coordinator import HITLCoordinator
+# Corrected import: 'apply_blueprint_to_node' is in 'registry_integration', not 'inode_handler'
 from .inode_handler import ProcessorContext
+from ..agent_configs.registry_integration import apply_blueprint_to_node
 
 if TYPE_CHECKING:
     from sentientresearchagent.hierarchical_agent_framework.graph.task_graph import TaskGraph
@@ -80,13 +82,13 @@ class NodeAtomizer:
             
             node.agent_name = lookup_name_for_atomizer # Temporarily set for get_agent_adapter
             logger.info(f"    🐛 DEBUG: About to call get_agent_adapter with action_verb='atomize'")
-            atomizer_adapter = get_agent_adapter(node, action_verb="atomize") 
+            atomizer_adapter = context.agent_registry.get_agent_adapter(node, action_verb="atomize") 
             logger.info(f"    🐛 DEBUG: get_agent_adapter returned: {atomizer_adapter}")
 
             if not atomizer_adapter and agent_name_at_atomizer_entry and node.agent_name != agent_name_at_atomizer_entry:
                 logger.debug(f"        NodeAtomizer: Blueprint atomizer lookup failed. Trying original entry agent_name for atomize: {agent_name_at_atomizer_entry}")
                 node.agent_name = agent_name_at_atomizer_entry # Restore and try original
-                atomizer_adapter = get_agent_adapter(node, action_verb="atomize")
+                atomizer_adapter = context.agent_registry.get_agent_adapter(node, action_verb="atomize")
                 logger.info(f"    🐛 DEBUG: Retry get_agent_adapter returned: {atomizer_adapter}")
 
             action_to_take: NodeType

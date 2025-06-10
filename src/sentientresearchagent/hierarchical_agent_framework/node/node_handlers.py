@@ -5,7 +5,6 @@ from sentientresearchagent.hierarchical_agent_framework.node.task_node import Ta
 from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models import (
     AgentTaskInput, PlanOutput, ReplanRequestDetails, CustomSearcherOutput, PlanModifierInput, ContextItem
 )
-from sentientresearchagent.hierarchical_agent_framework.agents.registry import get_agent_adapter
 from sentientresearchagent.hierarchical_agent_framework.context.context_builder import (
     resolve_context_for_agent,
 )
@@ -130,12 +129,12 @@ class ReadyPlanHandler(INodeHandler):
             )
 
             node.agent_name = lookup_name_for_planner 
-            planner_adapter = get_agent_adapter(node, action_verb="plan")
+            planner_adapter = context.agent_registry.get_agent_adapter(node, action_verb="plan")
 
             if not planner_adapter and agent_name_at_entry and node.agent_name != agent_name_at_entry:
                 logger.debug(f"        ReadyPlanHandler: Blueprint planner lookup failed. Trying original entry agent_name for plan: {agent_name_at_entry}")
                 node.agent_name = agent_name_at_entry
-                planner_adapter = get_agent_adapter(node, action_verb="plan")
+                planner_adapter = context.agent_registry.get_agent_adapter(node, action_verb="plan")
             
             if not planner_adapter:
                 final_tried_name = node.agent_name or lookup_name_for_planner or agent_name_at_entry
@@ -265,12 +264,12 @@ class ReadyExecuteHandler(INodeHandler):
             )
 
             node.agent_name = lookup_name_for_executor 
-            executor_adapter = get_agent_adapter(node, action_verb="execute")
+            executor_adapter = context.agent_registry.get_agent_adapter(node, action_verb="execute")
 
             if not executor_adapter and agent_name_at_entry and node.agent_name != agent_name_at_entry:
                 logger.debug(f"        ReadyExecuteHandler: Blueprint executor lookup failed for {node.task_type}. Trying original entry agent_name: {agent_name_at_entry}")
                 node.agent_name = agent_name_at_entry
-                executor_adapter = get_agent_adapter(node, action_verb="execute")
+                executor_adapter = context.agent_registry.get_agent_adapter(node, action_verb="execute")
 
             if not executor_adapter:
                 final_tried_name = node.agent_name or lookup_name_for_executor or agent_name_at_entry
@@ -463,12 +462,12 @@ class AggregatingNodeHandler(INodeHandler):
                 logger.debug(f"        AggregatingNodeHandler: Blueprint suggests prefix for aggregator: {lookup_name_for_aggregator}")
 
             node.agent_name = lookup_name_for_aggregator
-            aggregator_adapter = get_agent_adapter(node, action_verb="aggregate")
+            aggregator_adapter = context.agent_registry.get_agent_adapter(node, action_verb="aggregate")
 
             if not aggregator_adapter and agent_name_at_entry and node.agent_name != agent_name_at_entry:
                 logger.debug(f"        AggregatingNodeHandler: Blueprint aggregator lookup failed. Trying original entry agent_name: {agent_name_at_entry}")
                 node.agent_name = agent_name_at_entry
-                aggregator_adapter = get_agent_adapter(node, action_verb="aggregate")
+                aggregator_adapter = context.agent_registry.get_agent_adapter(node, action_verb="aggregate")
 
             if not aggregator_adapter:
                 final_tried_name = node.agent_name or lookup_name_for_aggregator or agent_name_at_entry
@@ -530,7 +529,7 @@ class NeedsReplanNodeHandler(INodeHandler):
                     logger.debug(f"        NeedsReplan: Blueprint suggests prefix for plan_modifier: {lookup_name_for_replan_op}")
             
             node.agent_name = lookup_name_for_replan_op
-            active_adapter = get_agent_adapter(node, action_verb=action_verb_to_use)
+            active_adapter = context.agent_registry.get_agent_adapter(node, action_verb=action_verb_to_use)
             if active_adapter: is_modifier_agent = True
 
             if not active_adapter: 
@@ -547,11 +546,11 @@ class NeedsReplanNodeHandler(INodeHandler):
                 logger.debug(f"        NeedsReplan: Fallback to 'plan' adapter. Blueprint lookup via get_planner_from_blueprint returned: {lookup_name_for_replan_op}")
                 
                 node.agent_name = lookup_name_for_replan_op # Set for planner lookup
-                active_adapter = get_agent_adapter(node, action_verb=action_verb_to_use) # Re-fetch adapter
+                active_adapter = context.agent_registry.get_agent_adapter(node, action_verb=action_verb_to_use) # Re-fetch adapter
                 
                 if not active_adapter and agent_name_at_entry and node.agent_name != agent_name_at_entry : 
                     node.agent_name = agent_name_at_entry
-                    active_adapter = get_agent_adapter(node, action_verb=action_verb_to_use)
+                    active_adapter = context.agent_registry.get_agent_adapter(node, action_verb=action_verb_to_use)
 
                 if not active_adapter: # Still no planner? Fail.
                     node.update_status(TaskStatus.FAILED, error_msg="Fallback to Plan adapter failed during replan due to missing PlanModifier inputs & subsequent planner lookup failure.")

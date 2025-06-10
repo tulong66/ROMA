@@ -257,6 +257,7 @@ class ProjectService:
             project_node_processor = NodeProcessor(
                 task_graph=project_task_graph,
                 knowledge_store=self.system_manager.knowledge_store,
+                agent_registry=self.system_manager.agent_registry,
                 config=custom_config,
                 node_processor_config=node_processor_config,
                 agent_blueprint=current_blueprint

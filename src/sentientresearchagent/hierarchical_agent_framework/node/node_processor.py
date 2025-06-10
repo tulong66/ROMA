@@ -12,7 +12,8 @@ from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models 
     PlannerInput, ReplanRequestDetails,
     CustomSearcherOutput, PlanModifierInput
 )
-from sentientresearchagent.hierarchical_agent_framework.agents.registry import get_agent_adapter, NAMED_AGENTS
+# REMOVED incorrect imports of get_agent_adapter and NAMED_AGENTS
+from sentientresearchagent.hierarchical_agent_framework.agents.registry import AgentRegistry
 from sentientresearchagent.hierarchical_agent_framework.agents.base_adapter import BaseAdapter
 # Corrected imports:
 from sentientresearchagent.hierarchical_agent_framework.context.context_builder import (
@@ -40,18 +41,20 @@ class ProcessorContext:
     def __init__(self,
                  task_graph: "TaskGraph",
                  knowledge_store: KnowledgeStore,
+                 agent_registry: AgentRegistry,
                  config: NodeProcessorConfig,
                  hitl_coordinator: HITLCoordinator,
                  sub_node_creator: SubNodeCreator,
                  node_atomizer: NodeAtomizer,
-                 current_agent_blueprint: Optional[AgentBlueprint] = None): # MODIFIED: Added current_agent_blueprint
+                 current_agent_blueprint: Optional[AgentBlueprint] = None):
         self.task_graph = task_graph
         self.knowledge_store = knowledge_store
+        self.agent_registry = agent_registry
         self.config = config
         self.hitl_coordinator = hitl_coordinator
         self.sub_node_creator = sub_node_creator
         self.node_atomizer = node_atomizer
-        self.current_agent_blueprint = current_agent_blueprint # MODIFIED: Added current_agent_blueprint
+        self.current_agent_blueprint = current_agent_blueprint
 
 
 class NodeProcessor:
@@ -63,6 +66,7 @@ class NodeProcessor:
     def __init__(self,
                  task_graph: "TaskGraph",
                  knowledge_store: KnowledgeStore,
+                 agent_registry: AgentRegistry,
                  config: Optional[SentientConfig] = None,
                  node_processor_config: Optional[NodeProcessorConfig] = None,
                  agent_blueprint_name: Optional[str] = None,
@@ -74,6 +78,7 @@ class NodeProcessor:
         
         self.task_graph = task_graph
         self.knowledge_store = knowledge_store
+        self.agent_registry = agent_registry
         
         active_blueprint: Optional[AgentBlueprint] = None
         
@@ -99,11 +104,12 @@ class NodeProcessor:
         self.processor_context = ProcessorContext(
             task_graph=self.task_graph,
             knowledge_store=self.knowledge_store,
+            agent_registry=self.agent_registry,
             config=self.node_processor_config,
             hitl_coordinator=self.hitl_coordinator,
             sub_node_creator=self.sub_node_creator,
             node_atomizer=self.node_atomizer,
-            current_agent_blueprint=active_blueprint # MODIFIED: Pass blueprint
+            current_agent_blueprint=active_blueprint
         )
 
         # Instantiate handlers

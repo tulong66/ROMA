@@ -6,6 +6,7 @@ from agno.agent import Agent as AgnoAgent # Renaming to avoid conflict if we def
 # from agno.agent import AsyncAgent as AsyncAgnoAgent # Assuming such an import exists for type hinting
 import asyncio # Add this import
 from datetime import datetime
+import inspect
 
 from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode # For type hinting
 from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models import (
@@ -32,6 +33,15 @@ class BaseAdapter(ABC):
     An adapter is responsible for interfacing between the framework's
     TaskNode/context and a specific agent implementation (e.g., an AgnoAgent).
     """
+    def __init__(self, agent_name: str = "BaseAdapter"):
+        """
+        Initializes the adapter with a name.
+        
+        Args:
+            agent_name: A descriptive name for logging and identification.
+        """
+        self.agent_name = agent_name
+
     @abstractmethod
     async def process(self, node: TaskNode, agent_task_input: Any) -> Any: # Changed to async def
         """
@@ -54,18 +64,16 @@ class LlmApiAdapter(BaseAdapter, Generic[InputType, OutputType]):
     This adapter simplifies interaction by leveraging Agno's native
     structured output and tool handling.
     """
-    def __init__(self, agno_agent_instance: AgnoAgent, agent_name: str = "UnnamedAgnoAgent"): # Consider if agno_agent_instance should be AsyncAgnoAgent
+    def __init__(self, agno_agent_instance: AgnoAgent, agent_name: str = "LlmApiAdapter"):
         """
         Args:
             agno_agent_instance: The instantiated AgnoAgent.
             agent_name: A descriptive name for logging.
         """
-        if not isinstance(agno_agent_instance, AgnoAgent): # Check against AsyncAgnoAgent if that's the expected type
-            logger.warning(f"LlmApiAdapter __init__: agno_agent_instance type is {type(agno_agent_instance)}, not strictly AgnoAgent. Proceeding.")
-            # raise ValueError("llm_agent_instance must be an instance of agno.agent.Agent")
+        super().__init__(agent_name)
+        if not agno_agent_instance:
+            raise ValueError(f"{agent_name} requires a valid AgnoAgent instance.")
         self.agno_agent = agno_agent_instance
-        self.agent_name = agent_name if agent_name else (getattr(agno_agent_instance, 'name', None) or "UnnamedAgnoAgent")
-
 
     def _format_context_for_prompt(self, context_items: List[ContextItem]) -> str:
         """
@@ -442,3 +450,9 @@ Ensure your output is a valid JSON conforming to the PlanOutput schema, containi
                     node_type=node.node_type
                 )
             )
+
+    def close(self):
+        """Closes the underlying Agno agent's resources."""
+        if hasattr(self.agno_agent, 'close') and callable(self.agno_agent.close):
+            logger.info(f"  Adapter '{self.agent_name}': Closing underlying Agno agent.")
+            self.agno_agent.close()

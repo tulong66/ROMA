@@ -34,13 +34,13 @@ class OpenAICustomSearchAdapter(BaseAdapter):
     model_id: str = "gpt-4.1" # As per your example, can be configured
 
     def __init__(self, openai_client = None, model_id: str = "gpt-4.1"):
+        super().__init__(self.adapter_name) # Call parent constructor
         if AsyncOpenAI is None:
             raise ImportError("AsyncOpenAI client from openai library is not available. Please install or update 'openai'.")
         # Ensure the client passed or instantiated has the .responses.create method
         self.client = openai_client or AsyncOpenAI()
         self.model_id = model_id
-        self.agent_name = self.adapter_name
-        logger.info(f"Initialized {self.adapter_name} with model: {self.model_id} (Async Client: {isinstance(self.client, AsyncOpenAI)})")
+        logger.info(f"Initialized {self.agent_name} with model: {self.model_id} (Async Client: {isinstance(self.client, AsyncOpenAI)})")
 
     async def process(self, node: TaskNode, agent_task_input: AgentTaskInput) -> CustomSearcherOutput:
         """
