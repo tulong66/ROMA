@@ -267,6 +267,9 @@ class SentientAgent:
                 original_node_config = self.node_processor.node_processor_config
                 new_node_config = create_node_processor_config_from_main_config(self.config)
                 
+                # THE FIX: Also update the SystemManager's internal config reference.
+                self.system_manager.config = self.config
+
                 # Update both the node processor AND the HITL coordinator
                 self.node_processor.node_processor_config = new_node_config
                 self.hitl_coordinator.config = new_node_config
@@ -540,8 +543,32 @@ class ProfiledSentientAgent(SentientAgent): # MODIFIED: Inherits from refactored
         from .core.system_manager import SystemManager as ConcreteSystemManager
         
         config = load_unified_config(config_path)
-        # ... (apply config overrides from kwargs and specific args) ...
         
+        # THE FIX: Apply overrides directly to the config object *before* initializing the system manager.
+        if enable_hitl_override is not None:
+            config.execution.enable_hitl = enable_hitl_override
+            logger.info(f"Config Override: 'enable_hitl' set to {enable_hitl_override}.")
+
+        if hitl_root_plan_only_override is not None:
+            config.execution.hitl_root_plan_only = hitl_root_plan_only_override
+            logger.info(f"Config Override: 'hitl_root_plan_only' set to {hitl_root_plan_only_override}.")
+
+        # Map max_planning_depth to the correct internal config attribute
+        if 'max_planning_depth' in config_kwargs:
+            depth = config_kwargs.pop('max_planning_depth')
+            config.execution.max_recursion_depth = depth
+            logger.info(f"Overriding execution.max_recursion_depth with value: {depth}")
+
+        # Apply any other dynamic kwargs to the config
+        # Example: max_planning_depth=2 would target config.execution.max_planning_depth
+        for key, value in config_kwargs.items():
+            if hasattr(config.execution, key):
+                setattr(config.execution, key, value)
+                logger.info(f"Config Override: 'execution.{key}' set to {value}.")
+            elif hasattr(config, key):
+                setattr(config, key, value)
+                logger.info(f"Config Override: '{key}' set to {value}.")
+
         system_manager = ConcreteSystemManager(config=config)
         
         try:

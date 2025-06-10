@@ -9,6 +9,7 @@ __pycache__/
 # Agent runtime data and cache
 .agent_cache/
 .agent_projects/
+.agent*
 
 # Runtime logs and output
 *.log
