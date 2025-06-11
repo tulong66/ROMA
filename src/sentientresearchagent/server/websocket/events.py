@@ -169,6 +169,101 @@ def register_websocket_events(socketio, project_service, execution_service):
             logger.error(f"Simple execute stream error: {e}")
             emit('simple_execution_error', {'message': f'Error: {str(e)}'})
     
+    @socketio.on('switch_project')
+    def handle_switch_project(data):
+        """Handle project switching via WebSocket."""
+        logger.info(f"🔄 WebSocket request to switch project: {data}")
+        try:
+            project_id = data.get('project_id')
+            if not project_id:
+                emit('project_switch_error', {
+                    'error': 'project_id is required'
+                })
+                return
+            
+            # Validate project exists
+            project = project_service.project_manager.get_project(project_id)
+            if not project:
+                emit('project_switch_error', {
+                    'error': f'Project {project_id} not found'
+                })
+                return
+            
+            logger.info(f"🔄 Switching to project: {project_id}")
+            
+            # Perform the switch
+            success = project_service.switch_project(project_id)
+            
+            if success:
+                # Get the switched project's data
+                project_data = project_service.get_project_display_data(project_id)
+                project_data['current_project'] = project.to_dict()
+                
+                # Send success response to the requesting client
+                emit('project_switch_success', {
+                    'project_id': project_id,
+                    'project_data': project_data,
+                    'message': f'Switched to project: {project.title}'
+                })
+                
+                # Broadcast the project change to all connected clients
+                socketio.emit('project_switched', {
+                    'project_id': project_id,
+                    'project_data': project_data,
+                    'timestamp': datetime.now().isoformat()
+                })
+                
+                # Also send regular graph update for compatibility
+                socketio.emit('task_graph_update', project_data)
+                
+                logger.info(f"✅ Project switched to {project_id} via WebSocket")
+            else:
+                emit('project_switch_error', {
+                    'error': f'Failed to switch to project {project_id}'
+                })
+                logger.error(f"❌ Failed to switch project via WebSocket: {project_id}")
+                
+        except Exception as e:
+            logger.error(f"WebSocket project switch error: {e}")
+            emit('project_switch_error', {
+                'error': str(e)
+            })
+    
+    @socketio.on('restore_project_state')
+    def handle_restore_project_state(data):
+        """Handle project state restoration request."""
+        logger.info(f"🔄 WebSocket request to restore project state: {data}")
+        try:
+            project_id = data.get('project_id')
+            if not project_id:
+                emit('project_restore_error', {
+                    'error': 'project_id is required'
+                })
+                return
+            
+            # Get project data
+            project = project_service.project_manager.get_project(project_id)
+            if not project:
+                emit('project_restore_error', {
+                    'error': f'Project {project_id} not found'
+                })
+                return
+            
+            # Get project display data
+            project_data = project_service.get_project_display_data(project_id)
+            project_data['current_project'] = project.to_dict()
+            
+            # Send restored data
+            emit('project_restored', project_data)
+            
+            logger.info(f"✅ Project state restored for {project_id}")
+            
+        except Exception as e:
+            logger.error(f"WebSocket project restore error: {e}")
+            emit('project_restore_error', {
+                'error': str(e)
+            })
+    
     @socketio.on_error_default
     def default_error_handler(e):
         """Default error handler for WebSocket events."""

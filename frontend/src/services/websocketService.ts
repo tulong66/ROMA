@@ -1,6 +1,7 @@
 import { io, Socket } from 'socket.io-client'
 import { useTaskGraphStore } from '@/stores/taskGraphStore'
 import type { APIResponse, HITLRequest, HITLResponse } from '@/types'
+import { useProjectStore } from '@/stores/projectStore'
 
 class WebSocketService {
   private socket: Socket | null = null
@@ -232,6 +233,67 @@ class WebSocketService {
         args: args.length > 0 ? args : 'no args'
       })
     })
+
+    // Enhanced project switching events
+    this.socket.on('project_switched', (data) => {
+      console.log('🔄 Project switched:', data)
+      
+      // Update task graph with new project data
+      if (data.project_data) {
+        useTaskGraphStore.getState().setData(data.project_data)
+      }
+      
+      // Update project store
+      if (data.project_id) {
+        useProjectStore.getState().setCurrentProject(data.project_id)
+      }
+    })
+
+    this.socket.on('project_switch_success', (data) => {
+      console.log('✅ Project switch successful:', data)
+      
+      // Update task graph with new project data
+      if (data.project_data) {
+        useTaskGraphStore.getState().setData(data.project_data)
+      }
+    })
+
+    this.socket.on('project_switch_error', (data) => {
+      console.error('❌ Project switch error:', data)
+      // Could emit a toast notification here
+    })
+
+    this.socket.on('project_restored', (data) => {
+      console.log('🔄 Project state restored:', data)
+      useTaskGraphStore.getState().setData(data)
+    })
+
+    this.socket.on('project_restore_error', (data) => {
+      console.error('❌ Project restore error:', data)
+    })
+
+    // Enhanced connection handler for state recovery
+    this.socket.on('connect', () => {
+      console.log('🔌 Connected to WebSocket')
+      useTaskGraphStore.getState().setConnectionStatus(true)
+      
+      // Clear connection stable timer
+      if (this.connectionStableTimer) {
+        clearTimeout(this.connectionStableTimer)
+      }
+      
+      // Request current project state restoration after a brief delay
+      this.connectionStableTimer = setTimeout(() => {
+        const currentProjectId = useProjectStore.getState().currentProjectId
+        if (currentProjectId) {
+          console.log('🔄 Requesting project state restoration for:', currentProjectId)
+          this.requestProjectRestore(currentProjectId)
+        } else {
+          console.log('📋 Requesting initial state (no current project)')
+          this.socket?.emit('request_initial_state')
+        }
+      }, 500) // Small delay to ensure connection is stable
+    })
   }
 
   private handleReconnect() {
@@ -390,6 +452,25 @@ class WebSocketService {
     // Also emit to server for testing
     if (this.isConnected()) {
       this.socket!.emit('hitl_test_trigger', testRequest)
+    }
+  }
+
+  // New methods for project operations
+  switchProject(projectId: string) {
+    if (this.isConnected()) {
+      console.log('🔄 Switching project via WebSocket:', projectId)
+      this.socket!.emit('switch_project', { project_id: projectId })
+    } else {
+      console.error('❌ Cannot switch project: not connected')
+    }
+  }
+
+  requestProjectRestore(projectId: string) {
+    if (this.isConnected()) {
+      console.log('🔄 Requesting project restore:', projectId)
+      this.socket!.emit('restore_project_state', { project_id: projectId })
+    } else {
+      console.error('❌ Cannot restore project: not connected')
     }
   }
 }

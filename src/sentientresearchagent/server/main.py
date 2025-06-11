@@ -112,7 +112,7 @@ class SentientServer:
         self.broadcast_manager = BroadcastManager(
             self.socketio, 
             self.system_manager, 
-            None 
+            None  # Will be set after project_service is created
         )
         
         # Create project service with broadcast callback
@@ -121,8 +121,9 @@ class SentientServer:
             self.broadcast_manager.broadcast_graph_update
         )
         
-        # Update broadcast manager with project service
+        # Update broadcast manager with project service and wire up cross-references
         self.broadcast_manager.project_service = self.project_service
+        self.project_service.broadcast_manager = self.broadcast_manager
         
         # Create execution service
         self.execution_service = ExecutionService(

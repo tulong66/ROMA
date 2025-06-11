@@ -53,6 +53,9 @@ class ProjectService:
         self.project_graphs: Dict[str, Dict[str, Any]] = {}
         self.project_configs: Dict[str, Any] = {}
         
+        # Track current display state to prevent conflicts
+        self.current_display_project_id: Optional[str] = None
+        
         # Create results storage directory
         self.results_dir = Path("project_results")
         self.results_dir.mkdir(exist_ok=True)
@@ -157,9 +160,57 @@ class ProjectService:
             "state": project_state
         }
     
+    def get_project_display_data(self, project_id: str) -> Dict[str, Any]:
+        """
+        Get display data for a specific project without side effects.
+        This method ensures project isolation and prevents data conflicts.
+        
+        Args:
+            project_id: Project identifier
+            
+        Returns:
+            Serialized project data ready for frontend display
+        """
+        try:
+            # Ensure project is loaded in memory
+            if project_id not in self.project_graphs:
+                logger.debug(f"Loading project {project_id} into memory for display")
+                if not self.load_project_into_graph(project_id):
+                    logger.warning(f"Failed to load project {project_id}")
+                    return self._get_empty_display_data()
+            
+            # Get project-specific task graph
+            project_components = self.project_graphs[project_id]
+            project_task_graph = project_components['task_graph']
+            
+            # Serialize project data
+            if hasattr(project_task_graph, 'to_visualization_dict'):
+                data = project_task_graph.to_visualization_dict()
+            else:
+                # Fallback serialization
+                from ...hierarchical_agent_framework.graph.graph_serializer import GraphSerializer
+                serializer = GraphSerializer(project_task_graph)
+                data = serializer.to_visualization_dict()
+            
+            logger.debug(f"Retrieved display data for project {project_id}: {len(data.get('all_nodes', {}))} nodes")
+            return data
+            
+        except Exception as e:
+            logger.error(f"Failed to get display data for project {project_id}: {e}")
+            return self._get_empty_display_data()
+    
+    def _get_empty_display_data(self) -> Dict[str, Any]:
+        """Return empty display data structure."""
+        return {
+            'all_nodes': {},
+            'graphs': {},
+            'overall_project_goal': None,
+            'root_graph_id': None
+        }
+    
     def switch_project(self, project_id: str) -> bool:
         """
-        Switch to a different project.
+        Enhanced project switching with proper isolation and state management.
         
         Args:
             project_id: Project identifier
@@ -168,22 +219,119 @@ class ProjectService:
             True if successful, False otherwise
         """
         try:
-            # Save current project state if there is one
+            logger.info(f"🔄 Switching to project: {project_id}")
+            
+            # Save current project state before switching
             current_project_id = self.project_manager.get_current_project_id()
             if current_project_id and current_project_id != project_id:
-                self._auto_save_current_project()
+                logger.debug(f"Saving state for current project: {current_project_id}")
+                self._save_current_display_state()
             
-            # Switch to new project
+            # Switch project metadata
             success = self.project_manager.switch_project(project_id)
-            if success:
-                # Load saved results if available
-                self._auto_load_project_results(project_id)
-                logger.info(f"✅ Switched to project {project_id}")
+            if not success:
+                logger.error(f"Failed to switch project metadata to {project_id}")
+                return False
             
-            return success
+            # Load and prepare new project for display
+            self._load_and_prepare_project_display(project_id)
+            
+            # Update tracking
+            self.current_display_project_id = project_id
+            
+            # Broadcast the switch with new project data
+            if hasattr(self, 'broadcast_manager') and self.broadcast_manager:
+                self.broadcast_manager.broadcast_project_switch(project_id)
+            elif self.broadcast_callback:
+                # Fallback to regular broadcast
+                self.broadcast_callback()
+            
+            logger.info(f"✅ Successfully switched to project {project_id}")
+            return True
+            
         except Exception as e:
             logger.error(f"Failed to switch to project {project_id}: {e}")
             return False
+    
+    def _load_and_prepare_project_display(self, project_id: str):
+        """
+        Load project data and prepare it for display without affecting other projects.
+        
+        Args:
+            project_id: Project identifier to load
+        """
+        try:
+            # Ensure project is loaded in memory
+            if project_id not in self.project_graphs:
+                self.load_project_into_graph(project_id)
+            
+            # Load saved results if available (for persistence)
+            self._auto_load_project_results(project_id)
+            
+            logger.debug(f"Project {project_id} prepared for display")
+            
+        except Exception as e:
+            logger.error(f"Failed to prepare project {project_id} for display: {e}")
+    
+    def _save_current_display_state(self):
+        """
+        Save the state of whatever project is currently being displayed.
+        """
+        try:
+            if not self.current_display_project_id:
+                return
+            
+            # Get current project data
+            project_data = self.get_project_display_data(self.current_display_project_id)
+            
+            # Save to project state
+            self.project_manager.save_project_state(self.current_display_project_id, project_data)
+            
+            # Also save detailed results for persistence
+            self.save_project_state_async(self.current_display_project_id, project_data)
+            
+            logger.debug(f"Saved display state for project: {self.current_display_project_id}")
+            
+        except Exception as e:
+            logger.error(f"Failed to save current display state: {e}")
+    
+    def save_project_state_async(self, project_id: str, data: Dict[str, Any]):
+        """
+        Asynchronously save project state to prevent blocking operations.
+        
+        Args:
+            project_id: Project identifier
+            data: Project data to save
+        """
+        try:
+            import threading
+            
+            def save_task():
+                try:
+                    # Save basic state
+                    self.project_manager.save_project_state(project_id, data)
+                    
+                    # Save detailed results for persistence
+                    results_package = {
+                        'basic_state': data,
+                        'saved_at': datetime.now().isoformat(),
+                        'metadata': {
+                            'node_count': len(data.get('all_nodes', {})),
+                            'project_goal': data.get('overall_project_goal'),
+                            'completion_status': self._get_completion_status(data.get('all_nodes', {}))
+                        }
+                    }
+                    self.save_project_results(project_id, results_package)
+                    
+                except Exception as e:
+                    logger.warning(f"Async save failed for project {project_id}: {e}")
+            
+            # Run save in background thread
+            thread = threading.Thread(target=save_task, daemon=True)
+            thread.start()
+            
+        except Exception as e:
+            logger.warning(f"Failed to start async save for project {project_id}: {e}")
     
     def delete_project(self, project_id: str) -> bool:
         """
@@ -291,7 +439,8 @@ class ProjectService:
     
     def sync_project_to_display(self, project_id: str) -> bool:
         """
-        Sync a project's current state to the display graph and broadcast.
+        DEPRECATED: This method is being phased out in favor of project-specific display data.
+        Kept for backward compatibility during transition.
         
         Args:
             project_id: Project identifier to sync
@@ -299,42 +448,18 @@ class ProjectService:
         Returns:
             True if successful, False otherwise
         """
+        logger.warning("sync_project_to_display is deprecated. Use get_project_display_data instead.")
+        
         try:
-            if project_id not in self.project_graphs:
-                return False
-                
-            project_task_graph = self.project_graphs[project_id]['task_graph']
-            
-            # Ensure display graph is valid
-            display_graph = self.system_manager.task_graph
-            if not hasattr(display_graph, 'nodes') or not hasattr(display_graph, 'graphs'):
-                logger.warning("Recreating corrupted display graph")
-                self.system_manager.task_graph = TaskGraph()
-                display_graph = self.system_manager.task_graph
-            
-            # Ensure the attributes are dictionaries
-            if not isinstance(display_graph.nodes, dict):
-                display_graph.nodes = {}
-            if not isinstance(display_graph.graphs, dict):
-                display_graph.graphs = {}
-            
-            # Copy project state to live display graph
-            display_graph.nodes.clear()
-            display_graph.nodes.update(project_task_graph.nodes)
-            display_graph.graphs.clear()
-            display_graph.graphs.update(project_task_graph.graphs)
-            display_graph.overall_project_goal = project_task_graph.overall_project_goal
-            display_graph.root_graph_id = project_task_graph.root_graph_id
-            
-            # Broadcast the update
-            if self.broadcast_callback:
-                self.broadcast_callback()
-            
-            return True
+            # For backward compatibility, just trigger a broadcast
+            if project_id == self.project_manager.get_current_project_id():
+                if self.broadcast_callback:
+                    self.broadcast_callback()
+                return True
+            return False
             
         except Exception as e:
             logger.error(f"Failed to sync project {project_id} to display: {e}")
-            traceback.print_exc()
             return False
     
     def load_project_into_graph(self, project_id: str) -> bool:

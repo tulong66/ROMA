@@ -95,16 +95,58 @@ class ProjectService {
   }
 
   async switchProject(projectId: string): Promise<{ project: Project, message: string }> {
-    const response = await fetch(`${this.baseUrl}/projects/${projectId}/switch`, {
-      method: 'POST',
-    })
-    
-    if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.error || 'Failed to switch project')
+    // Try WebSocket first for real-time switching
+    if (webSocketService.isConnected()) {
+      console.log('🔄 Using WebSocket for project switch:', projectId)
+      
+      return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error('Project switch timeout'))
+        }, 10000) // 10 second timeout
+
+        // Listen for success
+        const handleSuccess = (data: any) => {
+          clearTimeout(timeout)
+          webSocketService.socket?.off('project_switch_success', handleSuccess)
+          webSocketService.socket?.off('project_switch_error', handleError)
+          
+          resolve({
+            project: data.project_data?.current_project || { id: projectId },
+            message: data.message || 'Project switched successfully'
+          })
+        }
+
+        // Listen for error
+        const handleError = (data: any) => {
+          clearTimeout(timeout)
+          webSocketService.socket?.off('project_switch_success', handleSuccess)
+          webSocketService.socket?.off('project_switch_error', handleError)
+          
+          reject(new Error(data.error || 'Failed to switch project'))
+        }
+
+        // Set up listeners
+        webSocketService.socket?.on('project_switch_success', handleSuccess)
+        webSocketService.socket?.on('project_switch_error', handleError)
+
+        // Send switch request
+        webSocketService.switchProject(projectId)
+      })
+    } else {
+      // Fallback to REST API
+      console.log('🔄 Using REST API for project switch (WebSocket not connected):', projectId)
+      
+      const response = await fetch(`${this.baseUrl}/projects/${projectId}/switch`, {
+        method: 'POST',
+      })
+      
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to switch project')
+      }
+      
+      return response.json()
     }
-    
-    return response.json()
   }
 
   async deleteProject(projectId: string): Promise<{ message: string }> {

@@ -35,60 +35,92 @@ class BroadcastManager:
     
     def broadcast_graph_update(self) -> bool:
         """
-        Send current graph state to all connected clients with project info.
+        Send current project's graph state to all connected clients.
+        Uses project-specific data instead of shared display graph to prevent conflicts.
         
         Returns:
             True if successful, False otherwise
         """
         try:
-            logger.debug("📡 Starting broadcast...")
+            logger.debug("📡 Starting project-specific broadcast...")
             
-            # Get the current display graph
-            display_graph = self.system_manager.task_graph
-            
-            # Check if display graph is corrupted
-            if (not hasattr(display_graph, 'nodes') or 
-                not hasattr(display_graph, 'graphs') or
-                not isinstance(display_graph.nodes, dict) or
-                not isinstance(display_graph.graphs, dict)):
-                
-                logger.warning("Display graph is corrupted, recreating...")
-                from ...hierarchical_agent_framework.graph.task_graph import TaskGraph
-                self.system_manager.task_graph = TaskGraph()
-                display_graph = self.system_manager.task_graph
-                
-                # Try to restore from current project if available
-                current_project = self.project_service.project_manager.get_current_project()
-                if current_project and current_project.id in self.project_service.project_graphs:
-                    self.project_service.sync_project_to_display(current_project.id)
-                    return True  # sync_project_to_display will call broadcast again
-            
-            # Serialize the graph data
-            data = self._serialize_graph_data(display_graph)
-            
-            # Add current project info
+            # Get current project directly - no shared display graph
             current_project = self.project_service.project_manager.get_current_project()
+            
             if current_project:
+                # Get project-specific data without affecting other projects
+                data = self.project_service.get_project_display_data(current_project.id)
                 data['current_project'] = current_project.to_dict()
+                
+                node_count = len(data.get('all_nodes', {}))
+                logger.debug(f"📡 Broadcasting project {current_project.id}: {node_count} nodes")
+            else:
+                # No current project - send empty state
+                data = {
+                    'all_nodes': {},
+                    'graphs': {},
+                    'overall_project_goal': None,
+                    'root_graph_id': None,
+                    'current_project': None
+                }
+                logger.debug("📡 Broadcasting empty state (no current project)")
             
-            node_count = len(data.get('all_nodes', {}))
-            logger.debug(f"📡 Broadcasting update: {node_count} nodes")
-            
-            # Emit the data
+            # Emit the project-specific data
             self.socketio.emit('task_graph_update', data)
             
-            # Save state for current project
+            # Save state for current project (non-blocking)
             if current_project:
                 try:
-                    self.project_service.project_manager.save_project_state(current_project.id, data)
+                    self.project_service.save_project_state_async(current_project.id, data)
                 except Exception as e:
                     logger.warning(f"Failed to save during broadcast: {e}")
             
-            logger.debug("📡 Broadcast completed successfully")
+            logger.debug("📡 Project-specific broadcast completed successfully")
             return True
             
         except Exception as e:
             logger.error(f"Broadcast error: {e}")
+            traceback.print_exc()
+            return False
+    
+    def broadcast_project_switch(self, project_id: str) -> bool:
+        """
+        Broadcast project switch event with immediate data load.
+        
+        Args:
+            project_id: ID of the project being switched to
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            logger.info(f"📡 Broadcasting project switch to: {project_id}")
+            
+            # Get the switched project's data
+            project = self.project_service.project_manager.get_project(project_id)
+            if not project:
+                logger.error(f"Project {project_id} not found for switch broadcast")
+                return False
+            
+            # Load and get project data
+            data = self.project_service.get_project_display_data(project_id)
+            data['current_project'] = project.to_dict()
+            
+            # Emit project switch event with data
+            self.socketio.emit('project_switched', {
+                'project_id': project_id,
+                'project_data': data,
+                'timestamp': datetime.now().isoformat()
+            })
+            
+            # Also emit regular graph update for compatibility
+            self.socketio.emit('task_graph_update', data)
+            
+            logger.info(f"📡 Project switch broadcast completed for: {project_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Project switch broadcast error: {e}")
             traceback.print_exc()
             return False
     
