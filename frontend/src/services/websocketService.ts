@@ -94,24 +94,47 @@ class WebSocketService {
       this.handleReconnect()
     })
 
-    // CRITICAL: Real-time task graph updates
-    this.socket.on('task_graph_update', (data: APIResponse) => {
+    // UPDATED: Project-aware task graph updates
+    this.socket.on('task_graph_update', (data: APIResponse & { project_id?: string }) => {
       const now = Date.now()
       this.updateCount++
       
-      console.log(`🚨🚨🚨 [UPDATE ${this.updateCount}] WEBSOCKET RECEIVED REAL UPDATE FROM BACKEND`)
+      console.log(`🚨🚨🚨 [UPDATE ${this.updateCount}] WEBSOCKET RECEIVED PROJECT-AWARE UPDATE`)
       console.log('📊 Raw data:', data)
+      console.log('📊 Project ID:', data.project_id)
       console.log('📊 Nodes in data:', Object.keys(data.all_nodes || {}).length)
       console.log('📊 First few node IDs:', Object.keys(data.all_nodes || {}).slice(0, 3))
       
       this.lastUpdateTime = now
       
       try {
-        console.log('🔄 Calling store.setData with WebSocket data...')
-        useTaskGraphStore.getState().setData(data)
-        console.log('✅ Store.setData completed')
+        const taskGraphStore = useTaskGraphStore.getState()
+        const projectStore = useProjectStore.getState()
+        
+        // Get the project ID from the data or use current project
+        const projectId = data.project_id || projectStore.currentProjectId
+        
+        if (projectId) {
+          console.log('🏪 Storing project-specific data for:', projectId)
+          
+          // Store data for the specific project
+          taskGraphStore.setProjectData(projectId, data)
+          
+          // Only update display if this is the current project
+          if (projectId === taskGraphStore.currentProjectId) {
+            console.log('🔄 Updating display for current project:', projectId)
+            taskGraphStore.setData(data)
+          } else {
+            console.log('📦 Stored data for non-current project:', projectId, '(current:', taskGraphStore.currentProjectId, ')')
+          }
+        } else {
+          console.log('🔄 No project ID, using legacy setData')
+          taskGraphStore.setData(data)
+        }
+        
+        console.log('✅ Project-aware update completed')
       } catch (error) {
-        console.error('❌ ERROR in WebSocket handler:', error)
+        console.error('❌ ERROR in project-aware WebSocket handler:', error)
       }
     })
 
@@ -234,27 +257,44 @@ class WebSocketService {
       })
     })
 
-    // Enhanced project switching events
+    // UPDATED: Enhanced project switching events with project-specific handling
     this.socket.on('project_switched', (data) => {
       console.log('🔄 Project switched:', data)
       
-      // Update task graph with new project data
-      if (data.project_data) {
-        useTaskGraphStore.getState().setData(data.project_data)
+      const taskGraphStore = useTaskGraphStore.getState()
+      const projectStore = useProjectStore.getState()
+      
+      // Update current project in both stores
+      if (data.project_id) {
+        taskGraphStore.setCurrentProject(data.project_id)
+        projectStore.setCurrentProject(data.project_id)
       }
       
-      // Update project store
-      if (data.project_id) {
-        useProjectStore.getState().setCurrentProject(data.project_id)
+      // Update task graph with new project data
+      if (data.project_data) {
+        if (data.project_id) {
+          // Store project-specific data
+          taskGraphStore.setProjectData(data.project_id, data.project_data)
+          // Switch to the project (this will update display)
+          taskGraphStore.switchToProject(data.project_id)
+        } else {
+          // Fallback to legacy behavior
+          taskGraphStore.setData(data.project_data)
+        }
       }
     })
 
     this.socket.on('project_switch_success', (data) => {
       console.log('✅ Project switch successful:', data)
       
+      const taskGraphStore = useTaskGraphStore.getState()
+      
       // Update task graph with new project data
-      if (data.project_data) {
-        useTaskGraphStore.getState().setData(data.project_data)
+      if (data.project_data && data.project_id) {
+        taskGraphStore.setProjectData(data.project_id, data.project_data)
+        taskGraphStore.switchToProject(data.project_id)
+      } else if (data.project_data) {
+        taskGraphStore.setData(data.project_data)
       }
     })
 
@@ -265,7 +305,15 @@ class WebSocketService {
 
     this.socket.on('project_restored', (data) => {
       console.log('🔄 Project state restored:', data)
-      useTaskGraphStore.getState().setData(data)
+      
+      const taskGraphStore = useTaskGraphStore.getState()
+      
+      if (data.project_id) {
+        taskGraphStore.setProjectData(data.project_id, data)
+        taskGraphStore.switchToProject(data.project_id)
+      } else {
+        taskGraphStore.setData(data)
+      }
     })
 
     this.socket.on('project_restore_error', (data) => {
@@ -292,78 +340,68 @@ class WebSocketService {
           console.log('📋 Requesting initial state (no current project)')
           this.socket?.emit('request_initial_state')
         }
-      }, 500) // Small delay to ensure connection is stable
+      }, 1000)
     })
   }
 
   private handleReconnect() {
-    if (this.isConnecting) {
-      console.log('⚠️ Already attempting to reconnect')
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      console.error('❌ Max reconnection attempts reached')
       return
     }
 
-    if (this.reconnectAttempts < this.maxReconnectAttempts) {
-      this.reconnectAttempts++
-      const delay = Math.min(1000 * Math.pow(1.5, this.reconnectAttempts - 1), 10000)
-      
-      console.log(`🔄 Attempting to reconnect... (${this.reconnectAttempts}/${this.maxReconnectAttempts}) in ${delay}ms`)
-      
-      this.reconnectTimer = setTimeout(() => {
-        this.reconnectTimer = null
-        this.connect()
-      }, delay)
-    } else {
-      console.error('❌ Max reconnection attempts reached')
-      useTaskGraphStore.getState().setConnectionStatus(false)
-    }
+    this.reconnectAttempts++
+    const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000)
+    
+    console.log(`🔄 Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`)
+    
+    this.reconnectTimer = setTimeout(() => {
+      this.connect()
+    }, delay)
   }
 
   isConnected(): boolean {
-    return this.socket?.connected ?? false
+    return this.socket?.connected || false
   }
 
   sendHITLResponse(response: HITLResponse) {
-    if (this.isConnected()) {
+    if (this.socket && this.isConnected()) {
       console.log('📤 Sending HITL response:', response)
-      this.socket!.emit('hitl_response', response)
+      this.socket.emit('hitl_response', response)
     } else {
       console.error('❌ Cannot send HITL response: not connected')
     }
   }
 
   async checkSystemReadiness(): Promise<boolean> {
-    try {
-      const response = await fetch('/api/system/readiness')
-      const data = await response.json()
-      
-      if (data.ready) {
-        console.log('✅ System is ready for execution')
-        return true
-      } else {
-        console.log('⚠️ System not ready:', data.components)
-        return false
+    return new Promise((resolve) => {
+      if (!this.socket || !this.isConnected()) {
+        resolve(false)
+        return
       }
-    } catch (error) {
-      console.error('❌ Failed to check system readiness:', error)
-      return false
-    }
+
+      const timeout = setTimeout(() => {
+        resolve(false)
+      }, 5000)
+
+      this.socket.emit('check_readiness', {}, (response: any) => {
+        clearTimeout(timeout)
+        resolve(response?.ready === true)
+      })
+    })
   }
 
   startProject(projectGoal: string, maxSteps: number = 250) {
-    if (this.isConnected()) {
-      console.log('📤 Starting project:', projectGoal)
+    if (this.socket && this.isConnected()) {
+      console.log('🚀 Starting project via WebSocket:', { projectGoal, maxSteps })
+      useTaskGraphStore.getState().setLoading(true)
       
-      // Check system readiness before starting
-      this.checkSystemReadiness().then(ready => {
-        if (!ready) {
-          console.warn('⚠️ System may not be fully ready - HITL requests might be auto-approved')
-        }
-        
-        useTaskGraphStore.getState().setLoading(true)
-        this.socket!.emit('start_project', { project_goal: projectGoal, max_steps: maxSteps })
+      this.socket.emit('start_project', {
+        goal: projectGoal,
+        max_steps: maxSteps
       })
     } else {
-      console.error('❌ Cannot start project: not connected')
+      console.error('❌ Cannot start project: WebSocket not connected')
       useTaskGraphStore.getState().setLoading(false)
     }
   }
@@ -376,156 +414,195 @@ class WebSocketService {
       this.reconnectTimer = null
     }
     
+    if (this.connectionStableTimer) {
+      clearTimeout(this.connectionStableTimer)
+      this.connectionStableTimer = null
+    }
+    
     if (this.socket) {
-      this.socket.removeAllListeners()
       this.socket.disconnect()
       this.socket = null
     }
     
+    useTaskGraphStore.getState().setConnectionStatus(false)
     this.isConnecting = false
     this.reconnectAttempts = 0
-    useTaskGraphStore.getState().setConnectionStatus(false)
   }
 
   getConnectionInfo() {
     return {
       connected: this.isConnected(),
-      connecting: this.isConnecting,
       reconnectAttempts: this.reconnectAttempts,
-      lastUpdate: this.lastUpdateTime,
-      updateCount: this.updateCount
+      lastUpdateTime: this.lastUpdateTime,
+      updateCount: this.updateCount,
+      hasEverConnected: this.hasEverConnected
     }
   }
 
-  // Test method to manually simulate a backend update
   simulateBackendUpdate() {
-    console.log('🧪 SIMULATING BACKEND UPDATE...')
-    const nodeId = 'sim-' + Date.now()
-    const testData: APIResponse = {
+    console.log('🧪 Simulating backend update...')
+    
+    const mockData = {
       all_nodes: {
-        [nodeId]: {
-          task_id: nodeId,
-          goal: 'Simulated backend node update',
-          task_type: 'SIMULATION',
+        'mock-node-1': {
+          task_id: 'mock-node-1',
+          goal: 'Mock task 1',
+          status: 'DONE',
+          task_type: 'SEARCH',
           node_type: 'EXECUTE',
           layer: 0,
-          status: 'DONE',
+          timestamp_created: new Date().toISOString(),
+          timestamp_completed: new Date().toISOString(),
+          result: 'Mock result 1'
+        },
+        'mock-node-2': {
+          task_id: 'mock-node-2',
+          goal: 'Mock task 2',
+          status: 'RUNNING',
+          task_type: 'WRITE',
+          node_type: 'EXECUTE',
+          layer: 1,
+          timestamp_created: new Date().toISOString(),
+          result: 'Mock result 2'
         }
       },
       graphs: {},
-      overall_project_goal: 'Simulated project'
+      overall_project_goal: 'Mock project goal'
     }
     
-    console.log('🧪 Manually triggering task_graph_update handler with:', testData)
-    
-    // Manually call the handler as if the backend sent this
-    const handler = this.socket?.listeners('task_graph_update')[0]
-    if (handler) {
-      console.log('🧪 Calling handler directly...')
-      handler(testData)
-    } else {
-      console.log('🧪 No handler found, calling setData directly...')
-      useTaskGraphStore.getState().setData(testData)
-    }
+    useTaskGraphStore.getState().setData(mockData)
+    console.log('✅ Mock data applied to store')
   }
 
-  // AGGRESSIVE DEBUGGING: Add method to trigger test HITL
+  // NEW: Simulate project-aware backend update
+  simulateProjectUpdate(projectId: string) {
+    console.log('🧪 Simulating project-specific backend update for:', projectId)
+    
+    const mockData = {
+      all_nodes: {
+        [`${projectId}-node-1`]: {
+          task_id: `${projectId}-node-1`,
+          goal: `Task 1 for ${projectId}`,
+          status: 'DONE',
+          task_type: 'SEARCH',
+          node_type: 'EXECUTE',
+          layer: 0,
+          timestamp_created: new Date().toISOString(),
+          timestamp_completed: new Date().toISOString(),
+          result: `Result 1 for ${projectId}`
+        },
+        [`${projectId}-node-2`]: {
+          task_id: `${projectId}-node-2`,
+          goal: `Task 2 for ${projectId}`,
+          status: 'RUNNING',
+          task_type: 'WRITE',
+          node_type: 'EXECUTE',
+          layer: 1,
+          timestamp_created: new Date().toISOString(),
+          result: `Result 2 for ${projectId}`
+        }
+      },
+      graphs: {},
+      overall_project_goal: `Goal for ${projectId}`,
+      project_id: projectId
+    }
+    
+    // Simulate the project-aware update
+    const taskGraphStore = useTaskGraphStore.getState()
+    taskGraphStore.setProjectData(projectId, mockData)
+    
+    // If this is the current project, also update display
+    if (projectId === taskGraphStore.currentProjectId) {
+      taskGraphStore.setData(mockData)
+    }
+    
+    console.log('✅ Project-specific mock data applied to store')
+  }
+
   triggerTestHITL() {
-    console.log('🧪 Manually triggering test HITL request')
+    console.log('🧪 Triggering test HITL...')
+    
     const testRequest = {
       request_id: 'manual-test-' + Date.now(),
       checkpoint_name: 'ManualTestCheckpoint',
       context_message: 'This is a manually triggered test HITL request',
       data_for_review: { 
         test: true, 
-        timestamp: new Date().toISOString(),
-        message: 'Manual test from frontend'
+        source: 'manual',
+        timestamp: new Date().toISOString()
       },
       node_id: 'manual-test-node',
       current_attempt: 1,
       timestamp: new Date().toISOString()
     }
     
-    console.log('🧪 Setting manual test HITL request:', testRequest)
+    console.log('🧪 Triggering manual test HITL request:', testRequest)
     useTaskGraphStore.getState().setHITLRequest(testRequest)
-    
-    // Also emit to server for testing
-    if (this.isConnected()) {
-      this.socket!.emit('hitl_test_trigger', testRequest)
-    }
   }
 
-  // New methods for project operations
+  // UPDATED: Project-aware switching
   switchProject(projectId: string) {
-    if (this.isConnected()) {
+    if (this.socket && this.isConnected()) {
       console.log('🔄 Switching project via WebSocket:', projectId)
-      this.socket!.emit('switch_project', { project_id: projectId })
+      this.socket.emit('switch_project', { project_id: projectId })
     } else {
-      console.error('❌ Cannot switch project: not connected')
+      console.error('❌ Cannot switch project: WebSocket not connected')
     }
   }
 
   requestProjectRestore(projectId: string) {
-    if (this.isConnected()) {
-      console.log('🔄 Requesting project restore:', projectId)
-      this.socket!.emit('restore_project_state', { project_id: projectId })
+    if (this.socket && this.isConnected()) {
+      console.log('🔄 Requesting project restore via WebSocket:', projectId)
+      this.socket.emit('restore_project', { project_id: projectId })
     } else {
-      console.error('❌ Cannot restore project: not connected')
+      console.error('❌ Cannot request project restore: WebSocket not connected')
     }
+  }
+
+  // Add socket property for external access
+  get socket() {
+    return this.socket
   }
 }
 
-// Export singleton instance
+// Create singleton instance
 export const webSocketService = new WebSocketService()
 
-// AGGRESSIVE DEBUGGING: Add global access for testing - Fix the window check
-if (typeof window !== 'undefined' && window) {
+// Enhanced profile events setup
+export const setupProfileEvents = (socket: any, profileStore: any) => {
+  socket.on('profile_switched', (data: any) => {
+    console.log('👤 Profile switched:', data)
+    if (data.profile_name) {
+      profileStore.getState().setCurrentProfile(data.profile_name)
+    }
+  })
+
+  socket.on('profile_switch_error', (data: any) => {
+    console.error('❌ Profile switch error:', data)
+  })
+
+  socket.on('profiles_updated', (data: any) => {
+    console.log('👥 Profiles updated:', data)
+    if (data.profiles) {
+      profileStore.getState().setProfiles(data.profiles)
+    }
+  })
+}
+
+// Auto-connect when module loads
+if (typeof window !== 'undefined') {
+  // Add global debugging functions
   const globalWindow = window as any
   
   globalWindow.webSocketService = webSocketService
+  globalWindow.connectWebSocket = () => webSocketService.connect()
+  globalWindow.disconnectWebSocket = () => webSocketService.disconnect()
+  globalWindow.getWebSocketInfo = () => webSocketService.getConnectionInfo()
+  globalWindow.simulateUpdate = () => webSocketService.simulateBackendUpdate()
   globalWindow.triggerTestHITL = () => webSocketService.triggerTestHITL()
-  globalWindow.getHITLState = () => {
-    const state = useTaskGraphStore.getState()
-    return {
-      hitlRequest: state.hitlRequest,
-      currentHITLRequest: state.currentHITLRequest,
-      isHITLModalOpen: state.isHITLModalOpen,
-      hitlLogs: state.hitlLogs
-    }
-  }
-}
-
-// Add profile-related event handlers
-export const setupProfileEvents = (socket: any, profileStore: any) => {
-  // Listen for profile changes
-  socket.on('profile_changed', (data: any) => {
-    console.log('🔄 Profile changed:', data)
-    profileStore.setCurrentProfile(data.profile)
-    // Reload profiles to get updated state
-    profileStore.loadProfiles()
-  })
-
-  // Listen for profile switch success
-  socket.on('profile_switch_success', (data: any) => {
-    console.log('✅ Profile switch successful:', data)
-  })
-
-  // Listen for profile switch errors
-  socket.on('profile_switch_error', (data: any) => {
-    console.error('❌ Profile switch error:', data)
-    profileStore.setError(data.error)
-  })
-
-  // Listen for profiles list updates
-  socket.on('profiles_list', (data: any) => {
-    console.log('📋 Profiles list received:', data)
-    profileStore.setProfiles(data.profiles)
-    profileStore.setCurrentProfile(data.current_profile)
-  })
-
-  // Listen for profile errors
-  socket.on('profiles_error', (data: any) => {
-    console.error('❌ Profiles error:', data)
-    profileStore.setError(data.error)
-  })
+  
+  // NEW: Project-specific debugging functions
+  globalWindow.switchProjectWS = (projectId: string) => webSocketService.switchProject(projectId)
+  globalWindow.restoreProjectWS = (projectId: string) => webSocketService.requestProjectRestore(projectId)
+  globalWindow.simulateProjectUpdate = (projectId: string) => webSocketService.simulateProjectUpdate(projectId)
 } 

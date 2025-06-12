@@ -2,11 +2,16 @@ import uuid
 import json
 import os
 from datetime import datetime
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Callable, TYPE_CHECKING
 from dataclasses import dataclass, asdict
 from pathlib import Path
 import threading
 from loguru import logger
+
+if TYPE_CHECKING:
+    from sentientresearchagent.config import SentientConfig
+    from sentientresearchagent.hierarchical_agent_framework.agents.registry import AgentRegistry
+    from sentientresearchagent.hierarchical_agent_framework.agent_blueprints import AgentBlueprint
 
 @dataclass
 class ProjectMetadata:
@@ -214,4 +219,251 @@ class ProjectManager:
         except Exception as e:
             logger.error(f"Failed to load project state for {project_id}: {e}")
         
-        return None 
+        return None
+
+class ProjectExecutionContext:
+    """
+    Encapsulates all execution components for a specific project.
+    
+    This class solves the project isolation issue by ensuring each project
+    has its own independent execution environment including:
+    - TaskGraph
+    - KnowledgeStore  
+    - StateManager
+    - ExecutionEngine
+    - NodeProcessor
+    - HITLCoordinator
+    
+    This prevents cross-project contamination and allows seamless switching.
+    """
+    
+    def __init__(
+        self,
+        project_id: str,
+        config: "SentientConfig",
+        agent_registry: "AgentRegistry",
+        agent_blueprint: Optional["AgentBlueprint"] = None,
+        update_callback: Optional[Callable] = None
+    ):
+        """
+        Initialize project execution context.
+        
+        Args:
+            project_id: Unique project identifier
+            config: Configuration for this project
+            agent_registry: Agent registry instance
+            agent_blueprint: Agent blueprint for this project
+            update_callback: Optional callback for updates
+        """
+        self.project_id = project_id
+        self.config = config
+        self.agent_registry = agent_registry
+        self.agent_blueprint = agent_blueprint
+        self.update_callback = update_callback
+        
+        # Initialize project-specific components
+        self._initialize_components()
+        
+        logger.info(f"✅ ProjectExecutionContext initialized for project {project_id}")
+    
+    def _initialize_components(self):
+        """Initialize all project-specific execution components."""
+        from sentientresearchagent.hierarchical_agent_framework.graph.task_graph import TaskGraph
+        from sentientresearchagent.hierarchical_agent_framework.graph.state_manager import StateManager
+        from sentientresearchagent.hierarchical_agent_framework.graph.execution_engine import ExecutionEngine
+        from sentientresearchagent.hierarchical_agent_framework.node.node_processor import NodeProcessor
+        from sentientresearchagent.hierarchical_agent_framework.node.hitl_coordinator import HITLCoordinator
+        from sentientresearchagent.hierarchical_agent_framework.context.knowledge_store import KnowledgeStore
+        from sentientresearchagent.framework_entry import create_node_processor_config_from_main_config
+        
+        # Create project-specific components
+        self.task_graph = TaskGraph()
+        self.knowledge_store = KnowledgeStore()
+        self.state_manager = StateManager(self.task_graph)
+        
+        # Create node processor config
+        self.node_processor_config = create_node_processor_config_from_main_config(self.config)
+        
+        # Create HITL coordinator
+        self.hitl_coordinator = HITLCoordinator(config=self.node_processor_config)
+        
+        # Create node processor
+        self.node_processor = NodeProcessor(
+            task_graph=self.task_graph,
+            knowledge_store=self.knowledge_store,
+            agent_registry=self.agent_registry,
+            config=self.config,
+            node_processor_config=self.node_processor_config,
+            agent_blueprint=self.agent_blueprint
+        )
+        
+        # Create execution engine
+        self.execution_engine = ExecutionEngine(
+            task_graph=self.task_graph,
+            state_manager=self.state_manager,
+            knowledge_store=self.knowledge_store,
+            hitl_coordinator=self.hitl_coordinator,
+            config=self.config,
+            node_processor=self.node_processor
+        )
+    
+    def get_components(self) -> Dict[str, Any]:
+        """
+        Get all components as a dictionary.
+        
+        Returns:
+            Dictionary containing all execution components
+        """
+        return {
+            'task_graph': self.task_graph,
+            'knowledge_store': self.knowledge_store,
+            'state_manager': self.state_manager,
+            'execution_engine': self.execution_engine,
+            'node_processor': self.node_processor,
+            'hitl_coordinator': self.hitl_coordinator,
+            'update_callback': self.update_callback,
+            'config': self.config,
+            'node_processor_config': self.node_processor_config
+        }
+    
+    def load_state(self, project_state: Dict[str, Any]) -> bool:
+        """
+        Load project state into this execution context.
+        
+        Args:
+            project_state: Serialized project state
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Clear existing state
+            self.task_graph.nodes.clear()
+            self.task_graph.graphs.clear()
+            self.task_graph.root_graph_id = None
+            self.task_graph.overall_project_goal = None
+            self.knowledge_store.clear()
+            
+            if 'all_nodes' in project_state:
+                # Load nodes by deserializing dictionaries back to TaskNode objects
+                from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode
+                
+                for node_id, node_data in project_state['all_nodes'].items():
+                    try:
+                        # Convert datetime strings back to datetime objects if needed
+                        self._deserialize_node_timestamps(node_data)
+                        self._deserialize_node_enums(node_data)
+                        
+                        # Create TaskNode object from dictionary
+                        task_node = TaskNode(**node_data)
+                        self.task_graph.nodes[node_id] = task_node
+                        
+                        # Also add to knowledge store
+                        self.knowledge_store.add_or_update_record_from_node(task_node)
+                    except Exception as e:
+                        logger.warning(f"Failed to deserialize node {node_id}: {e}")
+                        continue
+            
+            # Properly reconstruct graphs
+            if 'graphs' in project_state:
+                self._reconstruct_graphs(project_state['graphs'])
+            
+            if 'overall_project_goal' in project_state:
+                self.task_graph.overall_project_goal = project_state['overall_project_goal']
+                
+            if 'root_graph_id' in project_state:
+                self.task_graph.root_graph_id = project_state['root_graph_id']
+            
+            logger.info(f"✅ Loaded state for project {self.project_id}: {len(self.task_graph.nodes)} nodes")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to load state for project {self.project_id}: {e}")
+            return False
+    
+    def save_state(self) -> Dict[str, Any]:
+        """
+        Save current state to a serializable dictionary.
+        
+        Returns:
+            Serialized project state
+        """
+        try:
+            if hasattr(self.task_graph, 'to_visualization_dict'):
+                return self.task_graph.to_visualization_dict()
+            else:
+                # Fallback serialization
+                from sentientresearchagent.hierarchical_agent_framework.graph.graph_serializer import GraphSerializer
+                serializer = GraphSerializer(self.task_graph)
+                return serializer.to_visualization_dict()
+        except Exception as e:
+            logger.error(f"Failed to save state for project {self.project_id}: {e}")
+            return {}
+    
+    def _deserialize_node_timestamps(self, node_data: Dict[str, Any]):
+        """Convert timestamp strings back to datetime objects."""
+        timestamp_fields = ['timestamp_created', 'timestamp_updated', 'timestamp_completed']
+        for field in timestamp_fields:
+            if field in node_data and isinstance(node_data[field], str):
+                try:
+                    node_data[field] = datetime.fromisoformat(node_data[field])
+                except ValueError:
+                    # If parsing fails, set to None
+                    node_data[field] = None
+    
+    def _deserialize_node_enums(self, node_data: Dict[str, Any]):
+        """Convert enum strings back to enum objects."""
+        from sentientresearchagent.hierarchical_agent_framework.types import TaskStatus, TaskType, NodeType
+        
+        # Convert status string to enum
+        if 'status' in node_data and isinstance(node_data['status'], str):
+            try:
+                node_data['status'] = TaskStatus[node_data['status'].upper()]
+            except KeyError:
+                node_data['status'] = TaskStatus.PENDING
+        
+        # Convert task_type string to enum
+        if 'task_type' in node_data and isinstance(node_data['task_type'], str):
+            try:
+                node_data['task_type'] = TaskType[node_data['task_type'].upper()]
+            except KeyError:
+                node_data['task_type'] = TaskType.THINK
+        
+        # Convert node_type string to enum
+        if 'node_type' in node_data and isinstance(node_data['node_type'], str):
+            try:
+                node_data['node_type'] = NodeType[node_data['node_type'].upper()]
+            except KeyError:
+                node_data['node_type'] = None
+    
+    def _reconstruct_graphs(self, graphs_data: Dict[str, Any]):
+        """Reconstruct graph structure from serialized data."""
+        try:
+            for graph_id, graph_data in graphs_data.items():
+                if isinstance(graph_data, dict) and 'node_ids' in graph_data:
+                    # Reconstruct the graph with proper node references
+                    node_ids = graph_data['node_ids']
+                    valid_node_ids = [nid for nid in node_ids if nid in self.task_graph.nodes]
+                    
+                    if valid_node_ids:
+                        self.task_graph.graphs[graph_id] = {
+                            'node_ids': valid_node_ids,
+                            'metadata': graph_data.get('metadata', {})
+                        }
+        except Exception as e:
+            logger.warning(f"Failed to reconstruct graphs for project {self.project_id}: {e}")
+    
+    def cleanup(self):
+        """Clean up resources when context is no longer needed."""
+        try:
+            # Clear all data structures
+            if hasattr(self, 'task_graph'):
+                self.task_graph.nodes.clear()
+                self.task_graph.graphs.clear()
+            
+            if hasattr(self, 'knowledge_store'):
+                self.knowledge_store.clear()
+            
+            logger.debug(f"🧹 Cleaned up ProjectExecutionContext for project {self.project_id}")
+        except Exception as e:
+            logger.warning(f"Error during cleanup for project {self.project_id}: {e}") 

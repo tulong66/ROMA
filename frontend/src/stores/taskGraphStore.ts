@@ -22,11 +22,23 @@ interface HITLLog {
   request_id: string
 }
 
-interface TaskGraphState {
-  // Data
+// NEW: Project-specific data structure
+interface ProjectData {
   nodes: Record<string, TaskNode>
   graphs: Record<string, any>
   overallProjectGoal?: string
+  lastUpdated: number
+}
+
+interface TaskGraphState {
+  // Current display data (what's shown in UI)
+  nodes: Record<string, TaskNode>
+  graphs: Record<string, any>
+  overallProjectGoal?: string
+  
+  // NEW: Project-specific data storage
+  currentProjectId?: string
+  projectData: Record<string, ProjectData>
   
   // UI State
   isConnected: boolean
@@ -61,6 +73,13 @@ interface TaskGraphState {
   setLoading: (loading: boolean) => void
   selectNode: (nodeId?: string) => void
   toggleContextFlow: () => void
+  
+  // NEW: Project-specific actions
+  setCurrentProject: (projectId: string) => void
+  setProjectData: (projectId: string, data: APIResponse) => void
+  getProjectData: (projectId: string) => ProjectData | null
+  clearProjectData: (projectId: string) => void
+  switchToProject: (projectId: string) => void
   
   // Filter Actions
   updateFilters: (filters: Partial<GraphFilters>) => void
@@ -136,6 +155,11 @@ export const useTaskGraphStore = create<TaskGraphState>()(
     nodes: {},
     graphs: {},
     overallProjectGoal: undefined,
+    
+    // NEW: Project-specific state
+    currentProjectId: undefined,
+    projectData: {},
+    
     isConnected: false,
     isLoading: false,
     selectedNodeId: undefined,
@@ -257,6 +281,74 @@ export const useTaskGraphStore = create<TaskGraphState>()(
         console.error('🚨 STORE: Update failed! Expected', newNodeCount, 'got', verifyNodeCount)
       } else {
         console.log('✅ STORE: Update successful!')
+      }
+    },
+    
+    // NEW: Project-specific actions
+    setCurrentProject: (projectId: string) => {
+      console.log('🏪 STORE: Setting current project:', projectId)
+      set({ currentProjectId: projectId })
+    },
+    
+    setProjectData: (projectId: string, data: APIResponse) => {
+      console.log('🏪 STORE: Setting project data for:', projectId, 'nodes:', Object.keys(data.all_nodes || {}).length)
+      
+      const projectData: ProjectData = {
+        nodes: data.all_nodes || {},
+        graphs: data.graphs || {},
+        overallProjectGoal: data.overall_project_goal,
+        lastUpdated: Date.now()
+      }
+      
+      set(state => ({
+        projectData: {
+          ...state.projectData,
+          [projectId]: projectData
+        }
+      }))
+      
+      // If this is the current project, also update display
+      const currentProjectId = get().currentProjectId
+      if (projectId === currentProjectId) {
+        console.log('🏪 STORE: Updating display for current project:', projectId)
+        get().setData(data)
+      }
+    },
+    
+    getProjectData: (projectId: string): ProjectData | null => {
+      const { projectData } = get()
+      return projectData[projectId] || null
+    },
+    
+    clearProjectData: (projectId: string) => {
+      console.log('🏪 STORE: Clearing project data for:', projectId)
+      set(state => {
+        const newProjectData = { ...state.projectData }
+        delete newProjectData[projectId]
+        return { projectData: newProjectData }
+      })
+    },
+    
+    switchToProject: (projectId: string) => {
+      console.log('🏪 STORE: Switching to project:', projectId)
+      
+      const projectData = get().getProjectData(projectId)
+      if (projectData) {
+        // Update current project
+        set({ currentProjectId: projectId })
+        
+        // Update display with project data
+        const apiResponse: APIResponse = {
+          all_nodes: projectData.nodes,
+          graphs: projectData.graphs,
+          overall_project_goal: projectData.overallProjectGoal
+        }
+        
+        get().setData(apiResponse)
+        console.log('✅ STORE: Switched to project:', projectId, 'with', Object.keys(projectData.nodes).length, 'nodes')
+      } else {
+        console.warn('⚠️ STORE: No data found for project:', projectId)
+        set({ currentProjectId: projectId })
       }
     },
     
@@ -755,4 +847,76 @@ if (typeof window !== 'undefined' && window) {
   }
   
   globalWindow.getHITLState = globalWindow.getHITLStoreState
+  
+  // NEW: Add project debugging functions
+  globalWindow.getProjectStoreState = () => {
+    const state = useTaskGraphStore.getState()
+    return {
+      currentProjectId: state.currentProjectId,
+      projectData: Object.keys(state.projectData).reduce((acc, projectId) => {
+        const data = state.projectData[projectId]
+        acc[projectId] = {
+          nodeCount: Object.keys(data.nodes).length,
+          goal: data.overallProjectGoal,
+          lastUpdated: new Date(data.lastUpdated).toISOString()
+        }
+        return acc
+      }, {} as Record<string, any>),
+      displayNodeCount: Object.keys(state.nodes).length,
+      displayGoal: state.overallProjectGoal
+    }
+  }
+  
+  globalWindow.switchToProject = (projectId: string) => {
+    console.log('🧪 Switching to project via debug:', projectId)
+    useTaskGraphStore.getState().switchToProject(projectId)
+  }
+  
+  // NEW: Add more comprehensive debug functions for testing
+  globalWindow.testProjectData = (projectId: string, data: any) => {
+    console.log('🧪 Testing setProjectData for:', projectId)
+    useTaskGraphStore.getState().setProjectData(projectId, data)
+    return useTaskGraphStore.getState().getProjectData(projectId)
+  }
+  
+  globalWindow.testProjectSwitch = (projectId: string) => {
+    console.log('🧪 Testing complete project switch for:', projectId)
+    const store = useTaskGraphStore.getState()
+    
+    // Get data before switch
+    const beforeSwitch = {
+      currentProjectId: store.currentProjectId,
+      displayNodeCount: Object.keys(store.nodes).length,
+      displayGoal: store.overallProjectGoal
+    }
+    
+    // Switch project
+    store.switchToProject(projectId)
+    
+    // Get data after switch
+    const afterSwitch = {
+      currentProjectId: store.currentProjectId,
+      displayNodeCount: Object.keys(store.nodes).length,
+      displayGoal: store.overallProjectGoal
+    }
+    
+    return { beforeSwitch, afterSwitch }
+  }
+  
+  globalWindow.getAllProjectData = () => {
+    const store = useTaskGraphStore.getState()
+    return {
+      currentProjectId: store.currentProjectId,
+      allProjects: Object.keys(store.projectData),
+      projectDetails: Object.keys(store.projectData).reduce((acc, projectId) => {
+        const data = store.projectData[projectId]
+        acc[projectId] = {
+          nodeCount: Object.keys(data.nodes).length,
+          goal: data.overallProjectGoal,
+          lastUpdated: new Date(data.lastUpdated).toISOString()
+        }
+        return acc
+      }, {} as Record<string, any>)
+    }
+  }
 } 

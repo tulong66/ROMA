@@ -13,7 +13,7 @@ import json
 import os
 from pathlib import Path
 
-from ...core.project_manager import ProjectManager
+from ...core.project_manager import ProjectManager, ProjectExecutionContext
 from ...framework_entry import create_node_processor_config_from_main_config
 from ...hierarchical_agent_framework.graph.task_graph import TaskGraph
 from ...hierarchical_agent_framework.graph.state_manager import StateManager
@@ -366,7 +366,7 @@ class ProjectService:
     
     def get_or_create_project_graph(self, project_id: str) -> Dict[str, Any]:
         """
-        Get or create a project-specific task graph and execution engine.
+        Get or create a project-specific execution context.
         
         Args:
             project_id: Project identifier
@@ -377,15 +377,6 @@ class ProjectService:
         if project_id not in self.project_graphs:
             # Check if we have a custom config for this project
             custom_config = self.project_configs.get(project_id, self.system_manager.config)
-            
-            # Create project-specific components
-            project_task_graph = TaskGraph()
-            project_state_manager = StateManager(project_task_graph)
-            
-            # Use the custom config (or default if no custom config)
-            node_processor_config = create_node_processor_config_from_main_config(custom_config)
-            
-            project_hitl_coordinator = HITLCoordinator(config=node_processor_config)
             
             # Create update callback for real-time sync
             update_callback = self._create_project_update_callback(project_id)
@@ -402,34 +393,17 @@ class ProjectService:
                 except Exception as e:
                     logger.warning(f"⚠️  Failed to load blueprint for profile '{current_profile}': {e}")
 
-            project_node_processor = NodeProcessor(
-                task_graph=project_task_graph,
-                knowledge_store=self.system_manager.knowledge_store,
+            # Create project execution context
+            project_context = ProjectExecutionContext(
+                project_id=project_id,
+                config=custom_config,
                 agent_registry=self.system_manager.agent_registry,
-                config=custom_config,
-                node_processor_config=node_processor_config,
-                agent_blueprint=current_blueprint
+                agent_blueprint=current_blueprint,
+                update_callback=update_callback
             )
             
-            project_execution_engine = ExecutionEngine(
-                task_graph=project_task_graph,
-                state_manager=project_state_manager,
-                knowledge_store=self.system_manager.knowledge_store,
-                hitl_coordinator=project_hitl_coordinator,
-                config=custom_config,
-                node_processor=project_node_processor
-            )
-            
-            # Store the project-specific components
-            self.project_graphs[project_id] = {
-                'task_graph': project_task_graph,
-                'state_manager': project_state_manager,
-                'execution_engine': project_execution_engine,
-                'node_processor': project_node_processor,
-                'hitl_coordinator': project_hitl_coordinator,
-                'update_callback': update_callback,
-                'config': custom_config
-            }
+            # Store the project execution context components
+            self.project_graphs[project_id] = project_context.get_components()
             
             config_type = "custom" if project_id in self.project_configs else "default"
             logger.info(f"✅ Created execution environment for project {project_id} "
@@ -703,95 +677,82 @@ class ProjectService:
 
     def start_project_execution(self, project_id: str) -> Dict[str, Any]:
         """
-        Start execution for a project.
+        Start execution for a specific project using its isolated execution context.
         
         Args:
-            project_id: ID of the project to start
+            project_id: Project identifier
             
         Returns:
-            Dictionary containing execution status
+            Dictionary containing execution status and info
         """
         try:
-            # Check system readiness
+            # Validate system readiness
             if not self._check_system_readiness_for_execution():
-                logger.warning("🚨 System not fully ready for execution, but proceeding...")
-                # Don't block execution, just warn
-            
-            project_data = self.get_project(project_id)
-            if not project_data or not project_data.get("project"):
                 return {
                     "success": False,
-                    "error": f"Project {project_id} not found."
+                    "error": "System not ready for execution",
+                    "project_id": project_id
                 }
             
-            project_goal = project_data["project"].get("goal")
-            max_steps = project_data["project"].get("max_steps", self.system_manager.config.execution.max_execution_steps)
-
-            if not project_goal:
-                 return {
-                    "success": False,
-                    "error": f"Project {project_id} has no goal defined."
-                }
-
-            # Load the project if not already loaded (ensures HAF components are ready)
-            if not self.load_project_into_graph(project_id):
+            # Get project metadata
+            project = self.project_manager.get_project(project_id)
+            if not project:
                 return {
                     "success": False,
-                    "error": f"Failed to load project {project_id} into graph."
+                    "error": f"Project {project_id} not found",
+                    "project_id": project_id
                 }
             
-            # Switch to this project if not current (ensures display consistency)
-            if self.project_manager.get_current_project_id() != project_id:
-                if not self.switch_project(project_id):
-                    return {
-                        "success": False,
-                        "error": f"Failed to switch to project {project_id}"
-                    }
+            # Get or create project-specific execution context
+            project_components = self.get_or_create_project_graph(project_id)
+            project_execution_engine = project_components['execution_engine']
+            project_task_graph = project_components['task_graph']
             
-            # Start execution using the ExecutionService from SystemManager
-            if not hasattr(self.system_manager, 'execution_service') or not self.system_manager.execution_service:
-                logger.error("ExecutionService not found on SystemManager.")
-                return {
-                    "success": False,
-                    "error": "ExecutionService not available."
-                }
-
-            # Determine if a custom config is being used for this project
-            custom_config_for_project = self.project_configs.get(project_id)
-
-            if custom_config_for_project:
-                logger.info(f"Starting configured execution for project {project_id} via ProjectService.")
-                # Ensure custom_config_for_project is a SentientConfig instance
-                from ...config import SentientConfig
-                if not isinstance(custom_config_for_project, SentientConfig):
-                    logger.warning(f"Custom config for project {project_id} is not a SentientConfig instance. Attempting to use as is.")
-                
-                success = self.system_manager.execution_service.start_configured_project_execution(
-                    project_id=project_id,
-                    goal=project_goal,
-                    max_steps=max_steps,
-                    config=custom_config_for_project 
-                )
+            # Set the project goal if not already set
+            if not project_task_graph.overall_project_goal:
+                project_task_graph.overall_project_goal = project.goal
+                logger.info(f"Set project goal for {project_id}: {project.goal}")
+            
+            # Update project status
+            self.project_manager.update_project(project_id, status='running')
+            
+            # Start execution using project-specific engine
+            logger.info(f"🚀 Starting execution for project {project_id}")
+            
+            # Execute using the project-specific execution engine
+            execution_result = project_execution_engine.execute_graph(
+                goal=project.goal,
+                max_steps=project.max_steps
+            )
+            
+            # Update project status based on result
+            if execution_result.get("success", False):
+                self.project_manager.update_project(project_id, status='completed')
+                logger.info(f"✅ Project {project_id} execution completed successfully")
             else:
-                logger.info(f"Starting standard execution for project {project_id} via ProjectService.")
-                success = self.system_manager.execution_service.start_project_execution(
-                    project_id=project_id,
-                    goal=project_goal,
-                    max_steps=max_steps
-                )
+                self.project_manager.update_project(project_id, status='failed')
+                logger.error(f"❌ Project {project_id} execution failed")
+            
+            # Save project state after execution
+            self.save_project_state_async(project_id, project_task_graph.to_visualization_dict())
+            
+            # Auto-save results
+            self._auto_save_current_project()
             
             return {
-                "success": success,
+                "success": execution_result.get("success", False),
                 "project_id": project_id,
-                "message": "Execution started." if success else "Failed to start execution."
+                "execution_result": execution_result,
+                "message": f"Execution {'completed' if execution_result.get('success') else 'failed'} for project {project_id}"
             }
             
         except Exception as e:
-            logger.error(f"Failed to start project execution for {project_id}: {e}")
-            traceback.print_exc()
+            logger.error(f"Failed to start execution for project {project_id}: {e}")
+            self.project_manager.update_project(project_id, status='failed')
             return {
                 "success": False,
-                "error": str(e)
+                "error": str(e),
+                "project_id": project_id
             }
 
     def save_project_results(self, project_id: str, results_package: Dict[str, Any]) -> bool:

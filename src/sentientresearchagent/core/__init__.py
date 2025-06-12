@@ -11,7 +11,7 @@ from .error_handler import (
     ErrorRecovery, 
     safe_execute
 )
-from .project_manager import ProjectManager
+from .project_manager import ProjectManager, ProjectExecutionContext
 
 __all__ = [
     "SystemManager",
@@ -23,4 +23,5 @@ __all__ = [
     "ErrorRecovery",
     "safe_execute",
     "ProjectManager",
+    "ProjectExecutionContext",
 ] 

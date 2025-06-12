@@ -154,14 +154,18 @@ class SystemManager:
             num_named_agents = len(self.agent_registry.get_all_named_agents())
             logger.info(f"✅ SystemManager: Agent registry loaded: {num_adapters} adapters, {num_named_agents} named agents")
             
-            # 6. Initialize HAF core components (these are generally profile-agnostic structurally)
-            logger.info("🧠 SystemManager: Initializing HAF core components...")
-            self.task_graph = TaskGraph()
-            self.knowledge_store = KnowledgeStore()
-            self.state_manager = StateManager(self.task_graph)
+            # 6. MODIFIED: Keep only display-only components for backward compatibility
+            # Execution components are now project-specific in ProjectExecutionContext
+            logger.info("🧠 SystemManager: Initializing display-only HAF components...")
+            from ..hierarchical_agent_framework.graph.task_graph import TaskGraph
+            from ..hierarchical_agent_framework.context.knowledge_store import KnowledgeStore
+            from ..hierarchical_agent_framework.graph.state_manager import StateManager
             
-            base_node_processor_config = create_node_processor_config_from_main_config(self.config)
-            self.hitl_coordinator = HITLCoordinator(config=base_node_processor_config)
+            self.task_graph = TaskGraph()  # Display-only graph
+            self.knowledge_store = KnowledgeStore()  # Display-only store
+            self.state_manager = StateManager(self.task_graph)  # Display-only state manager
+            
+            # Note: execution_engine, node_processor, and hitl_coordinator are now project-specific only
 
             self._initialized_core = True
             logger.info("✅ SystemManager: Core systems initialized successfully!")
@@ -186,6 +190,8 @@ class SystemManager:
         
         try:
             # 1. Load profile blueprint (primarily for validation and info, not for modifying SentientConfig.agents directly here)
+            from ..hierarchical_agent_framework.agent_configs.profile_loader import ProfileLoader
+            
             profile_loader = ProfileLoader() 
             profile_blueprint = profile_loader.load_profile(profile_name) # This may raise if profile not found
             if not profile_blueprint: # Should be redundant if load_profile raises
@@ -230,43 +236,11 @@ class SystemManager:
             else:
                 logger.info(f"Profile '{profile_name}' validated successfully.")
 
-            # 4. Create NodeProcessorConfig based on the main config (which now knows the active_profile_name)
-            # create_node_processor_config_from_main_config internally uses main_config.execution settings.
-            node_processor_config = create_node_processor_config_from_main_config(self.config)
-
-            # 5. Re-initialize/Reconfigure components that depend on the profile and node_processor_config
-            if not self.task_graph or not self.knowledge_store or not self.state_manager or not self.hitl_coordinator:
-                 logger.error("SystemManager: Core HAF components not available for profile init! Re-creating.")
-                 self.task_graph = TaskGraph()
-                 self.knowledge_store = KnowledgeStore()
-                 self.state_manager = StateManager(self.task_graph)
-                 self.hitl_coordinator = HITLCoordinator(config=node_processor_config)
-            else:
-                # Update existing HITLCoordinator's config
-                self.hitl_coordinator.config = node_processor_config
-
-            # First, create the NodeProcessor fully configured
-            self.node_processor = NodeProcessor(
-                task_graph=self.task_graph,
-                knowledge_store=self.knowledge_store,
-                agent_registry=self.agent_registry, # Pass the registry instance
-                config=self.config, 
-                node_processor_config=node_processor_config, # This is NodeProcessorConfig
-                agent_blueprint=profile_blueprint 
-            )
-            
-            # Then, pass the configured NodeProcessor instance to ExecutionEngine
-            self.execution_engine = ExecutionEngine(
-                task_graph=self.task_graph,
-                state_manager=self.state_manager,
-                knowledge_store=self.knowledge_store,
-                hitl_coordinator=self.hitl_coordinator, # ExecutionEngine uses HITLCoordinator
-                config=self.config, 
-                node_processor=self.node_processor # Pass the created NodeProcessor instance
-            )
+            # 4. REMOVED: No longer create global execution components
+            # These are now created per-project in ProjectExecutionContext
             
             self._current_profile = profile_name
-            logger.info(f"✅ SystemManager: Successfully applied profile '{profile_name}'. Execution components reconfigured.")
+            logger.info(f"✅ SystemManager: Successfully applied profile '{profile_name}'. Profile is ready for project-specific execution contexts.")
             
             self._log_system_info() 
 
@@ -356,22 +330,30 @@ class SystemManager:
     
     def get_components(self) -> Dict[str, Any]:
         """
-        Get all initialized components.
+        Get system components.
+        
+        Note: Execution components (execution_engine, node_processor, hitl_coordinator)
+        are now project-specific and available through ProjectExecutionContext.
         
         Returns:
-            Dictionary containing all system components
+            Dictionary of available system components
         """
-        return {
-            'config': self.config,
-            'task_graph': self.task_graph,
-            'knowledge_store': self.knowledge_store,
-            'state_manager': self.state_manager,
-            'hitl_coordinator': self.hitl_coordinator,
-            'node_processor': self.node_processor,
-            'execution_engine': self.execution_engine,
-            'cache_manager': self.cache_manager,
-            'error_handler': self.error_handler
+        components = {
+            "config": self.config,
+            "agent_registry": self.agent_registry,
+            "cache_manager": self.cache_manager,
+            "error_handler": self.error_handler,
+            "task_graph": self.task_graph,  # Display-only graph
+            "knowledge_store": self.knowledge_store,  # Display-only store
+            "state_manager": self.state_manager,  # Display-only state manager
         }
+        
+        # Note: These are now project-specific only:
+        # - execution_engine
+        # - node_processor  
+        # - hitl_coordinator
+        
+        return components
     
     def get_system_info(self) -> Dict[str, Any]:
         """

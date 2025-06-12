@@ -24,6 +24,51 @@ interface ProjectResults {
 class ProjectService {
   private baseUrl = 'http://localhost:5000/api'
 
+  // FIXED: Helper method to safely get store instances using our existing debug setup
+  private getStores() {
+    try {
+      // Use our existing debug functions to access stores
+      if (typeof window !== 'undefined' && (window as any).getProjectStoreState) {
+        // Get current state through debug function
+        const currentState = (window as any).getProjectStoreState()
+        
+        // Access the store methods through our debug setup
+        const taskGraphStore = {
+          setCurrentProject: (window as any).switchToProject,
+          setProjectData: (window as any).setProjectData || (() => {}),
+          getProjectData: (projectId: string) => {
+            const state = (window as any).getProjectStoreState()
+            return state.projectData[projectId] || null
+          },
+          clearProjectData: (projectId: string) => {
+            // This would need to be implemented in the debug setup
+            console.log('clearProjectData called for:', projectId)
+          }
+        }
+        
+        const projectStore = {
+          setCurrentProject: (projectId: string) => {
+            console.log('ProjectStore setCurrentProject called:', projectId)
+          },
+          addProject: (project: any) => {
+            console.log('ProjectStore addProject called:', project)
+          },
+          removeProject: (projectId: string) => {
+            console.log('ProjectStore removeProject called:', projectId)
+          },
+          currentProjectId: currentState.currentProjectId
+        }
+        
+        return { taskGraphStore, projectStore }
+      }
+      
+      return null
+    } catch (error) {
+      console.warn('Could not access stores:', error)
+      return null
+    }
+  }
+
   async getProjects(): Promise<{ projects: Project[], current_project_id?: string }> {
     try {
       const response = await fetch(`${this.baseUrl}/projects`)
@@ -56,7 +101,22 @@ class ProjectService {
       throw new Error(error.error || 'Failed to create project')
     }
     
-    return response.json()
+    const result = await response.json()
+    
+    // NEW: Update stores when project is created
+    if (result.project) {
+      const stores = this.getStores()
+      if (stores) {
+        // Add to project store
+        stores.projectStore.addProject(result.project)
+        
+        // Switch to the new project
+        stores.taskGraphStore.setCurrentProject(result.project.id)
+        stores.projectStore.setCurrentProject(result.project.id)
+      }
+    }
+    
+    return result
   }
 
   async createProjectWithConfig(goal: string, config: ProjectConfig): Promise<{ project: Project, message: string }> {
@@ -78,7 +138,22 @@ class ProjectService {
         throw new Error(error.error || 'Failed to create configured project')
       }
       
-      return response.json()
+      const result = await response.json()
+      
+      // NEW: Update stores when configured project is created
+      if (result.project) {
+        const stores = this.getStores()
+        if (stores) {
+          // Add to project store
+          stores.projectStore.addProject(result.project)
+          
+          // Switch to the new project
+          stores.taskGraphStore.setCurrentProject(result.project.id)
+          stores.projectStore.setCurrentProject(result.project.id)
+        }
+      }
+      
+      return result
     } catch (error) {
       // Fallback to regular project creation if configured endpoint doesn't exist
       console.warn('Configured project creation not available, falling back to regular creation')
@@ -94,9 +169,20 @@ class ProjectService {
     return response.json()
   }
 
+  // UPDATED: Enhanced project switching with store integration
   async switchProject(projectId: string): Promise<{ project: Project, message: string }> {
+    console.log('🔄 PROJECT SERVICE: Switching to project:', projectId)
+    
+    // Update frontend stores immediately for responsive UI
+    const stores = this.getStores()
+    if (stores) {
+      // Set current project in both stores
+      stores.projectStore.setCurrentProject(projectId)
+      stores.taskGraphStore.setCurrentProject(projectId)
+    }
+    
     // Try WebSocket first for real-time switching
-    if (webSocketService.isConnected()) {
+    if ((window as any).webSocketService?.isConnected()) {
       console.log('🔄 Using WebSocket for project switch:', projectId)
       
       return new Promise((resolve, reject) => {
@@ -107,8 +193,10 @@ class ProjectService {
         // Listen for success
         const handleSuccess = (data: any) => {
           clearTimeout(timeout)
-          webSocketService.socket?.off('project_switch_success', handleSuccess)
-          webSocketService.socket?.off('project_switch_error', handleError)
+          ;(window as any).webSocketService.socket?.off('project_switch_success', handleSuccess)
+          ;(window as any).webSocketService.socket?.off('project_switch_error', handleError)
+          
+          console.log('✅ PROJECT SERVICE: WebSocket switch successful:', data)
           
           resolve({
             project: data.project_data?.current_project || { id: projectId },
@@ -119,33 +207,70 @@ class ProjectService {
         // Listen for error
         const handleError = (data: any) => {
           clearTimeout(timeout)
-          webSocketService.socket?.off('project_switch_success', handleSuccess)
-          webSocketService.socket?.off('project_switch_error', handleError)
+          ;(window as any).webSocketService.socket?.off('project_switch_success', handleSuccess)
+          ;(window as any).webSocketService.socket?.off('project_switch_error', handleError)
           
+          console.error('❌ PROJECT SERVICE: WebSocket switch failed:', data)
           reject(new Error(data.error || 'Failed to switch project'))
         }
 
         // Set up listeners
-        webSocketService.socket?.on('project_switch_success', handleSuccess)
-        webSocketService.socket?.on('project_switch_error', handleError)
+        ;(window as any).webSocketService.socket?.on('project_switch_success', handleSuccess)
+        ;(window as any).webSocketService.socket?.on('project_switch_error', handleError)
 
         // Send switch request
-        webSocketService.switchProject(projectId)
+        ;(window as any).webSocketService.switchProject(projectId)
       })
     } else {
       // Fallback to REST API
       console.log('🔄 Using REST API for project switch (WebSocket not connected):', projectId)
       
-      const response = await fetch(`${this.baseUrl}/projects/${projectId}/switch`, {
-        method: 'POST',
-      })
+      try {
+        const response = await fetch(`${this.baseUrl}/projects/${projectId}/switch`, {
+          method: 'POST',
+        })
+        
+        if (!response.ok) {
+          const error = await response.json()
+          throw new Error(error.error || 'Failed to switch project')
+        }
+        
+        const result = await response.json()
+        console.log('✅ PROJECT SERVICE: REST API switch successful:', result)
+        return result
+      } catch (error) {
+        console.error('❌ PROJECT SERVICE: REST API switch failed:', error)
+        throw error
+      }
+    }
+  }
+
+  // NEW: Switch to project and load its data
+  async switchToProjectWithData(projectId: string): Promise<{ project: Project, message: string }> {
+    console.log('🔄 PROJECT SERVICE: Switching to project with data loading:', projectId)
+    
+    try {
+      // First switch the project
+      const switchResult = await this.switchProject(projectId)
       
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to switch project')
+      // Then try to load any saved results for this project
+      try {
+        const savedResults = await this.loadProjectResults(projectId)
+        if (savedResults.graph_data) {
+          console.log('📊 PROJECT SERVICE: Loading saved project data')
+          const stores = this.getStores()
+          if (stores) {
+            stores.taskGraphStore.setProjectData(projectId, savedResults.graph_data)
+          }
+        }
+      } catch (error) {
+        console.log('📊 PROJECT SERVICE: No saved data found for project (this is normal for new projects)')
       }
       
-      return response.json()
+      return switchResult
+    } catch (error) {
+      console.error('❌ PROJECT SERVICE: Failed to switch to project with data:', error)
+      throw error
     }
   }
 
@@ -159,14 +284,47 @@ class ProjectService {
       throw new Error(error.error || 'Failed to delete project')
     }
     
+    // NEW: Update stores when project is deleted
+    const stores = this.getStores()
+    if (stores) {
+      // Remove from project store
+      stores.projectStore.removeProject(projectId)
+      
+      // Clear project data from task graph store
+      stores.taskGraphStore.clearProjectData(projectId)
+      
+      // If this was the current project, clear current project
+      if (stores.projectStore.currentProjectId === projectId) {
+        stores.projectStore.setCurrentProject(undefined)
+        stores.taskGraphStore.setCurrentProject(undefined)
+      }
+    }
+    
     return response.json()
   }
 
-  // NEW: Save project results (with fallback)
+  // UPDATED: Enhanced save with store integration
   async saveProjectResults(projectId: string): Promise<{ message: string, saved_at: string, metadata: any }> {
+    console.log('💾 PROJECT SERVICE: Saving project results:', projectId)
+    
     try {
+      // Get current project data from store
+      const stores = this.getStores()
+      const projectData = stores ? stores.taskGraphStore.getProjectData(projectId) : null
+      
       const response = await fetch(`${this.baseUrl}/projects/${projectId}/save-results`, {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          graph_data: projectData,
+          metadata: {
+            saved_from_frontend: true,
+            node_count: projectData?.all_nodes ? Object.keys(projectData.all_nodes).length : 0,
+            project_goal: projectData?.overall_project_goal
+          }
+        }),
       })
       
       if (!response.ok) {
@@ -174,23 +332,36 @@ class ProjectService {
         throw new Error(error.error || 'Failed to save project results')
       }
       
-      return response.json()
+      const result = await response.json()
+      console.log('✅ PROJECT SERVICE: Project results saved successfully')
+      return result
     } catch (error) {
       // Fallback: save to localStorage if backend endpoint doesn't exist
-      console.warn('Backend save not available, using localStorage fallback')
+      console.warn('💾 Backend save not available, using localStorage fallback')
+      const stores = this.getStores()
+      const projectData = stores ? stores.taskGraphStore.getProjectData(projectId) : null
+      
       const timestamp = new Date().toISOString()
       const fallbackData = {
         message: "Results saved locally",
         saved_at: timestamp,
-        metadata: { local_save: true }
+        metadata: { 
+          local_save: true,
+          node_count: projectData?.all_nodes ? Object.keys(projectData.all_nodes).length : 0,
+          project_goal: projectData?.overall_project_goal
+        },
+        graph_data: projectData
       }
       localStorage.setItem(`project_${projectId}_results`, JSON.stringify(fallbackData))
+      console.log('✅ PROJECT SERVICE: Project results saved to localStorage')
       return fallbackData
     }
   }
 
-  // NEW: Load project results (with fallback)
+  // UPDATED: Enhanced load with store integration
   async loadProjectResults(projectId: string): Promise<ProjectResults> {
+    console.log('📂 PROJECT SERVICE: Loading project results:', projectId)
+    
     try {
       const response = await fetch(`${this.baseUrl}/projects/${projectId}/load-results`)
       
@@ -199,14 +370,44 @@ class ProjectService {
         throw new Error(error.error || 'Failed to load project results')
       }
       
-      return response.json()
+      const result = await response.json()
+      
+      // NEW: Update store with loaded data
+      if (result.graph_data) {
+        const stores = this.getStores()
+        if (stores) {
+          stores.taskGraphStore.setProjectData(projectId, result.graph_data)
+          console.log('✅ PROJECT SERVICE: Loaded project data into store')
+        }
+      }
+      
+      return result
     } catch (error) {
       // Fallback: load from localStorage
+      console.warn('📂 Backend load not available, trying localStorage fallback')
       const localData = localStorage.getItem(`project_${projectId}_results`)
+      
       if (localData) {
-        return JSON.parse(localData)
+        const parsedData = JSON.parse(localData)
+        
+        // Update store with loaded data
+        if (parsedData.graph_data) {
+          const stores = this.getStores()
+          if (stores) {
+            stores.taskGraphStore.setProjectData(projectId, parsedData.graph_data)
+            console.log('✅ PROJECT SERVICE: Loaded project data from localStorage into store')
+          }
+        }
+        
+        return {
+          project: { id: projectId } as Project,
+          saved_at: parsedData.saved_at,
+          graph_data: parsedData.graph_data,
+          metadata: parsedData.metadata
+        }
       }
-      throw new Error('No saved results found')
+      
+      throw error
     }
   }
 
@@ -262,4 +463,12 @@ class ProjectService {
   }
 }
 
-export const projectService = new ProjectService() 
+// Export singleton instance
+export const projectService = new ProjectService()
+export default projectService
+
+// Simple debug setup without problematic code
+if (typeof window !== 'undefined') {
+  (window as any).projectService = projectService
+  console.log('🔧 ProjectService available on window.projectService')
+} 
