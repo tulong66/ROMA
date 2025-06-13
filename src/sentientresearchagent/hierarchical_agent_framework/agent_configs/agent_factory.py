@@ -129,7 +129,16 @@ class AgentFactory:
         
         try:
             if provider == "litellm":
-                return model_class(id=model_id)
+                # Check if this is an o3 model that needs parameter dropping
+                is_o3_model = "o3" in model_id.lower()
+                
+                if is_o3_model:
+                    # For o3 models, create with drop_params=True to handle unsupported parameters
+                    logger.info(f"🔧 Creating LiteLLM model for o3: {model_id} with drop_params=True")
+                    return model_class(id=model_id, drop_params=True)
+                else:
+                    # For non-o3 models, use standard creation
+                    return model_class(id=model_id)
             elif provider == "openai":
                 return model_class(id=model_id)
             else:
