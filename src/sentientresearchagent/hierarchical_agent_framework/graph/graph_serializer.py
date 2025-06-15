@@ -68,12 +68,12 @@ class GraphSerializer:
             provider = model_info.get("model_provider", "unknown")
             model_name = model_info.get("model_name", "unknown")
             
-            if adapter_name and adapter_name != "unknown":
-                model_display = adapter_name
-            elif provider != "unknown" and model_name != "unknown":
+            if provider != "unknown" and model_name != "unknown":
                 model_display = f"{provider}/{model_name}"
             elif model_name != "unknown":
                 model_display = model_name
+            elif adapter_name and adapter_name != "unknown":
+                model_display = adapter_name
             else:
                 model_display = model_info.get("model_id", "unknown")
 
