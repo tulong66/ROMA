@@ -11,6 +11,7 @@ __pycache__/
 .agent_projects/
 .agent*
 project_results/
+emergency_backups/
 
 # Runtime logs and output
 *.log
