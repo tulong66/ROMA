@@ -1,7 +1,6 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react'
+import React, { useEffect, useState, useMemo } from 'react'
 import { useTaskGraphStore } from '@/stores/taskGraphStore'
 import { useProjectStore } from '@/stores/projectStore'
-import { webSocketService } from '@/services/websocketService'
 import Header from './Header'
 import ProjectSidebar from '@/components/sidebar/ProjectSidebar'
 import GraphVisualization from '@/components/graph/GraphVisualization'
@@ -14,9 +13,6 @@ import ConnectionStatus from '@/components/status/ConnectionStatus'
 import HITLLog from '@/components/hitl/HITLLog'
 import HITLNotification from '@/components/hitl/HITLNotification'
 import { wsManager } from '@/services/websocketManager'
-import { ProjectSwitchDebugger } from '@/debug/ProjectSwitchDebugger'
-import { NodeRestorationDebugger } from '@/debug/NodeRestorationDebugger'
-import ProjectDebugPanel from '@/components/debug/ProjectDebugPanel'
 
 const MainLayout: React.FC = () => {
   const { 
@@ -177,17 +173,6 @@ const MainLayout: React.FC = () => {
         {/* Add HITL Notification */}
         <HITLNotification />
       </div>
-      
-      {/* Add debuggers in development */}
-      {process.env.NODE_ENV === 'development' && (
-        <>
-          <ProjectSwitchDebugger />
-          <NodeRestorationDebugger />
-        </>
-      )}
-      
-      {/* Debug panel - only in development */}
-      {process.env.NODE_ENV === 'development' && <ProjectDebugPanel />}
     </div>
   )
 }
