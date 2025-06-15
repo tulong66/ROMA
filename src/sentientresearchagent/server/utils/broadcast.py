@@ -36,7 +36,7 @@ class BroadcastManager:
     def broadcast_graph_update(self) -> bool:
         """
         Send current project's graph state to all connected clients.
-        Uses project-specific data instead of shared display graph to prevent conflicts.
+        FIXED: Always include project_id to prevent project mixing.
         
         Returns:
             True if successful, False otherwise
@@ -50,10 +50,20 @@ class BroadcastManager:
             if current_project:
                 # Get project-specific data without affecting other projects
                 data = self.project_service.get_project_display_data(current_project.id)
+                
+                # CRITICAL FIX: Always include project identification
+                data['project_id'] = current_project.id
                 data['current_project'] = current_project.to_dict()
+                data['timestamp'] = datetime.now().isoformat()
                 
                 node_count = len(data.get('all_nodes', {}))
                 logger.debug(f"📡 Broadcasting project {current_project.id}: {node_count} nodes")
+                
+                # AGGRESSIVE DEBUGGING
+                logger.info(f"🚨 BROADCAST DEBUG - Project: {current_project.id}, Nodes: {node_count}")
+                if data.get('all_nodes'):
+                    first_few_nodes = list(data['all_nodes'].keys())[:3]
+                    logger.info(f"🚨 BROADCAST DEBUG - First nodes: {first_few_nodes}")
             else:
                 # No current project - send empty state
                 data = {
@@ -61,17 +71,20 @@ class BroadcastManager:
                     'graphs': {},
                     'overall_project_goal': None,
                     'root_graph_id': None,
-                    'current_project': None
+                    'project_id': None,
+                    'current_project': None,
+                    'timestamp': datetime.now().isoformat()
                 }
                 logger.debug("📡 Broadcasting empty state (no current project)")
             
-            # Emit the project-specific data
+            # CRITICAL FIX: Emit with project context
             self.socketio.emit('task_graph_update', data)
             
-            # Save state for current project (non-blocking)
+            # CRITICAL FIX: Auto-save state for persistence
             if current_project:
                 try:
                     self.project_service.save_project_state_async(current_project.id, data)
+                    logger.debug(f"💾 Auto-saved project state during broadcast: {current_project.id}")
                 except Exception as e:
                     logger.warning(f"Failed to save during broadcast: {e}")
             

@@ -379,12 +379,7 @@ class ExecutionService:
     
     async def _run_project_cycle_async(self, project_id: str, goal: str, max_steps: int):
         """
-        Run the project cycle with proper project isolation and real-time updates.
-        
-        Args:
-            project_id: Project identifier
-            goal: Project goal
-            max_steps: Maximum execution steps
+        Run the project cycle with proper project isolation and AGGRESSIVE result saving.
         """
         logger.info(f"🎯 Initializing project: {project_id} - {goal}")
         
@@ -395,7 +390,7 @@ class ExecutionService:
             project_execution_engine = project_components['execution_engine']
             update_callback = project_components['update_callback']
             
-            # Create real-time wrapper
+            # Create real-time wrapper with enhanced saving
             realtime_engine = RealtimeExecutionWrapper(
                 project_id,
                 project_execution_engine,
@@ -403,7 +398,7 @@ class ExecutionService:
                 self.project_service.project_manager
             )
             
-            # Check if this should be the current project (only if no other project is current)
+            # Check if this should be the current project
             current_project = self.project_service.project_manager.get_current_project()
             if not current_project:
                 self.project_service.project_manager.set_current_project(project_id)
@@ -411,29 +406,23 @@ class ExecutionService:
             else:
                 should_display = (current_project.id == project_id)
             
-            # Load existing state into project graph
+            # Load existing state
             project_state = self.project_service.project_manager.load_project_state(project_id)
             
             if project_state and 'all_nodes' in project_state and len(project_state['all_nodes']) > 0:
                 logger.info(f"📊 Resuming project with {len(project_state['all_nodes'])} existing nodes")
-                
-                # Load state into project graph
                 self._load_project_state(project_task_graph, project_state)
-                
-                # Update project status
                 self.project_service.project_manager.update_project(project_id, status='running')
                 
-                # Only sync to display if this is the current project
                 if should_display:
                     self.project_service.sync_project_to_display(project_id)
                 
-                # Continue execution from where it left off
                 logger.info("⚡ Resuming execution...")
                 await realtime_engine.run_cycle(max_steps=max_steps)
             else:
                 logger.info("🧹 Starting fresh project...")
                 
-                # Clear project graph (but not other projects!)
+                # Clear project graph
                 project_task_graph.nodes.clear()
                 project_task_graph.graphs.clear()
                 project_task_graph.root_graph_id = None
@@ -444,10 +433,8 @@ class ExecutionService:
                 if cache_manager and self.system_manager.config.cache.enabled:
                     cache_manager.clear_namespace(f"project_{project_id}")
                 
-                # Update project status
                 self.project_service.project_manager.update_project(project_id, status='running')
                 
-                # Run the complete project flow (initialization + HITL + execution)
                 logger.info("🚀 Starting project flow...")
                 start_time = time.time()
                 
@@ -456,27 +443,26 @@ class ExecutionService:
                 total_time = time.time() - start_time
                 logger.info(f"⏱️ Project execution took {total_time:.2f} seconds")
             
-            # Update project status
+            # CRITICAL: Update project status BEFORE saving
             self.project_service.project_manager.update_project(project_id, status='completed')
+            
+            # CRITICAL: Save state IMMEDIATELY after execution completes
+            logger.info(f"🚨 CRITICAL SAVE - Saving final state for project {project_id}")
+            self._save_final_project_state_enhanced(project_task_graph, project_id)
             
             # Final sync only if current project
             if (self.project_service.project_manager.get_current_project() and 
                 self.project_service.project_manager.get_current_project().id == project_id):
                 self.project_service.sync_project_to_display(project_id)
             
-            # Always save final state
-            self._save_final_project_state(project_task_graph, project_id)
-            
-            logger.info(f"✅ Project {project_id} completed")
+            logger.info(f"✅ Project {project_id} completed and saved")
             
         except Exception as e:
-            # Update project status to failed
             self.project_service.project_manager.update_project(project_id, status='failed')
             logger.error(f"Project execution error: {e}")
             traceback.print_exc()
             
             try:
-                # Sync error state only if current project
                 if (self.project_service.project_manager.get_current_project() and 
                     self.project_service.project_manager.get_current_project().id == project_id):
                     self.project_service.sync_project_to_display(project_id)
@@ -510,9 +496,12 @@ class ExecutionService:
         self.project_service._reconstruct_graphs(project_task_graph, project_state.get('graphs', {}))
         # ... other state loading logic
     
-    def _save_final_project_state(self, project_task_graph, project_id):
-        """Save final project state."""
+    def _save_final_project_state_enhanced(self, project_task_graph, project_id):
+        """Enhanced final state saving with comprehensive debugging and multiple save attempts."""
         try:
+            logger.info(f"🚨 ENHANCED SAVE - Starting comprehensive save for project: {project_id}")
+            
+            # Get comprehensive project data
             if hasattr(project_task_graph, 'to_visualization_dict'):
                 data = project_task_graph.to_visualization_dict()
             else:
@@ -520,6 +509,149 @@ class ExecutionService:
                 serializer = GraphSerializer(project_task_graph)
                 data = serializer.to_visualization_dict()
             
-            self.project_service.project_manager.save_project_state(project_id, data)
+            # AGGRESSIVE DEBUGGING
+            node_count = len(data.get('all_nodes', {}))
+            logger.info(f"🚨 ENHANCED SAVE - Project {project_id}: {node_count} nodes to save")
+            
+            if node_count == 0:
+                logger.error(f"🚨 CRITICAL ERROR - Project {project_id} has 0 nodes after execution!")
+                logger.error(f"🚨 CRITICAL ERROR - This indicates execution results were not captured!")
+                
+                # Try to get data from system manager as fallback
+                try:
+                    if hasattr(self.system_manager, 'task_graph') and self.system_manager.task_graph:
+                        fallback_data = self.system_manager.task_graph.to_visualization_dict()
+                        fallback_node_count = len(fallback_data.get('all_nodes', {}))
+                        logger.info(f"🚨 FALLBACK ATTEMPT - System manager has {fallback_node_count} nodes")
+                        
+                        if fallback_node_count > 0:
+                            logger.info(f"🚨 FALLBACK SUCCESS - Using system manager data instead")
+                            data = fallback_data
+                            node_count = fallback_node_count
+                except Exception as fe:
+                    logger.error(f"🚨 FALLBACK FAILED: {fe}")
+            
+            if data.get('all_nodes'):
+                # Log details about nodes being saved
+                for i, (node_id, node_data) in enumerate(list(data['all_nodes'].items())[:3]):
+                    has_full_result = bool(node_data.get('full_result'))
+                    has_execution_details = bool(node_data.get('execution_details'))
+                    status = node_data.get('status', 'unknown')
+                    logger.info(f"🚨 ENHANCED SAVE - Node {i+1} ({node_id}): "
+                               f"status={status}, has_full_result={has_full_result}, "
+                               f"has_execution_details={has_execution_details}")
+                    
+                    # Special handling for root node
+                    if node_data.get('layer') == 0 and not node_data.get('parent_node_id'):
+                        full_result_preview = str(node_data.get('full_result', ''))[:200]
+                        logger.info(f"🚨 ENHANCED SAVE - ROOT NODE full_result preview: {full_result_preview}...")
+            
+            # MULTIPLE SAVE ATTEMPTS
+            save_attempts = [
+                ("project_manager", lambda: self.project_service.project_manager.save_project_state(project_id, data)),
+                ("comprehensive_results", lambda: self._save_comprehensive_results(project_id, data)),
+                ("emergency_backup", lambda: self._save_emergency_backup(project_id, data))
+            ]
+            
+            successful_saves = 0
+            for save_name, save_func in save_attempts:
+                try:
+                    save_func()
+                    logger.info(f"✅ ENHANCED SAVE - {save_name} successful")
+                    successful_saves += 1
+                except Exception as se:
+                    logger.error(f"❌ ENHANCED SAVE - {save_name} failed: {se}")
+            
+            if successful_saves > 0:
+                logger.info(f"✅ ENHANCED SAVE - {successful_saves}/{len(save_attempts)} save methods successful")
+            else:
+                logger.error(f"❌ ENHANCED SAVE - ALL SAVE METHODS FAILED for project {project_id}")
+            
+            # VERIFICATION
+            self._verify_save(project_id, node_count)
+            
         except Exception as e:
-            logger.error(f"Failed to save final project state: {e}")
+            logger.error(f"Enhanced save failed for project {project_id}: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _save_comprehensive_results(self, project_id: str, data: Dict[str, Any]):
+        """Save comprehensive results package."""
+        results_package = {
+            'basic_state': data,
+            'saved_at': datetime.now().isoformat(),
+            'execution_completed': True,
+            'enhanced_save': True,
+            'metadata': {
+                'node_count': len(data.get('all_nodes', {})),
+                'project_goal': data.get('overall_project_goal'),
+                'completion_status': self._get_completion_status(data.get('all_nodes', {})),
+                'has_root_node': any(
+                    node.get('layer') == 0 and not node.get('parent_node_id') 
+                    for node in data.get('all_nodes', {}).values()
+                ),
+                'root_node_completed': any(
+                    node.get('layer') == 0 and not node.get('parent_node_id') and node.get('status') == 'DONE'
+                    for node in data.get('all_nodes', {}).values()
+                )
+            }
+        }
+        
+        success = self.project_service.save_project_results(project_id, results_package)
+        if not success:
+            raise Exception("Failed to save comprehensive results")
+
+    def _save_emergency_backup(self, project_id: str, data: Dict[str, Any]):
+        """Save emergency backup to a separate file."""
+        import json
+        from pathlib import Path
+        
+        backup_dir = Path("emergency_backups")
+        backup_dir.mkdir(exist_ok=True)
+        
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_file = backup_dir / f"{project_id}_{timestamp}_emergency.json"
+        
+        backup_data = {
+            'project_id': project_id,
+            'saved_at': datetime.now().isoformat(),
+            'emergency_backup': True,
+            'data': data
+        }
+        
+        with open(backup_file, 'w') as f:
+            json.dump(backup_data, f, indent=2, default=str)
+        
+        logger.info(f"🚨 EMERGENCY BACKUP saved to: {backup_file}")
+
+    def _verify_save(self, project_id: str, expected_node_count: int):
+        """Verify that the save was successful."""
+        try:
+            verification_data = self.project_service.project_manager.load_project_state(project_id)
+            if verification_data:
+                actual_node_count = len(verification_data.get('all_nodes', {}))
+                logger.info(f"🔍 SAVE VERIFICATION - Expected: {expected_node_count}, Actual: {actual_node_count}")
+                
+                if actual_node_count == expected_node_count:
+                    logger.info(f"✅ SAVE VERIFICATION PASSED")
+                else:
+                    logger.error(f"❌ SAVE VERIFICATION FAILED - Node count mismatch")
+            else:
+                logger.error(f"❌ SAVE VERIFICATION FAILED - Could not load saved data")
+        except Exception as ve:
+            logger.error(f"❌ SAVE VERIFICATION ERROR: {ve}")
+
+    def _get_completion_status(self, nodes: Dict[str, Any]) -> str:
+        """Determine project completion status from nodes."""
+        if not nodes:
+            return "no_nodes"
+        
+        total_nodes = len(nodes)
+        completed_nodes = sum(1 for node in nodes.values() if node.get('status') == 'DONE')
+        
+        if completed_nodes == 0:
+            return "not_started"
+        elif completed_nodes == total_nodes:
+            return "completed"
+        else:
+            return f"partial_{completed_nodes}_{total_nodes}"

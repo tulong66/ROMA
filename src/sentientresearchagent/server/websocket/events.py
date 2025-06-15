@@ -264,6 +264,188 @@ def register_websocket_events(socketio, project_service, execution_service):
                 'error': str(e)
             })
     
+    @socketio.on('auto_save_project')
+    def handle_auto_save_project(data):
+        """Handle automatic project saving from frontend."""
+        try:
+            project_id = data.get('project_id')
+            project_data = data.get('data')
+            
+            if not project_id or not project_data:
+                logger.warning("Auto-save request missing project_id or data")
+                return
+            
+            logger.info(f"💾 Auto-saving project data: {project_id}")
+            
+            # Save to project service
+            project_service.save_project_state_async(project_id, project_data)
+            
+            # Also save as results for persistence
+            results_package = {
+                "project_id": project_id,
+                "saved_at": datetime.now().isoformat(),
+                "graph_data": project_data,
+                "auto_saved": True,
+                "metadata": {
+                    "total_nodes": len(project_data.get('all_nodes', {})),
+                    "project_goal": project_data.get('overall_project_goal'),
+                    "completion_status": "auto_saved"
+                }
+            }
+            
+            project_service.save_project_results(project_id, results_package)
+            
+            logger.info(f"✅ Auto-saved project: {project_id}")
+            
+        except Exception as e:
+            logger.error(f"Auto-save error: {e}")
+    
+    @socketio.on('request_project_restore')
+    def handle_request_project_restore(data):
+        """Handle project state restoration requests with enhanced debugging."""
+        try:
+            project_id = data.get('project_id')
+            if not project_id:
+                emit('project_restore_error', {'error': 'project_id required'})
+                return
+
+            logger.info(f"🔄 Restoring project state: {project_id}")
+
+            # ENHANCED: Try multiple restoration sources
+            restored = False
+            
+            # 1. Try to load comprehensive saved results first
+            results = project_service.load_project_results(project_id)
+            if results and results.get('basic_state'):
+                project_data = results['basic_state']
+                project_data['project_id'] = project_id
+                project_data['restored'] = True
+                project_data['restored_at'] = datetime.now().isoformat()
+                project_data['restored_from'] = 'comprehensive_results'
+                
+                # AGGRESSIVE DEBUGGING
+                node_count = len(project_data.get('all_nodes', {}))
+                logger.info(f"🚨 RESTORE DEBUG - From comprehensive results: {node_count} nodes")
+                
+                if project_data.get('all_nodes'):
+                    for node_id, node_data in list(project_data['all_nodes'].items())[:3]:
+                        has_full_result = bool(node_data.get('full_result'))
+                        logger.info(f"🚨 RESTORE DEBUG - Node {node_id}: has_full_result={has_full_result}")
+
+                emit('project_restored', project_data)
+                logger.info(f"✅ Restored project from comprehensive results: {project_id}")
+                restored = True
+
+            # 2. Fallback to basic project state
+            if not restored:
+                project_state = project_service.project_manager.load_project_state(project_id)
+                if project_state:
+                    project_state['project_id'] = project_id
+                    project_state['restored'] = True
+                    project_state['restored_at'] = datetime.now().isoformat()
+                    project_state['restored_from'] = 'basic_state'
+
+                    # AGGRESSIVE DEBUGGING
+                    node_count = len(project_state.get('all_nodes', {}))
+                    logger.info(f"🚨 RESTORE DEBUG - From basic state: {node_count} nodes")
+
+                    emit('project_restored', project_state)
+                    logger.info(f"✅ Restored project from basic state: {project_id}")
+                    restored = True
+
+            if not restored:
+                emit('project_restore_error', {'error': f'No saved state found for project {project_id}'})
+                logger.warning(f"❌ No saved state found for project: {project_id}")
+
+        except Exception as e:
+            logger.error(f"Project restore error: {e}")
+            import traceback
+            traceback.print_exc()
+            emit('project_restore_error', {'error': str(e)})
+
+    # NEW: Manual save trigger
+    @socketio.on('force_save_project')
+    def handle_force_save_project(data):
+        """Force save current project state - useful for debugging."""
+        try:
+            project_id = data.get('project_id')
+            if not project_id:
+                emit('save_error', {'error': 'project_id required'})
+                return
+
+            logger.info(f"🚨 FORCE SAVE - Manually saving project: {project_id}")
+            
+            # Get current project data
+            project_data = project_service.get_project_display_data(project_id)
+            
+            # Save comprehensive results
+            results_package = {
+                'basic_state': project_data,
+                'saved_at': datetime.now().isoformat(),
+                'manual_save': True,
+                'metadata': {
+                    'node_count': len(project_data.get('all_nodes', {})),
+                    'project_goal': project_data.get('overall_project_goal'),
+                    'completion_status': 'manual_save'
+                }
+            }
+            
+            success = project_service.save_project_results(project_id, results_package)
+            
+            if success:
+                emit('save_success', {
+                    'project_id': project_id,
+                    'message': 'Project saved successfully',
+                    'node_count': len(project_data.get('all_nodes', {}))
+                })
+                logger.info(f"✅ FORCE SAVE - Successfully saved project: {project_id}")
+            else:
+                emit('save_error', {'error': 'Failed to save project'})
+                logger.error(f"❌ FORCE SAVE - Failed to save project: {project_id}")
+
+        except Exception as e:
+            logger.error(f"Force save error: {e}")
+            emit('save_error', {'error': str(e)})
+    
+    @socketio.on('start_project_execution')
+    def handle_start_project_execution(data):
+        """Handle project re-execution requests."""
+        try:
+            project_id = data.get('project_id')
+            goal = data.get('goal')
+            max_steps = data.get('max_steps', 250)
+            
+            if not project_id or not goal:
+                emit('execution_error', {'error': 'project_id and goal are required'})
+                return
+            
+            logger.info(f"🚨 RE-EXECUTION - Starting execution for project: {project_id}")
+            logger.info(f"🚨 RE-EXECUTION - Goal: {goal}")
+            
+            # Clear any existing state for this project
+            project_service.project_manager.update_project(project_id, status='running', node_count=0)
+            
+            # Start execution
+            success = execution_service.start_project_execution(project_id, goal, max_steps)
+            
+            if success:
+                emit('execution_started', {
+                    'project_id': project_id,
+                    'message': f'Re-execution started for project {project_id}',
+                    'goal': goal,
+                    'max_steps': max_steps
+                })
+                logger.info(f"✅ RE-EXECUTION - Started successfully for project: {project_id}")
+            else:
+                emit('execution_error', {
+                    'error': f'Failed to start execution for project {project_id}'
+                })
+                logger.error(f"❌ RE-EXECUTION - Failed to start for project: {project_id}")
+            
+        except Exception as e:
+            logger.error(f"Re-execution error: {e}")
+            emit('execution_error', {'error': str(e)})
+    
     @socketio.on_error_default
     def default_error_handler(e):
         """Default error handler for WebSocket events."""

@@ -286,12 +286,21 @@ class ReadyExecuteHandler(INodeHandler):
 
             if execution_result is not None:
                 node.result = execution_result
+                
+                # CRITICAL FIX: Store full result in aux_data for persistence
+                node.aux_data['full_result'] = execution_result
+                
                 if hasattr(execution_result, 'model_dump'):
                     node.output_summary = f"Execution completed. Structured output stored."
                 elif isinstance(execution_result, str):
                     node.output_summary = execution_result[:250] + "..." if len(execution_result) > 250 else execution_result
                 else:
                     node.output_summary = f"Execution completed. Data stored in result."
+                
+                # CRITICAL FIX: Store execution details in aux_data
+                if hasattr(context, 'execution_details'):
+                    node.aux_data['execution_details'] = context.execution_details
+                
                 node.update_status(TaskStatus.DONE)
                 logger.success(f"    ReadyExecuteHandler: Node {node.task_id} execution complete. Status: {node.status.name}.")
             else:

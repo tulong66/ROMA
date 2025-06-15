@@ -126,7 +126,7 @@ agents:
     description: "Performs Analysis and Synthesis of information"
     model:
       provider: "litellm"
-      model_id: "openai/o3-2025-04-16" #"openrouter/anthropic/claude-sonnet-4"
+      model_id: "openrouter/anthropic/claude-sonnet-4"
     prompt_source: "prompts.executor_prompts.REASONING_EXECUTOR_SYSTEM_MESSAGE"
     registration:
       action_keys:
@@ -141,7 +141,7 @@ agents:
     description: "Writes detailed reports based on provided context"
     model:
       provider: "litellm"
-      model_id: "openai/o3-2025-04-16" #"openrouter/anthropic/claude-sonnet-4"
+      model_id: "openrouter/anthropic/claude-sonnet-4"
     prompt_source: "prompts.executor_prompts.BASIC_REPORT_WRITER_SYSTEM_MESSAGE"
     registration:
       action_keys:
@@ -177,7 +177,7 @@ agents:
     description: "Synthesizes results from multiple child tasks"
     model:
       provider: "litellm"
-      model_id: "openai/o3-2025-04-16" #"openrouter/anthropic/claude-sonnet-4"
+      model_id: "openrouter/anthropic/claude-sonnet-4"
     prompt_source: "prompts.aggregator_prompts.DEFAULT_AGGREGATOR_SYSTEM_MESSAGE"
     registration:
       action_keys:
@@ -196,7 +196,7 @@ agents:
     description: "Determines if tasks are atomic or need further planning"
     model:
       provider: "litellm"
-      model_id: "openai/o3-2025-04-16" #"openrouter/anthropic/claude-sonnet-4"
+      model_id: "openrouter/anthropic/claude-sonnet-4"
     prompt_source: "prompts.atomizer_prompts.ATOMIZER_SYSTEM_MESSAGE"
     response_model: "AtomizerOutput"
     registration:

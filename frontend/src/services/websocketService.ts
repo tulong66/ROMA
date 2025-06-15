@@ -94,14 +94,15 @@ class WebSocketService {
       this.handleReconnect()
     })
 
-    // UPDATED: Project-aware task graph updates
-    this.socket.on('task_graph_update', (data: APIResponse & { project_id?: string }) => {
+    // FIXED: Enhanced project-aware task graph updates with aggressive debugging
+    this.socket.on('task_graph_update', (data: APIResponse & { project_id?: string, current_project?: any }) => {
       const now = Date.now()
       this.updateCount++
       
       console.log(`🚨🚨🚨 [UPDATE ${this.updateCount}] WEBSOCKET RECEIVED PROJECT-AWARE UPDATE`)
-      console.log('📊 Raw data:', data)
-      console.log('📊 Project ID:', data.project_id)
+      console.log('📊 Raw data keys:', Object.keys(data))
+      console.log('📊 Project ID from data:', data.project_id)
+      console.log('📊 Current project from data:', data.current_project?.id)
       console.log('📊 Nodes in data:', Object.keys(data.all_nodes || {}).length)
       console.log('📊 First few node IDs:', Object.keys(data.all_nodes || {}).slice(0, 3))
       
@@ -111,30 +112,85 @@ class WebSocketService {
         const taskGraphStore = useTaskGraphStore.getState()
         const projectStore = useProjectStore.getState()
         
-        // Get the project ID from the data or use current project
-        const projectId = data.project_id || projectStore.currentProjectId
+        // AGGRESSIVE DEBUGGING: Log current store state
+        console.log('🏪 BEFORE UPDATE - Store state:', {
+          taskGraphCurrentProject: taskGraphStore.currentProjectId,
+          projectStoreCurrentProject: projectStore.currentProjectId,
+          taskGraphNodeCount: Object.keys(taskGraphStore.nodes).length,
+          projectDataKeys: Object.keys(taskGraphStore.projectData)
+        })
+        
+        // Determine the project ID with multiple fallbacks
+        const projectId = data.project_id || 
+                         data.current_project?.id || 
+                         projectStore.currentProjectId ||
+                         taskGraphStore.currentProjectId
+        
+        console.log('🎯 DETERMINED PROJECT ID:', projectId)
         
         if (projectId) {
           console.log('🏪 Storing project-specific data for:', projectId)
           
-          // Store data for the specific project
+          // CRITICAL FIX: Always store project data first
           taskGraphStore.setProjectData(projectId, data)
           
-          // Only update display if this is the current project
-          if (projectId === taskGraphStore.currentProjectId) {
+          // CRITICAL FIX: Only update display if this matches BOTH store's current project
+          const isCurrentInTaskGraph = projectId === taskGraphStore.currentProjectId
+          const isCurrentInProjectStore = projectId === projectStore.currentProjectId
+          
+          console.log('🔍 PROJECT MATCHING CHECK:', {
+            projectId,
+            taskGraphCurrent: taskGraphStore.currentProjectId,
+            projectStoreCurrent: projectStore.currentProjectId,
+            isCurrentInTaskGraph,
+            isCurrentInProjectStore,
+            shouldUpdateDisplay: isCurrentInTaskGraph && isCurrentInProjectStore
+          })
+          
+          if (isCurrentInTaskGraph && isCurrentInProjectStore) {
             console.log('🔄 Updating display for current project:', projectId)
             taskGraphStore.setData(data)
+            
+            // AGGRESSIVE DEBUGGING: Verify the update worked
+            setTimeout(() => {
+              const afterState = useTaskGraphStore.getState()
+              console.log('✅ AFTER DISPLAY UPDATE:', {
+                nodeCount: Object.keys(afterState.nodes).length,
+                firstNodeId: Object.keys(afterState.nodes)[0],
+                overallGoal: afterState.overallProjectGoal?.substring(0, 50)
+              })
+            }, 100)
           } else {
-            console.log('📦 Stored data for non-current project:', projectId, '(current:', taskGraphStore.currentProjectId, ')')
+            console.log('📦 Stored data for non-current project:', projectId, 
+                       '(taskGraph current:', taskGraphStore.currentProjectId, 
+                       ', projectStore current:', projectStore.currentProjectId, ')')
           }
+          
+          // CRITICAL FIX: Auto-save project data for persistence
+          this.autoSaveProjectData(projectId, data)
+          
         } else {
-          console.log('🔄 No project ID, using legacy setData')
+          console.warn('⚠️ No project ID found, using legacy setData (this may cause project mixing!)')
           taskGraphStore.setData(data)
         }
+        
+        // AGGRESSIVE DEBUGGING: Log final state
+        const finalState = useTaskGraphStore.getState()
+        console.log('🏪 AFTER UPDATE - Final store state:', {
+          taskGraphCurrentProject: finalState.currentProjectId,
+          taskGraphNodeCount: Object.keys(finalState.nodes).length,
+          projectDataKeys: Object.keys(finalState.projectData),
+          projectDataSizes: Object.fromEntries(
+            Object.entries(finalState.projectData).map(([id, data]) => 
+              [id, Object.keys(data.nodes).length]
+            )
+          )
+        })
         
         console.log('✅ Project-aware update completed')
       } catch (error) {
         console.error('❌ ERROR in project-aware WebSocket handler:', error)
+        console.error('Stack trace:', error.stack)
       }
     })
 
@@ -303,16 +359,79 @@ class WebSocketService {
       // Could emit a toast notification here
     })
 
-    this.socket.on('project_restored', (data) => {
+    this.socket.on('project_restored', (data: any) => {
       console.log('🔄 Project state restored:', data)
+      console.log('🚨 RESTORE DEBUG - Data keys:', Object.keys(data))
+      console.log('🚨 RESTORE DEBUG - Node count:', Object.keys(data.all_nodes || {}).length)
+      console.log('🚨 RESTORE DEBUG - Has root graph:', !!data.root_graph_id)
+      console.log('🚨 RESTORE DEBUG - Overall goal:', data.overall_project_goal?.substring(0, 100))
       
-      const taskGraphStore = useTaskGraphStore.getState()
+      // Log details about nodes
+      if (data.all_nodes) {
+        const nodeEntries = Object.entries(data.all_nodes)
+        console.log('🚨 RESTORE DEBUG - First few nodes:')
+        nodeEntries.slice(0, 3).forEach(([nodeId, nodeData]: [string, any]) => {
+          console.log(`  - ${nodeId}: status=${nodeData.status}, layer=${nodeData.layer}, has_full_result=${!!nodeData.full_result}`)
+          
+          // Special logging for root node
+          if (nodeData.layer === 0 && !nodeData.parent_node_id) {
+            console.log('🚨 RESTORE DEBUG - ROOT NODE FOUND:', {
+              task_id: nodeData.task_id,
+              status: nodeData.status,
+              has_full_result: !!nodeData.full_result,
+              has_execution_details: !!nodeData.execution_details,
+              full_result_preview: nodeData.full_result?.substring(0, 200)
+            })
+          }
+        })
+      }
       
-      if (data.project_id) {
-        taskGraphStore.setProjectData(data.project_id, data)
-        taskGraphStore.switchToProject(data.project_id)
-      } else {
-        taskGraphStore.setData(data)
+      try {
+        const projectId = data.project_id
+        if (projectId) {
+          console.log('🔄 Restoring project data for:', projectId)
+          
+          // FIXED: Access stores directly instead of using this.getStores()
+          const taskGraphStore = useTaskGraphStore.getState()
+          
+          // Store the restored data
+          taskGraphStore.setProjectData(projectId, data)
+          
+          // If this is the current project, also update display
+          if (projectId === taskGraphStore.currentProjectId) {
+            console.log('🔄 Updating display with restored data')
+            taskGraphStore.setData(data)
+            
+            // VERIFICATION: Check if the data was properly restored
+            setTimeout(() => {
+              const currentState = useTaskGraphStore.getState()
+              const nodeCount = Object.keys(currentState.nodes).length
+              const rootNode = Object.values(currentState.nodes).find(
+                (node: any) => node.layer === 0 && !node.parent_node_id
+              )
+              
+              console.log('✅ RESTORE VERIFICATION:', {
+                nodeCount,
+                hasRootNode: !!rootNode,
+                rootNodeStatus: rootNode?.status,
+                rootNodeHasFullResult: !!(rootNode as any)?.full_result
+              })
+              
+              if (rootNode && (rootNode as any).full_result) {
+                console.log('✅ ROOT NODE FULL RESULT RESTORED SUCCESSFULLY')
+              } else {
+                console.error('❌ ROOT NODE FULL RESULT NOT RESTORED')
+                
+                // CRITICAL: If no results found, suggest re-execution
+                console.warn('🚨 SUGGESTION: Project appears to have no execution results. Consider re-running the project.')
+              }
+            }, 100)
+          }
+          
+          console.log('✅ Restored and switched to current project:', projectId)
+        }
+      } catch (error) {
+        console.error('❌ Error handling project restoration:', error)
       }
     })
 
@@ -320,7 +439,7 @@ class WebSocketService {
       console.error('❌ Project restore error:', data)
     })
 
-    // Enhanced connection handler for state recovery
+    // CRITICAL FIX: Enhanced connection handler with state recovery
     this.socket.on('connect', () => {
       console.log('🔌 Connected to WebSocket')
       useTaskGraphStore.getState().setConnectionStatus(true)
@@ -330,11 +449,31 @@ class WebSocketService {
         clearTimeout(this.connectionStableTimer)
       }
       
-      // Request current project state restoration after a brief delay
+      // CRITICAL FIX: Aggressive state recovery after connection
       this.connectionStableTimer = setTimeout(() => {
-        const currentProjectId = useProjectStore.getState().currentProjectId
+        const taskGraphStore = useTaskGraphStore.getState()
+        const projectStore = useProjectStore.getState()
+        const currentProjectId = projectStore.currentProjectId || taskGraphStore.currentProjectId
+        
+        console.log('🔄 CONNECTION RECOVERY - Current project:', currentProjectId)
+        
         if (currentProjectId) {
           console.log('🔄 Requesting project state restoration for:', currentProjectId)
+          
+          // First, try to restore from localStorage
+          try {
+            const backupData = localStorage.getItem(`project_${currentProjectId}_backup`)
+            if (backupData) {
+              const parsedData = JSON.parse(backupData)
+              console.log('🔄 Restored from localStorage backup during reconnection')
+              taskGraphStore.setProjectData(currentProjectId, parsedData)
+              taskGraphStore.switchToProject(currentProjectId)
+            }
+          } catch (error) {
+            console.warn('Failed to restore from localStorage during reconnection:', error)
+          }
+          
+          // Then request from server
           this.requestProjectRestore(currentProjectId)
         } else {
           console.log('📋 Requesting initial state (no current project)')
@@ -552,16 +691,115 @@ class WebSocketService {
 
   requestProjectRestore(projectId: string) {
     if (this.socket && this.isConnected()) {
-      console.log('🔄 Requesting project restore via WebSocket:', projectId)
-      this.socket.emit('restore_project', { project_id: projectId })
+      console.log('🔄 Requesting project restoration:', projectId)
+      this.socket.emit('request_project_restore', { project_id: projectId })
     } else {
-      console.error('❌ Cannot request project restore: WebSocket not connected')
+      console.warn('Cannot request project restore: WebSocket not connected')
     }
   }
 
   // Add socket property for external access
   get socket() {
     return this.socket
+  }
+
+  // NEW: Auto-save project data for persistence
+  private autoSaveProjectData(projectId: string, data: any) {
+    try {
+      const timestamp = new Date().toISOString()
+      const saveData = {
+        ...data,
+        saved_at: timestamp,
+        auto_saved: true
+      }
+      
+      // Save to localStorage as backup
+      localStorage.setItem(`project_${projectId}_backup`, JSON.stringify(saveData))
+      
+      // Also try to save to backend (non-blocking)
+      if (this.isConnected()) {
+        this.socket?.emit('auto_save_project', {
+          project_id: projectId,
+          data: saveData
+        })
+      }
+      
+      console.log('💾 Auto-saved project data for:', projectId)
+    } catch (error) {
+      console.warn('Failed to auto-save project data:', error)
+    }
+  }
+
+  // NEW: Add method to re-run project execution
+  rerunProject(projectId: string) {
+    if (this.socket && this.isConnected()) {
+      console.log('🚨 RE-RUN - Triggering project re-execution:', projectId)
+      
+      // Get project details
+      const projectStore = useProjectStore.getState()
+      const project = projectStore.projects.find(p => p.id === projectId)
+      
+      if (project) {
+        console.log('🚨 RE-RUN - Project goal:', project.goal)
+        
+        // Clear any existing state first
+        const taskGraphStore = useTaskGraphStore.getState()
+        taskGraphStore.clearProjectData(projectId)
+        
+        // Start fresh execution
+        this.socket.emit('start_project_execution', {
+          project_id: projectId,
+          goal: project.goal,
+          max_steps: project.max_steps || 250
+        })
+        
+        // Set loading state
+        taskGraphStore.setLoading(true)
+        
+        console.log('🚨 RE-RUN - Execution request sent')
+      } else {
+        console.error('❌ RE-RUN - Project not found:', projectId)
+      }
+    } else {
+      console.error('❌ RE-RUN - WebSocket not connected')
+    }
+  }
+
+  // NEW: Add method to force save current project
+  forceSaveCurrentProject() {
+    const taskGraphStore = useTaskGraphStore.getState()
+    const projectStore = useProjectStore.getState()
+    const currentProjectId = projectStore.currentProjectId || taskGraphStore.currentProjectId
+    
+    if (currentProjectId && this.socket && this.isConnected()) {
+      console.log('🚨 FORCE SAVE - Manually saving current project:', currentProjectId)
+      this.socket.emit('force_save_project', { project_id: currentProjectId })
+    } else {
+      console.error('❌ Cannot force save: no current project or not connected')
+    }
+  }
+
+  // NEW: Add method to force restore current project
+  forceRestoreCurrentProject() {
+    const taskGraphStore = useTaskGraphStore.getState()
+    const projectStore = useProjectStore.getState()
+    const currentProjectId = projectStore.currentProjectId || taskGraphStore.currentProjectId
+    
+    if (currentProjectId) {
+      console.log('🚨 FORCE RESTORE - Manually restoring current project:', currentProjectId)
+      this.requestProjectRestore(currentProjectId)
+    } else {
+      console.error('❌ Cannot force restore: no current project')
+    }
+  }
+
+  constructor() {
+    // ... existing code ...
+    
+    // Make the service available globally for debugging
+    if (typeof window !== 'undefined') {
+      (window as any).websocketService = this
+    }
   }
 }
 
@@ -605,4 +843,9 @@ if (typeof window !== 'undefined') {
   globalWindow.switchProjectWS = (projectId: string) => webSocketService.switchProject(projectId)
   globalWindow.restoreProjectWS = (projectId: string) => webSocketService.requestProjectRestore(projectId)
   globalWindow.simulateProjectUpdate = (projectId: string) => webSocketService.simulateProjectUpdate(projectId)
+}
+
+// Make the service available globally for debugging
+if (typeof window !== 'undefined') {
+  (window as any).websocketService = this
 } 

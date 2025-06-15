@@ -470,11 +470,22 @@ class ProjectService:
                             self._deserialize_node_timestamps(node_data)
                             self._deserialize_node_enums(node_data)
                             
+                            # CRITICAL FIX: Prepare data for deserialization
+                            prepared_data = self._prepare_node_data_for_deserialization(node_data)
+                            
                             # Create TaskNode object from dictionary
-                            task_node = TaskNode(**node_data)
+                            task_node = TaskNode(**prepared_data)
                             project_task_graph.nodes[node_id] = task_node
+                            
+                            # AGGRESSIVE DEBUGGING
+                            logger.debug(f"🔄 Deserialized node {node_id}: "
+                                       f"has_full_result={task_node.aux_data.get('full_result') is not None}, "
+                                       f"has_execution_details={task_node.aux_data.get('execution_details') is not None}, "
+                                       f"status={task_node.status}")
+                            
                         except Exception as e:
                             logger.warning(f"Failed to deserialize node {node_id}: {e}")
+                            logger.debug(f"Node data that failed: {node_data}")
                             continue
                 
                 # Properly reconstruct graphs
@@ -616,11 +627,14 @@ class ProjectService:
         display_graph.overall_project_goal = None
     
     def _deserialize_node_timestamps(self, node_data: Dict[str, Any]):
-        """Convert datetime strings back to datetime objects."""
+        """Convert timestamp strings back to datetime objects."""
         datetime_fields = ['timestamp_created', 'timestamp_updated', 'timestamp_completed']
         for field in datetime_fields:
             if isinstance(node_data.get(field), str):
-                node_data[field] = datetime.fromisoformat(node_data[field])
+                try:
+                    node_data[field] = datetime.fromisoformat(node_data[field])
+                except ValueError:
+                    node_data[field] = None
     
     def _deserialize_node_enums(self, node_data: Dict[str, Any]):
         """Fix status and type enums if they're strings."""
@@ -632,6 +646,48 @@ class ProjectService:
         
         if 'node_type' in node_data and isinstance(node_data['node_type'], str):
             node_data['node_type'] = NodeType(node_data['node_type'])
+    
+    def _prepare_node_data_for_deserialization(self, node_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Prepare node data for proper deserialization, ensuring all execution data is preserved.
+        
+        Args:
+            node_data: Raw node data from saved state
+            
+        Returns:
+            Prepared data ready for TaskNode creation
+        """
+        try:
+            # Create a copy to avoid modifying original
+            prepared_data = node_data.copy()
+            
+            # Ensure aux_data exists
+            if 'aux_data' not in prepared_data:
+                prepared_data['aux_data'] = {}
+            
+            # CRITICAL FIX: Move execution data to aux_data if it's in the root
+            execution_fields = [
+                'full_result', 'execution_details', 'model_info', 'input_context_sources',
+                'execution_time', 'token_usage', 'cost_info', 'error_details'
+            ]
+            
+            for field in execution_fields:
+                if field in prepared_data and field not in prepared_data['aux_data']:
+                    # Move from root to aux_data
+                    prepared_data['aux_data'][field] = prepared_data[field]
+                    logger.debug(f"🔄 Moved {field} to aux_data for node {prepared_data.get('task_id', 'unknown')}")
+            
+            # AGGRESSIVE DEBUGGING
+            has_full_result = bool(prepared_data['aux_data'].get('full_result'))
+            has_execution_details = bool(prepared_data['aux_data'].get('execution_details'))
+            logger.debug(f"🔄 PREP DEBUG - Node {prepared_data.get('task_id', 'unknown')}: "
+                        f"has_full_result={has_full_result}, has_execution_details={has_execution_details}")
+            
+            return prepared_data
+            
+        except Exception as e:
+            logger.warning(f"Failed to prepare node data for deserialization: {e}")
+            return node_data
     
     def _reconstruct_graphs(self, project_task_graph: TaskGraph, graphs_data: Dict[str, Any]):
         """Reconstruct NetworkX graphs from serialized data."""

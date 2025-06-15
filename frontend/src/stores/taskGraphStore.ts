@@ -332,23 +332,83 @@ export const useTaskGraphStore = create<TaskGraphState>()(
     switchToProject: (projectId: string) => {
       console.log('🏪 STORE: Switching to project:', projectId)
       
+      // AGGRESSIVE DEBUGGING: Log current state
+      const currentState = get()
+      console.log('🏪 BEFORE SWITCH:', {
+        currentProjectId: currentState.currentProjectId,
+        currentNodeCount: Object.keys(currentState.nodes).length,
+        projectDataKeys: Object.keys(currentState.projectData),
+        targetProjectExists: !!currentState.projectData[projectId]
+      })
+      
       const projectData = get().getProjectData(projectId)
+      
       if (projectData) {
-        // Update current project
+        console.log('🔄 Found project data, switching display:', {
+          projectId,
+          nodeCount: Object.keys(projectData.nodes).length,
+          lastUpdated: new Date(projectData.lastUpdated).toISOString(),
+          overallGoal: projectData.overallProjectGoal?.substring(0, 50)
+        })
+        
+        // CRITICAL FIX: Update current project FIRST to prevent race conditions
         set({ currentProjectId: projectId })
         
-        // Update display with project data
+        // CRITICAL FIX: Create completely new API response object to force re-render
         const apiResponse: APIResponse = {
-          all_nodes: projectData.nodes,
-          graphs: projectData.graphs,
-          overall_project_goal: projectData.overallProjectGoal
+          all_nodes: { ...projectData.nodes }, // Shallow copy to ensure new reference
+          graphs: { ...projectData.graphs },
+          overall_project_goal: projectData.overallProjectGoal,
+          project_id: projectId, // Include project ID for consistency
+          timestamp: new Date().toISOString() // Add timestamp to force updates
         }
         
+        // Update display with project data
         get().setData(apiResponse)
+        
+        // AGGRESSIVE DEBUGGING: Verify the switch worked
+        setTimeout(() => {
+          const afterState = get()
+          console.log('✅ AFTER SWITCH VERIFICATION:', {
+            currentProjectId: afterState.currentProjectId,
+            displayNodeCount: Object.keys(afterState.nodes).length,
+            switchSuccessful: afterState.currentProjectId === projectId,
+            nodeCountMatch: Object.keys(afterState.nodes).length === Object.keys(projectData.nodes).length
+          })
+          
+          if (afterState.currentProjectId !== projectId) {
+            console.error('🚨 CRITICAL: Project switch failed - current project mismatch!')
+          }
+          if (Object.keys(afterState.nodes).length !== Object.keys(projectData.nodes).length) {
+            console.error('🚨 CRITICAL: Project switch failed - node count mismatch!')
+          }
+        }, 100)
+        
         console.log('✅ STORE: Switched to project:', projectId, 'with', Object.keys(projectData.nodes).length, 'nodes')
       } else {
-        console.warn('⚠️ STORE: No data found for project:', projectId)
+        console.warn('⚠️ STORE: No data found for project:', projectId, 'setting as current anyway')
         set({ currentProjectId: projectId })
+        
+        // Try to load from localStorage backup
+        try {
+          const backupData = localStorage.getItem(`project_${projectId}_backup`)
+          if (backupData) {
+            const parsedData = JSON.parse(backupData)
+            console.log('🔄 Restored project from localStorage backup:', projectId)
+            get().setProjectData(projectId, parsedData)
+            get().switchToProject(projectId) // Recursive call with data now available
+            return
+          }
+        } catch (error) {
+          console.warn('Failed to restore from localStorage:', error)
+        }
+        
+        // Clear display if no data available
+        get().setData({
+          all_nodes: {},
+          graphs: {},
+          overall_project_goal: `Loading project ${projectId}...`
+        })
       }
     },
     

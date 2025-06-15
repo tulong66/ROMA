@@ -268,13 +268,33 @@ const NodeDetailsPanel: React.FC = () => {
   const isPlanNode = selectedNode.node_type === 'PLAN'
   const hasSubTasks = selectedNode.planned_sub_task_ids && selectedNode.planned_sub_task_ids.length > 0
   const hasContextSources = selectedNode.input_context_sources && selectedNode.input_context_sources.length > 0
-  const hasFullResult = selectedNode.full_result != null && selectedNode.full_result !== undefined
   
-  // Check for prompts in execution details
-  const hasFinalInput = selectedNode.execution_details?.final_llm_input || 
-                       (selectedNode as any).aux_data?.execution_details?.final_llm_input
-  const hasSystemPrompt = selectedNode.execution_details?.system_prompt || 
-                         (selectedNode as any).aux_data?.execution_details?.system_prompt
+  // CRITICAL FIX: Check both direct field and aux_data for full_result
+  const fullResult = selectedNode.full_result || 
+                    (selectedNode as any).aux_data?.full_result ||
+                    selectedNode.result
+  const hasFullResult = fullResult != null && fullResult !== undefined
+  
+  // CRITICAL FIX: Check both locations for execution details
+  const executionDetails = selectedNode.execution_details || 
+                          (selectedNode as any).aux_data?.execution_details
+  const hasFinalInput = executionDetails?.final_llm_input
+  const hasSystemPrompt = executionDetails?.system_prompt
+  
+  // CRITICAL FIX: Check both locations for model info
+  const modelInfo = selectedNode.model_info || 
+                   executionDetails?.model_info
+  
+  // AGGRESSIVE DEBUGGING
+  console.log('🐛 NODE DETAILS DEBUG:', {
+    nodeId: selectedNode.task_id,
+    hasDirectFullResult: selectedNode.full_result != null,
+    hasAuxDataFullResult: (selectedNode as any).aux_data?.full_result != null,
+    hasResult: selectedNode.result != null,
+    finalHasFullResult: hasFullResult,
+    auxDataKeys: Object.keys((selectedNode as any).aux_data || {}),
+    executionDetailsExists: !!executionDetails
+  })
 
   return (
     <>
