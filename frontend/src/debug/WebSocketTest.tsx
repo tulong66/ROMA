@@ -14,7 +14,7 @@ const WebSocketTest: React.FC = () => {
 
   useEffect(() => {
     const newSocket = io('http://localhost:5000', {
-      transports: ['websocket', 'polling'],
+      transports: ['polling'],
       autoConnect: true,
       forceNew: false,
     })

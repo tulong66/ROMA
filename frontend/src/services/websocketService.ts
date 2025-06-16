@@ -36,7 +36,7 @@ class WebSocketService {
     }
 
     this.socket = io('http://localhost:5000', {
-      transports: ['websocket', 'polling'],
+      transports: ['polling'],
       timeout: 20000,
       forceNew: true,
       reconnection: false,
