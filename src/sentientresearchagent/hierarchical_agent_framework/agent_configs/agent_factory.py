@@ -6,6 +6,7 @@ Enhanced to handle structured outputs like the original definitions.
 """
 
 import importlib
+import os
 from typing import Dict, Any, Optional, List, Union, Type
 from loguru import logger
 
@@ -37,6 +38,105 @@ from ..types import TaskType
 from sentientresearchagent.hierarchical_agent_framework.agents.base_adapter import BaseAdapter
 from sentientresearchagent.hierarchical_agent_framework.agents.registry import AgentRegistry
 from sentientresearchagent.hierarchical_agent_framework.agent_blueprints import AgentBlueprint
+
+try:
+    from dotenv import load_dotenv
+    # Load .env file at module level to ensure environment variables are available
+    load_dotenv()
+    logger.debug("Loaded environment variables from .env file")
+except ImportError:
+    logger.warning("python-dotenv not installed. Environment variables from .env files will not be loaded automatically.")
+
+def _validate_provider_environment(provider: str, model_id: str) -> None:
+    """
+    Validate that required environment variables are set for specific LLM providers.
+    
+    Args:
+        provider: The LLM provider (litellm, openai, etc.)
+        model_id: The model identifier
+        
+    Raises:
+        ValueError: If required environment variables are missing
+    """
+    if provider == "litellm":
+        # Determine the actual provider from the model_id
+        if model_id.startswith("openrouter/"):
+            # OpenRouter models require OPENROUTER_API_KEY
+            env_var = "OPENROUTER_API_KEY"
+            if not os.getenv(env_var):
+                raise ValueError(
+                    f"OpenRouter model '{model_id}' requires {env_var} environment variable to be set. "
+                    f"Please add {env_var}=your_openrouter_api_key to your .env file."
+                )
+            logger.debug(f"✅ Found {env_var} for OpenRouter model {model_id}")
+                
+        elif model_id.startswith("anthropic/"):
+            # Anthropic models require ANTHROPIC_API_KEY
+            env_var = "ANTHROPIC_API_KEY"
+            if not os.getenv(env_var):
+                raise ValueError(
+                    f"Anthropic model '{model_id}' requires {env_var} environment variable to be set. "
+                    f"Please add {env_var}=your_anthropic_api_key to your .env file."
+                )
+            logger.debug(f"✅ Found {env_var} for Anthropic model {model_id}")
+                
+        elif model_id.startswith("openai/") or model_id.startswith("gpt-"):
+            # OpenAI models require OPENAI_API_KEY
+            env_var = "OPENAI_API_KEY"
+            if not os.getenv(env_var):
+                raise ValueError(
+                    f"OpenAI model '{model_id}' requires {env_var} environment variable to be set. "
+                    f"Please add {env_var}=your_openai_api_key to your .env file."
+                )
+            logger.debug(f"✅ Found {env_var} for OpenAI model {model_id}")
+                
+        elif model_id.startswith("azure/"):
+            # Azure models require AZURE_API_KEY
+            env_var = "AZURE_API_KEY"
+            if not os.getenv(env_var):
+                raise ValueError(
+                    f"Azure model '{model_id}' requires {env_var} environment variable to be set. "
+                    f"Please add {env_var}=your_azure_api_key to your .env file."
+                )
+            logger.debug(f"✅ Found {env_var} for Azure model {model_id}")
+                
+        elif model_id.startswith("fireworks_ai/") or model_id.startswith("fireworks/"):
+            # Fireworks AI models require FIREWORKS_AI_API_KEY
+            env_var = "FIREWORKS_AI_API_KEY"
+            if not os.getenv(env_var):
+                raise ValueError(
+                    f"Fireworks AI model '{model_id}' requires {env_var} environment variable to be set. "
+                    f"Please add {env_var}=your_fireworks_ai_api_key to your .env file."
+                )
+            logger.debug(f"✅ Found {env_var} for Fireworks AI model {model_id}")
+                
+        else:
+            # For other providers, warn but don't fail
+            logger.warning(
+                f"Unknown LiteLLM model provider for '{model_id}'. "
+                f"Please ensure appropriate environment variables are set. "
+                f"Common providers: openrouter/, anthropic/, openai/, azure/, fireworks_ai/"
+            )
+            
+    elif provider == "openai":
+        # Direct OpenAI provider
+        env_var = "OPENAI_API_KEY"
+        if not os.getenv(env_var):
+            raise ValueError(
+                f"OpenAI provider requires {env_var} environment variable to be set. "
+                f"Please add {env_var}=your_openai_api_key to your .env file."
+            )
+        logger.debug(f"✅ Found {env_var} for OpenAI provider")
+        
+    elif provider == "fireworks" or provider == "fireworks_ai":
+        # Direct Fireworks AI provider
+        env_var = "FIREWORKS_AI_API_KEY"
+        if not os.getenv(env_var):
+            raise ValueError(
+                f"Fireworks AI provider requires {env_var} environment variable to be set. "
+                f"Please add {env_var}=your_fireworks_ai_api_key to your .env file."
+            )
+        logger.debug(f"✅ Found {env_var} for Fireworks AI provider")
 
 
 class AgentFactory:
@@ -111,19 +211,29 @@ class AgentFactory:
     
     def create_model_instance(self, model_config: DictConfig) -> Union[LiteLLM, OpenAIChat]:
         """
-        Create a model instance from configuration.
+        Create a model instance from configuration with proper environment validation.
         
         Args:
             model_config: Model configuration from YAML
             
         Returns:
             Model instance
+            
+        Raises:
+            ValueError: If provider is unsupported or required API keys are missing
         """
         provider = model_config.provider.lower()
         model_id = model_config.model_id
         
         if provider not in self._model_providers:
             raise ValueError(f"Unsupported model provider: {provider}. Available: {list(self._model_providers.keys())}")
+        
+        # Validate that required environment variables are set
+        try:
+            _validate_provider_environment(provider, model_id)
+        except ValueError as e:
+            logger.error(f"Environment validation failed for {provider}/{model_id}: {e}")
+            raise
         
         model_class = self._model_providers[provider]
         
@@ -137,15 +247,52 @@ class AgentFactory:
                     logger.info(f"🔧 Creating LiteLLM model for o3: {model_id} with global drop_params=True")
                     import litellm
                     litellm.drop_params = True  # Set globally for o3 models
-                    return model_class(id=model_id)
-            elif provider == "openai":
+                
+                # Create LiteLLM instance - environment variables are already validated
+                logger.info(f"🔧 Creating LiteLLM model: {model_id}")
                 return model_class(id=model_id)
+                
+            elif provider == "openai":
+                logger.info(f"🔧 Creating OpenAI model: {model_id}")
+                return model_class(id=model_id)
+                
+            elif provider in ["fireworks", "fireworks_ai"]:
+                logger.info(f"🔧 Creating Fireworks AI model: {model_id}")
+                return model_class(id=model_id)
+                
             else:
                 # Generic instantiation
+                logger.info(f"🔧 Creating {provider} model: {model_id}")
                 return model_class(id=model_id)
+                
         except Exception as e:
             logger.error(f"Failed to create model instance for {provider}/{model_id}: {e}")
-            raise
+            
+            # Provide more specific error messages for common issues
+            error_msg = str(e).lower()
+            if "api key" in error_msg or "authentication" in error_msg or "unauthorized" in error_msg:
+                raise ValueError(
+                    f"Authentication failed for {provider}/{model_id}. "
+                    f"Please verify your API key in .env file is correct and has the necessary permissions. "
+                    f"Original error: {e}"
+                ) from e
+            elif "rate limit" in error_msg:
+                raise ValueError(
+                    f"Rate limit exceeded for {provider}/{model_id}. "
+                    f"Please wait before retrying or check your API quota. "
+                    f"Original error: {e}"
+                ) from e
+            elif "not found" in error_msg or "model" in error_msg:
+                raise ValueError(
+                    f"Model '{model_id}' not found or not accessible for provider '{provider}'. "
+                    f"Please verify the model name is correct. "
+                    f"Original error: {e}"
+                ) from e
+            else:
+                raise ValueError(
+                    f"Failed to create model instance for {provider}/{model_id}. "
+                    f"Original error: {e}"
+                ) from e
     
     def create_tools(self, tool_names: List[str]) -> List[Any]:
         """

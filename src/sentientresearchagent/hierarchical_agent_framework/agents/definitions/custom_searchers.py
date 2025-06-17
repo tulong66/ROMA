@@ -34,13 +34,26 @@ class OpenAICustomSearchAdapter(BaseAdapter):
     model_id: str = "gpt-4.1" # As per your example, can be configured
 
     def __init__(self, openai_client = None, model_id: str = "gpt-4.1"):
-        super().__init__(self.adapter_name) # Call parent constructor
+        super().__init__(self.adapter_name)
         if AsyncOpenAI is None:
             raise ImportError("AsyncOpenAI client from openai library is not available. Please install or update 'openai'.")
-        # Ensure the client passed or instantiated has the .responses.create method
-        self.client = openai_client or AsyncOpenAI()
+        
+        # Debug: Let's see what environment variables are actually set
+        api_key = os.getenv("OPENAI_API_KEY")
+        logger.info(f"🔍 DEBUG: OPENAI_API_KEY from os.getenv: {api_key[:10] if api_key else 'None'}...{api_key[-4:] if api_key and len(api_key) > 10 else ''}")
+        
+        # Also check if there are any other OpenAI-related env vars
+        for key, value in os.environ.items():
+            if "OPENAI" in key.upper():
+                logger.info(f"🔍 DEBUG: Found env var {key}: {value[:10] if value else 'None'}...{value[-4:] if value and len(value) > 10 else ''}")
+        
+        if not api_key:
+            raise ValueError("OPENAI_API_KEY environment variable is required for OpenAICustomSearchAdapter")
+        
+        # Create client with explicit API key
+        self.client = openai_client or AsyncOpenAI(api_key=api_key)
         self.model_id = model_id
-        logger.info(f"Initialized {self.agent_name} with model: {self.model_id} (Async Client: {isinstance(self.client, AsyncOpenAI)})")
+        logger.info(f"Initialized {self.agent_name} with model: {self.model_id} (API key: {api_key[:10]}...{api_key[-4:]})")
 
     async def process(self, node: TaskNode, agent_task_input: AgentTaskInput) -> CustomSearcherOutput:
         """
