@@ -12,7 +12,7 @@ agents:
     description: "Specialized planner for research-focused tasks"
     model:
       provider: "litellm"
-      model_id: "openrouter/anthropic/claude-sonnet-4"
+      model_id: "openrouter/deepseek/deepseek-r1-0528"
     prompt_source: "prompts.planner_prompts.PLANNER_SYSTEM_MESSAGE"
     response_model: "PlanOutput"
     registration:
@@ -28,7 +28,7 @@ agents:
     description: "Specialized planner optimized for search-focused research tasks with date awareness and parallel execution"
     model:
       provider: "litellm"
-      model_id: "openrouter/anthropic/claude-sonnet-4"
+      model_id: "openrouter/deepseek/deepseek-r1-0528" #"openrouter/anthropic/claude-sonnet-4"
     prompt_source: "prompts.planner_prompts.ENHANCED_SEARCH_PLANNER_SYSTEM_MESSAGE"
     response_model: "PlanOutput"
     registration:
@@ -44,7 +44,7 @@ agents:
     description: "Specialized planner optimized for search-focused research tasks with date awareness and parallel execution"
     model:
       provider: "litellm"
-      model_id: "openrouter/anthropic/claude-sonnet-4"
+      model_id: "openrouter/deepseek/deepseek-r1-0528" #"openrouter/anthropic/claude-sonnet-4"
     prompt_source: "prompts.planner_prompts.ENHANCED_THINK_PLANNER_SYSTEM_MESSAGE"
     response_model: "PlanOutput"
     registration:
@@ -60,7 +60,7 @@ agents:
     description: "Specialized planner optimized for search-focused research tasks with date awareness and parallel execution"
     model:
       provider: "litellm"
-      model_id: "openrouter/anthropic/claude-sonnet-4"
+      model_id: "openrouter/deepseek/deepseek-r1-0528" #"openrouter/anthropic/claude-sonnet-4"
     prompt_source: "prompts.planner_prompts.ENHANCED_WRITE_PLANNER_SYSTEM_MESSAGE"
     response_model: "PlanOutput"
     registration:
@@ -76,7 +76,7 @@ agents:
     description: "Master planner specialized in high-level research project decomposition and strategy"
     model:
       provider: "litellm"
-      model_id: "fireworks_ai/accounts/fireworks/models/qwen3-235b-a22b" #"openrouter/anthropic/claude-sonnet-4"
+      model_id: "openrouter/deepseek/deepseek-r1-0528" #"openrouter/anthropic/claude-sonnet-4"
     prompt_source: "prompts.planner_prompts.DEEP_RESEARCH_PLANNER_SYSTEM_MESSAGE"
     response_model: "PlanOutput"
     registration:
@@ -92,7 +92,7 @@ agents:
     description: "Master planner specialized in high-level research project decomposition and strategy"
     model:
       provider: "litellm"
-      model_id: "openrouter/anthropic/claude-sonnet-4"
+      model_id: "openrouter/deepseek/deepseek-r1-0528"
     prompt_source: "prompts.planner_prompts.GENERAL_TASK_SOLVER_SYSTEM_MESSAGE"
     response_model: "PlanOutput"
     registration:
@@ -126,7 +126,7 @@ agents:
     description: "Performs Analysis and Synthesis of information"
     model:
       provider: "litellm"
-      model_id: "openrouter/anthropic/claude-sonnet-4"
+      model_id: "openrouter/google/gemini-2.5-flash"
     prompt_source: "prompts.executor_prompts.REASONING_EXECUTOR_SYSTEM_MESSAGE"
     registration:
       action_keys:
@@ -141,7 +141,7 @@ agents:
     description: "Writes detailed reports based on provided context"
     model:
       provider: "litellm"
-      model_id: "openrouter/anthropic/claude-sonnet-4"
+      model_id: "openrouter/google/gemini-2.5-flash"
     prompt_source: "prompts.executor_prompts.BASIC_REPORT_WRITER_SYSTEM_MESSAGE"
     registration:
       action_keys:
@@ -190,7 +190,7 @@ agents:
     description: "Synthesizes results from multiple child tasks"
     model:
       provider: "litellm"
-      model_id: "openrouter/anthropic/claude-sonnet-4"
+      model_id: "openrouter/google/gemini-2.5-flash"
     prompt_source: "prompts.aggregator_prompts.DEFAULT_AGGREGATOR_SYSTEM_MESSAGE"
     registration:
       action_keys:
@@ -229,7 +229,7 @@ agents:
     description: "Modifies existing plans based on user feedback"
     model:
       provider: "litellm"
-      model_id: "openrouter/anthropic/claude-sonnet-4"
+      model_id: "openrouter/deepseek/deepseek-r1-0528"
     prompt_source: "prompts.plan_modifier_prompts.PLAN_MODIFIER_SYSTEM_PROMPT"
     response_model: "PlanOutput"
     registration:

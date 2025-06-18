@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Union, List, TypeVar, Generic
+from typing import Dict, Any, Union, List, TypeVar, Generic, Type, Optional
 from loguru import logger # Add this
 from agno.agent import Agent as AgnoAgent # Renaming to avoid conflict if we define our own Agent interface
 # It's good practice to also import the async version if available and distinct
@@ -7,6 +7,8 @@ from agno.agent import Agent as AgnoAgent # Renaming to avoid conflict if we def
 import asyncio # Add this import
 from datetime import datetime
 import inspect
+import re
+import json
 
 from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode # For type hinting
 from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models import (
@@ -305,6 +307,52 @@ Ensure your output is a valid JSON conforming to the PlanOutput schema, containi
             
         return model_info
 
+    def _extract_and_parse_json(self, text: str, response_model: Type[OutputType]) -> Optional[OutputType]:
+        """
+        Extracts a JSON object from a string and parses it into the response model.
+        This is a robust version that handles JSON in markdown, with surrounding text, or as a substring.
+        """
+        logger.critical("🚀🚀🚀 RUNNING FINAL ROBUST JSON PARSER 🚀🚀🚀")
+        logger.debug(f"Attempting to extract JSON from raw text (length: {len(text)}) for model {response_model.__name__}")
+
+        # Strategy 1: Look for JSON within a markdown code block (most reliable)
+        match = re.search(r"```(?:json)?\s*([\[\{].*?[\]\}])\s*```", text, re.DOTALL)
+        if match:
+            json_str = match.group(1).strip()
+            logger.info("Strategy 1: Found JSON in markdown block.")
+            try:
+                return response_model.model_validate_json(json_str)
+            except Exception as e:
+                logger.warning(f"Strategy 1 failed: Could not parse JSON from markdown block. Error: {e}")
+
+        # Strategy 2: Find the largest possible JSON blob from the first to last bracket
+        json_str = None
+        first_bracket = min(
+            (text.find('{') if text.find('{') != -1 else float('inf')),
+            (text.find('[') if text.find('[') != -1 else float('inf'))
+        )
+        if first_bracket != float('inf'):
+            last_bracket = max(text.rfind('}'), text.rfind(']'))
+            if last_bracket > first_bracket:
+                json_str = text[first_bracket:last_bracket+1].strip()
+                logger.info("Strategy 2: Found potential JSON blob from first to last bracket.")
+                try:
+                    return response_model.model_validate_json(json_str)
+                except Exception as e:
+                    logger.warning(f"Strategy 2 failed: Could not parse broad JSON blob. Error: {e}")
+
+        # Strategy 3: Use JSONDecoder to find the first valid JSON object in the string
+        logger.info("Strategy 3: Attempting to find first valid JSON object in the string.")
+        try:
+            obj, _ = json.JSONDecoder().raw_decode(text.strip())
+            json_str = json.dumps(obj)
+            return response_model.model_validate_json(json_str)
+        except (json.JSONDecodeError, TypeError, AttributeError) as e:
+            logger.warning(f"Strategy 3 failed: JSONDecoder could not find a valid object. Error: {e}")
+
+        logger.error(f"All strategies failed. Could not extract or parse a valid JSON for {response_model.__name__} from the text.")
+        return None
+
     @handle_agent_errors(agent_name_param="self.agent_name", component="llm_adapter")
     @cache_agent_response(ttl_seconds=3600)
     async def process(self, node: TaskNode, agent_task_input: InputType) -> OutputType:
@@ -376,6 +424,19 @@ Ensure your output is a valid JSON conforming to the PlanOutput schema, containi
                 else:
                     logger.warning(f"    Adapter Warning: Agno agent '{self.agent_name}' RunResponse object has no 'content' attribute for node {node.task_id}.")
                 
+                # If a response model is expected but we got a string, try to parse it.
+                if self.agno_agent.response_model and isinstance(actual_content_data, str):
+                    logger.warning(f"    Adapter '{self.agent_name}': Expected a structured object but got a string. Attempting to extract and parse JSON.")
+                    
+                    parsed_data = self._extract_and_parse_json(actual_content_data, self.agno_agent.response_model)
+
+                    if parsed_data:
+                        logger.info(f"    Adapter '{self.agent_name}': Successfully extracted and parsed JSON.")
+                        actual_content_data = parsed_data
+                    else:
+                        logger.error(f"    Adapter '{self.agent_name}': Failed to recover structured data from string response.")
+                        # Keep actual_content_data as string so downstream can see the raw output
+
                 # Check if response_model was set and if content is None
                 if self.agno_agent.response_model is not None and actual_content_data is None:
                     raise AgentExecutionError(
