@@ -392,6 +392,29 @@ class AgentFactory:
             if tools:
                 agno_kwargs["tools"] = tools
             
+            # NEW: Extract and add LLM settings from model configuration
+            model_config = agent_config.get("model")
+            llm_settings = {}
+            
+            if model_config:  # Only proceed if model_config exists
+                # Standard LLM parameters that AgnoAgent might support
+                supported_llm_params = [
+                    'temperature', 'max_tokens', 'top_p', 'top_k', 
+                    'frequency_penalty', 'presence_penalty', 'repetition_penalty',
+                    'min_p', 'tfs', 'typical_p', 'epsilon_cutoff', 'eta_cutoff'
+                ]
+                
+                for param in supported_llm_params:
+                    param_value = model_config.get(param)
+                    if param_value is not None:
+                        llm_settings[param] = param_value
+                        logger.debug(f"Adding LLM setting for {agent_config.name}: {param}={param_value}")
+            
+            # Add LLM settings to AgnoAgent kwargs if any were found
+            if llm_settings:
+                agno_kwargs.update(llm_settings)
+                logger.info(f"Applied LLM settings for {agent_config.name}: {list(llm_settings.keys())}")
+            
             # Handle additional AgnoAgent parameters from config
             if "agno_params" in agent_config:
                 additional_params = dict(agent_config.agno_params)
@@ -532,7 +555,7 @@ class AgentFactory:
                 "response_model": agent_config.get("response_model"),
                 "has_tools": "tools" in agent_config and bool(agent_config.tools),
                 "tools": list(agent_config.get("tools", [])),
-                "model_info": dict(agent_config.model) if "model" in agent_config else None,
+                "model_info": dict(agent_config.model) if agent_config.get("model") else None,
                 "prompt_source": agent_config.get("prompt_source"),
             }
             
