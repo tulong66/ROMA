@@ -167,6 +167,19 @@ agents:
       named_keys: ["OpenAICustomSearcher", "default_openai_searcher"]
     enabled: true
 
+  - name: "GeminiCustomSearcher"
+    type: "custom_search"
+    adapter_class: "GeminiCustomSearchAdapter"
+    description: "Direct API-based search using Google Gemini's search capabilities"
+    adapter_params:
+      model_id: "gemini-2.5-flash"
+    registration:
+      action_keys:
+        - action_verb: "execute"
+          task_type: "SEARCH"
+      named_keys: ["GeminiCustomSearcher", "default_gemini_searcher", "gemini_searcher"]
+    enabled: true
+
   # =============================================================================
   # AGGREGATOR AGENTS - Combine results from sub-tasks
   # =============================================================================

@@ -29,7 +29,7 @@ from ..agents.adapters import (
     PlannerAdapter, ExecutorAdapter, AtomizerAdapter, 
     AggregatorAdapter, PlanModifierAdapter
 )
-from ..agents.definitions.custom_searchers import OpenAICustomSearchAdapter
+from ..agents.definitions.custom_searchers import OpenAICustomSearchAdapter, GeminiCustomSearchAdapter
 from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models import (
     PlanOutput, AtomizerOutput, WebSearchResultsOutput, 
     CustomSearcherOutput, PlanModifierInput
@@ -138,6 +138,17 @@ def _validate_provider_environment(provider: str, model_id: str) -> None:
             )
         logger.debug(f"✅ Found {env_var} for Fireworks AI provider")
 
+    elif provider == "google" or provider == "gemini":
+        # Google/Gemini provider
+        env_var = "GOOGLE_API_KEY"
+        alt_env_var = "GEMINI_API_KEY"
+        if not (os.getenv(env_var) or os.getenv(alt_env_var)):
+            raise ValueError(
+                f"Google/Gemini provider requires {env_var} or {alt_env_var} environment variable to be set. "
+                f"Please add one of these to your .env file."
+            )
+        logger.debug(f"✅ Found API key for Google/Gemini provider")
+
 
 class AgentFactory:
     """Factory for creating agent instances from configuration with structured output support."""
@@ -157,6 +168,7 @@ class AgentFactory:
             "AggregatorAdapter": AggregatorAdapter,
             "PlanModifierAdapter": PlanModifierAdapter,
             "OpenAICustomSearchAdapter": OpenAICustomSearchAdapter,
+            "GeminiCustomSearchAdapter": GeminiCustomSearchAdapter,
         }
         
         # Enhanced response models mapping
@@ -329,7 +341,12 @@ class AgentFactory:
         Returns:
             AgnoAgent instance or None for agents that don't use AgnoAgent
         """
-        # Some agents (like OpenAICustomSearchAdapter) don't use AgnoAgent
+        # Some agents (like custom search adapters) don't use AgnoAgent
+        adapter_class_name = agent_config.get("adapter_class", "")
+        if adapter_class_name in ["OpenAICustomSearchAdapter", "GeminiCustomSearchAdapter"]:
+            logger.debug(f"Agent {agent_config.name} doesn't use AgnoAgent (custom search adapter)")
+            return None
+        
         if "model" not in agent_config or "prompt_source" not in agent_config:
             logger.debug(f"Agent {agent_config.name} doesn't use AgnoAgent (no model/prompt_source)")
             return None
@@ -411,8 +428,8 @@ class AgentFactory:
         
         try:
             # Special handling for different adapter types
-            if adapter_class_name == "OpenAICustomSearchAdapter":
-                # This adapter doesn't use AgnoAgent and has special initialization
+            if adapter_class_name in ["OpenAICustomSearchAdapter", "GeminiCustomSearchAdapter"]:
+                # These adapters don't use AgnoAgent and have special initialization
                 adapter_kwargs = {}
                 
                 # Check if there are custom parameters for this adapter

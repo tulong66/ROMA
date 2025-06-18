@@ -16,7 +16,7 @@ profile:
 
   # Task-specific executors
   executor_adapter_names:
-    SEARCH: "OpenAICustomSearcher"     # Advanced search capabilities
+    SEARCH: "GeminiCustomSearcher"     # Changed from "OpenAICustomSearcher"
     THINK: "BasicReasoningExecutor"         # Analysis and synthesis
     WRITE: "BasicReportWriter"         # Report generation
 
