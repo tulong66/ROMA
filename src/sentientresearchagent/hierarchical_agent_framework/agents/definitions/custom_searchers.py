@@ -5,6 +5,7 @@ import types
 from dotenv import load_dotenv
 from typing import Dict, Optional, List, TYPE_CHECKING
 from loguru import logger
+from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode
 
 try:
     from openai import OpenAI, AsyncOpenAI
@@ -65,7 +66,7 @@ class OpenAICustomSearchAdapter(BaseAdapter):
         self.model_id = model_id
         logger.info(f"Initialized {self.agent_name} with model: {self.model_id} (API key: {api_key[:10]}...{api_key[-4:]})")
 
-    async def process(self, node: "TaskNode", agent_task_input: AgentTaskInput) -> CustomSearcherOutput:
+    async def process(self, node: TaskNode, agent_task_input: AgentTaskInput) -> CustomSearcherOutput:
         """
         Processes the task by extracting the goal as a query, calling OpenAI with
         web_search_preview using client.responses.create.
@@ -199,7 +200,7 @@ class GeminiCustomSearchAdapter(BaseAdapter):
         self.model_id = model_id
         logger.info(f"Initialized {self.agent_name} with model: {self.model_id} (API key: {api_key[:10]}...{api_key[-4:]})")
 
-    async def process(self, node: "TaskNode", agent_task_input: AgentTaskInput) -> CustomSearcherOutput:
+    async def process(self, node: TaskNode, agent_task_input: AgentTaskInput) -> CustomSearcherOutput:
         """
         Processes the task by extracting the goal as a query, calling Gemini with
         google_search tool using client.aio.models.generate_content (async API).

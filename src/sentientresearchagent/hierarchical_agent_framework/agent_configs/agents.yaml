@@ -209,7 +209,7 @@ agents:
     description: "Determines if tasks are atomic or need further planning"
     model:
       provider: "litellm"
-      model_id: "openrouter/anthropic/claude-sonnet-4"
+      model_id: "openrouter/google/gemini-2.5-flash"
     prompt_source: "prompts.atomizer_prompts.ATOMIZER_SYSTEM_MESSAGE"
     response_model: "AtomizerOutput"
     registration:
