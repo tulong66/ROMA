@@ -236,8 +236,13 @@ class SystemManager:
             else:
                 logger.info(f"Profile '{profile_name}' validated successfully.")
 
-            # 4. REMOVED: No longer create global execution components
-            # These are now created per-project in ProjectExecutionContext
+            # 4. BACKWARD COMPATIBILITY: Create execution components for non-server contexts
+            # This ensures SentientAgent and ProfiledSentientAgent work as expected
+            # especially for evaluation.py and other standalone usage
+            if not hasattr(self, '_execution_components_created'):
+                logger.info("🔧 SystemManager: Creating execution components for backward compatibility...")
+                self._create_execution_components()
+                self._execution_components_created = True
             
             self._current_profile = profile_name
             logger.info(f"✅ SystemManager: Successfully applied profile '{profile_name}'. Profile is ready for project-specific execution contexts.")
@@ -248,6 +253,52 @@ class SystemManager:
 
         except Exception as e:
             logger.error(f"❌ SystemManager: Failed to apply profile '{profile_name}': {e}")
+            traceback.print_exc()
+            raise
+
+    def _create_execution_components(self):
+        """
+        Create execution components for backward compatibility.
+        
+        This method creates the execution components that SentientAgent expects
+        to be available on the SystemManager. This is needed for standalone usage
+        like evaluation.py and other non-server contexts.
+        """
+        try:
+            from ..hierarchical_agent_framework.node.hitl_coordinator import HITLCoordinator
+            from ..hierarchical_agent_framework.node.node_processor import NodeProcessor
+            from ..hierarchical_agent_framework.graph.execution_engine import ExecutionEngine
+            
+            # Create node processor config
+            node_processor_config = create_node_processor_config_from_main_config(self.config)
+            
+            # Create HITL coordinator
+            self.hitl_coordinator = HITLCoordinator(config=node_processor_config)
+            
+            # Create node processor
+            self.node_processor = NodeProcessor(
+                task_graph=self.task_graph,
+                knowledge_store=self.knowledge_store,
+                agent_registry=self.agent_registry,
+                config=self.config,
+                node_processor_config=node_processor_config,
+                agent_blueprint=None  # Will use active_profile_name from config
+            )
+            
+            # Create execution engine
+            self.execution_engine = ExecutionEngine(
+                task_graph=self.task_graph,
+                state_manager=self.state_manager,
+                knowledge_store=self.knowledge_store,
+                hitl_coordinator=self.hitl_coordinator,
+                config=self.config,
+                node_processor=self.node_processor
+            )
+            
+            logger.info("✅ SystemManager: Execution components created for backward compatibility")
+            
+        except Exception as e:
+            logger.error(f"❌ SystemManager: Failed to create execution components: {e}")
             traceback.print_exc()
             raise
 
@@ -332,9 +383,6 @@ class SystemManager:
         """
         Get system components.
         
-        Note: Execution components (execution_engine, node_processor, hitl_coordinator)
-        are now project-specific and available through ProjectExecutionContext.
-        
         Returns:
             Dictionary of available system components
         """
@@ -343,15 +391,18 @@ class SystemManager:
             "agent_registry": self.agent_registry,
             "cache_manager": self.cache_manager,
             "error_handler": self.error_handler,
-            "task_graph": self.task_graph,  # Display-only graph
-            "knowledge_store": self.knowledge_store,  # Display-only store
-            "state_manager": self.state_manager,  # Display-only state manager
+            "task_graph": self.task_graph,
+            "knowledge_store": self.knowledge_store,
+            "state_manager": self.state_manager,
         }
         
-        # Note: These are now project-specific only:
-        # - execution_engine
-        # - node_processor  
-        # - hitl_coordinator
+        # Add execution components if they exist (backward compatibility)
+        if hasattr(self, 'execution_engine') and self.execution_engine:
+            components["execution_engine"] = self.execution_engine
+        if hasattr(self, 'node_processor') and self.node_processor:
+            components["node_processor"] = self.node_processor
+        if hasattr(self, 'hitl_coordinator') and self.hitl_coordinator:
+            components["hitl_coordinator"] = self.hitl_coordinator
         
         return components
     
