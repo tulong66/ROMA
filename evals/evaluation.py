@@ -3,8 +3,32 @@ import multiprocessing
 import pandas as pd
 import time
 import traceback
+from tqdm import tqdm
+from threading import Lock
 from sentientresearchagent.framework_entry import ProfiledSentientAgent
 import queue
+import os
+
+result_lock = Lock()
+
+def save_checkpoint(results, df, output_file, lock):
+    try:
+        sorted_results = sorted(results, key=lambda x: x['index'])
+        results_df = pd.DataFrame(sorted_results)
+
+        # Copy original DataFrame so we can assign into it
+        output_df = df.copy()
+
+        # For each column in results, assign values to matching index
+        for col in results_df.columns:
+            if col != 'index':
+                output_df.loc[results_df['index'], col] = results_df[col].values
+
+        output_df.to_csv(output_file, index=False)
+        print(f"💾 [Checkpoint] Saved {len(results)} results -> {output_file}")
+    except Exception as e:
+        print(f"⚠️ Failed to save checkpoint to {output_file}: {e}")
+
 
 def agent_worker(task_queue: multiprocessing.Queue, result_queue: multiprocessing.Queue, agent_settings: dict):
     """
@@ -69,6 +93,8 @@ def main():
     parser.add_argument("--output-file", default="results.csv", type=str, help="Path to save the results CSV file.")
     parser.add_argument("--query-column", type=str, default="question", help="Name of the column containing queries in the input CSV.")
     parser.add_argument("--num-examples", type=int, default=None, help="Number of examples from dataset to run. If not provided, all examples will be run.")
+    parser.add_argument("--checkpoint-interval", type=int, default=10, help="Number of completed queries between each checkpoint save.")
+    parser.add_argument("--checkpoint-file", type=str, default="checkpoint.csv", help="Path to save the checkpoint file.")
     # Agent settings
     parser.add_argument("--profile-name", type=str, default="general_agent", help="Agent profile name.")
     parser.add_argument("--enable-hitl-override", action='store_true', help="Enable HITL override.")
@@ -87,6 +113,7 @@ def main():
         "max_planning_depth": args.max_planning_depth,
     }
 
+    #print(f"{os.environ.get("OPENAI_API_KEY")} and {os.environ.get("OPENROUTER_API_KEY")}")
     try:
         df = pd.read_csv(args.input_file)
         if args.num_examples:
@@ -127,19 +154,25 @@ def main():
     # Collect results
     results = []
     num_queries = len(queries)
-    while len(results) < num_queries:
-        try:
-            # Add a timeout to prevent hanging if all workers die
-            result = result_queue.get(timeout=300) 
-            results.append(result)
-            print(f"📊 Progress: {len(results)}/{num_queries} queries completed.")
-        except queue.Empty:
-            print("Timeout waiting for results. Checking worker status...")
-            if not any(p.is_alive() for p in processes):
-                print("❌ All worker processes have terminated unexpectedly. Aborting.")
-                break
-            else:
-                print("...Some workers are still alive. Continuing to wait.")
+    with tqdm(total=num_queries, desc="Processing queries", ncols=100) as pbar:
+        while len(results) < num_queries:
+            try:
+                # Add a timeout to prevent hanging if all workers die
+                result = result_queue.get(timeout=300) 
+                with result_lock:
+                    results.append(result)
+                    pbar.update(1)
+                    print(f"📊 Progress: {len(results)}/{num_queries} queries completed.")
+
+                    if len(results) % args.checkpoint_interval == 0:
+                        save_checkpoint(results, df, args.checkpoint_file, result_lock)
+            except queue.Empty:
+                print("Timeout waiting for results. Checking worker status...")
+                if not any(p.is_alive() for p in processes):
+                    print("❌ All worker processes have terminated unexpectedly. Aborting.")
+                    break
+                else:
+                    print("...Some workers are still alive. Continuing to wait.")
 
 
     # Wait for all processes to complete their execution
