@@ -74,14 +74,21 @@ class CycleManager:
                 # Return True. ExecutionEngine will loop and then PLAN_DONE transitions can occur.
                 return True # Indicate processing occurred
 
-        # --- 4. Update PLAN_DONE -> AGGREGATING / NEEDS_REPLAN transitions ---
-        # This runs if no AGGREGATING or READY nodes were processed in the current pass of execute_step's logic.
+        # --- 4. Update PLAN_DONE -> AGGREGATING / READY transitions ---
         nodes_for_plan_done_update = task_graph.get_all_nodes()
         made_plan_done_transition = False
         logger.debug("CycleManager: Checking for PLAN_DONE transitions.")
         for node in nodes_for_plan_done_update:
             if node.status == TaskStatus.PLAN_DONE:
-                if state_manager.can_aggregate(node):
+                # ENHANCED: Check if this node was converted to EXECUTE type during planning
+                if node.node_type == NodeType.EXECUTE:
+                    # This node was planned but determined to be atomic - convert to READY for execution
+                    logger.info(f"  CycleManager Transition: Node {node.task_id} PLAN_DONE -> READY (atomic execution, Goal: '{node.goal[:30]}...')")
+                    node.update_status(TaskStatus.READY)
+                    knowledge_store.add_or_update_record_from_node(node)
+                    processed_in_step = True
+                    made_plan_done_transition = True
+                elif state_manager.can_aggregate(node):
                     children_failed = False
                     if node.sub_graph_id:
                         sub_graph_nodes = task_graph.get_nodes_in_graph(node.sub_graph_id)
@@ -97,10 +104,12 @@ class CycleManager:
                         knowledge_store.add_or_update_record_from_node(node)
                         logger.info(f"  CycleManager Transition: Node {node.task_id} PLAN_DONE -> AGGREGATING (Goal: '{node.goal[:30]}...')")
                     processed_in_step = True
-                    made_plan_done_transition = True 
+                    made_plan_done_transition = True
+                else:
+                    # Node cannot aggregate yet (dependencies not ready)
+                    logger.debug(f"Node {node.task_id} cannot AGGREGATE: Not all sub-tasks in '{node.sub_graph_id}' are finished.")
         
         if made_plan_done_transition:
-            # If a PLAN_DONE transition occurred, it's a significant state change.
             return True # Indicate processing occurred
 
         # --- 5. Process NEEDS_REPLAN nodes (serially, one at a time) ---

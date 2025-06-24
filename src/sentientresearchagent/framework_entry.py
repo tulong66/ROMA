@@ -91,30 +91,29 @@ def create_node_processor_config_from_main_config(main_config: "SentientConfig")
     if not FRAMEWORK_AVAILABLE:
         raise ImportError("Framework components not available. Please install missing dependencies.")
     
-    # MOVED: Import is now deferred to within the function.
     from .hierarchical_agent_framework.node.node_configs import NodeProcessorConfig
     
     node_config = NodeProcessorConfig()
     
-    # NEW: Set max_planning_layer from max_recursion_depth
+    # Set max_planning_layer from max_recursion_depth
     node_config.max_planning_layer = getattr(main_config.execution, 'max_recursion_depth', 5)
     
     # Map centralized config to NodeProcessorConfig
     if main_config.execution.enable_hitl:
         if main_config.execution.hitl_root_plan_only:
-            # NEW: Root plan only mode - only enable plan generation for root nodes
+            # Root plan only mode - only enable plan generation for root nodes
             node_config.enable_hitl_after_plan_generation = True  # Will be filtered by layer in HITLCoordinator
-            node_config.enable_hitl_after_modified_plan = True  # FIXED: Keep this enabled for modification loop
+            node_config.enable_hitl_after_modified_plan = True    # Keep enabled for modification loop
             node_config.enable_hitl_after_atomizer = False
             node_config.enable_hitl_before_execute = False
             logger.debug("HITL configured for root plan only (with modification reviews)")
         else:
-            # Normal HITL mode - use all configured checkpoints
+            # All-nodes HITL mode - use all configured checkpoints
             node_config.enable_hitl_after_plan_generation = main_config.execution.hitl_after_plan_generation
             node_config.enable_hitl_after_modified_plan = main_config.execution.hitl_after_modified_plan
             node_config.enable_hitl_after_atomizer = main_config.execution.hitl_after_atomizer
             node_config.enable_hitl_before_execute = main_config.execution.hitl_before_execute
-            logger.debug("HITL configured for all enabled checkpoints")
+            logger.debug("HITL configured for all enabled checkpoints (all-nodes mode)")
     else:
         # If master HITL is disabled, disable all checkpoints
         node_config.enable_hitl_after_plan_generation = False
@@ -123,7 +122,7 @@ def create_node_processor_config_from_main_config(main_config: "SentientConfig")
         node_config.enable_hitl_before_execute = False
         logger.debug("HITL disabled - all checkpoints off")
     
-    # NEW: Store the root_plan_only flag for HITLCoordinator to use
+    # Store the root_plan_only flag for HITLCoordinator to use
     node_config.hitl_root_plan_only = getattr(main_config.execution, 'hitl_root_plan_only', False)
     
     logger.debug(f"NodeProcessorConfig created: max_planning_layer={node_config.max_planning_layer}, "

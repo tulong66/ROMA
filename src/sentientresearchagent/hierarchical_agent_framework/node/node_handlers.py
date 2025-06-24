@@ -508,34 +508,22 @@ class ReadyNodeHandler(INodeHandler):
         node.update_status(TaskStatus.RUNNING) # Set status to RUNNING early
 
         # Use the max_planning_layer from the NodeProcessorConfig
-        # This layer defines the threshold related to planning depth.
-        # A node at layer L, if it's a PLAN node, its children would be at L+1.
-        # ReadyPlanHandler converts a node at layer L to EXECUTE if (L+1) >= max_planning_layer.
-        # This means a node at (max_planning_layer - 1) will be converted to EXECUTE by ReadyPlanHandler.
         max_planning_layer = context.config.max_planning_layer
         
-        # --- Pre-Atomizer Depth Checks ---
-
-        # 1. If the node itself is at a layer where it absolutely cannot be a PLAN node
-        #    whose children would be within valid depth (i.e., node.layer >= max_planning_layer),
-        #    force it to EXECUTE and skip atomization.
-        #    (e.g. if max_planning_layer = 5, nodes at layer 5 or deeper are forced EXECUTE here)
+        # CORRECTED: If the node is at max_planning_layer, it should be forced to EXECUTE
+        # and skip atomization entirely (as per user clarification #3)
         if node.layer >= max_planning_layer:
-            logger.warning(
+            logger.info(
                 f"    ReadyNodeHandler: Node {node.task_id} (Layer {node.layer}) is at or exceeds max_planning_layer "
-                f"({max_planning_layer}). Forcing to EXECUTE. Atomizer is skipped."
+                f"({max_planning_layer}). Forcing to EXECUTE and skipping atomization."
             )
             node.node_type = NodeType.EXECUTE
             await self.ready_execute_handler.handle(node, context)
             return
 
-        # At this point: node.layer < max_planning_layer.
-        # This means the node *could* potentially be a PLAN node based on its own depth.
-
-        # --- Run Atomizer ---
-        # Atomizer runs for nodes that are not yet at the absolute max depth for planning.
-        logger.info(f"    ReadyNodeHandler: Node {node.task_id} (Layer {node.layer}, Initial NodeType: {node.node_type}) "
-                    f"proceeding to atomization (layer < {max_planning_layer}).")
+        # At this point: node.layer < max_planning_layer
+        # Run atomizer to determine if the node should be PLAN or EXECUTE
+        logger.info(f"    ReadyNodeHandler: Node {node.task_id} (Layer {node.layer}) proceeding to atomization (layer < {max_planning_layer}).")
         
         atomizer_decision_type: Optional[NodeType] = None
         try:
@@ -549,31 +537,12 @@ class ReadyNodeHandler(INodeHandler):
         except Exception as e:
             logger.exception(f"    ReadyNodeHandler: Error during atomization for node {node.task_id}. Marking FAILED.")
             node.update_status(TaskStatus.FAILED, error_msg=f"Error during node atomization: {str(e)}")
-            return # Stop processing if atomization itself fails
+            return
 
-        # --- Post-Atomizer Decision Logic ---
-        final_node_type = atomizer_decision_type
-
-        # 2. Critical Depth Constraint for Atomizer's PLAN decision:
-        if atomizer_decision_type == NodeType.PLAN and node.layer == (max_planning_layer - 1):
-            logger.warning(
-                f"    ReadyNodeHandler: Node {node.task_id} (Layer {node.layer}) determined PLAN by atomizer, "
-                f"but is at critical depth (max_planning_layer - 1 = {max_planning_layer - 1}). "
-                f"Overriding to EXECUTE to prevent planning loop."
-            )
-            final_node_type = NodeType.EXECUTE
-            
-            # 🚨 CRITICAL FIX: Clear any existing planning/aggregation stages from previous cycles
-            if hasattr(trace_manager, 'clear_stages_by_type'):
-                trace_manager.clear_stages_by_type(node.task_id, ['planning', 'aggregation'])
-                logger.info(f"    ReadyNodeHandler: Cleared invalid planning/aggregation stages for node {node.task_id}")
-
-        # --- Dispatch Based on Final Determined Node Type ---
-        node.node_type = final_node_type # Set the node's type definitively
+        # Set the final node type based on atomizer decision
+        node.node_type = atomizer_decision_type
 
         if node.node_type == NodeType.PLAN:
-            # This implies node.layer < (max_planning_layer - 1).
-            # ReadyPlanHandler can create sub-nodes without this parent node being forced back into a loop-inducing state.
             logger.info(f"    ReadyNodeHandler: Node {node.task_id} is NodeType.PLAN. Calling ready_plan_handler.")
             await self.ready_plan_handler.handle(node, context)
         elif node.node_type == NodeType.EXECUTE:
@@ -582,7 +551,7 @@ class ReadyNodeHandler(INodeHandler):
         else:
             logger.error(
                 f"    ReadyNodeHandler: Node {node.task_id} has an unexpected final NodeType '{node.node_type}' "
-                f"after atomization and depth checks. Expected NodeType.PLAN or NodeType.EXECUTE."
+                f"after atomization. Expected NodeType.PLAN or NodeType.EXECUTE."
             )
             node.update_status(TaskStatus.FAILED, error_msg=f"Node has unhandled final NodeType: {node.node_type}")
 

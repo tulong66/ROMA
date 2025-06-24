@@ -88,26 +88,21 @@ class HITLCoordinator:
     async def review_plan_generation(
         self, node: TaskNode, plan_output: PlanOutput, planner_input: Union[PlannerInput, PlanModifierInput], is_replan: bool = False
     ) -> Dict[str, Any]:
-        # COMPREHENSIVE DEBUG: Log all HITL decision factors
-        logger.debug(f"🐛 HITL DEBUG [review_plan_generation]: Node {node.task_id} (layer {node.layer})")
-        logger.debug(f"🐛 HITL DEBUG: config.hitl_root_plan_only = {getattr(self.config, 'hitl_root_plan_only', 'NOT_SET')}")
-        logger.debug(f"🐛 HITL DEBUG: config.enable_hitl_after_plan_generation = {self.config.enable_hitl_after_plan_generation}")
-        logger.debug(f"🐛 HITL DEBUG: is_replan = {is_replan}")
-        logger.debug(f"🐛 HITL DEBUG: node.layer = {node.layer}")
-        
-        # NEW: Check for root plan only mode
+        # Check HITL configuration based on mode
         if hasattr(self.config, 'hitl_root_plan_only') and self.config.hitl_root_plan_only:
-            # In root plan only mode, only review root node (layer 0) initial plans
-            if not (self.config.enable_hitl_after_plan_generation and node.layer == 0 and not is_replan):
-                logger.debug(f"🐛 HITL DEBUG: SKIPPING plan generation HITL - root plan only mode (non-root or replan)")
-                return {"status": "approved", "message": "HITL for plan generation skipped - root plan only mode (non-root or replan)."}
-        elif not self.config.enable_hitl_after_plan_generation:
-            logger.debug(f"🐛 HITL DEBUG: SKIPPING plan generation HITL - disabled by configuration")
-            return {"status": "approved", "message": "HITL for plan generation skipped by configuration."}
+            # ROOT-ONLY MODE: Only review root node (layer 0) initial plans and replans
+            if node.layer != 0:
+                logger.info(f"HITL checkpoint will be ignored due to hitl_root_plan_only=True (non-root node)")
+                return {"status": "approved", "message": "HITL for plan generation skipped (root plan only mode, non-root node)."}
+        else:
+            # ALL-NODES MODE: Check if plan generation HITL is enabled
+            if not self.config.enable_hitl_after_plan_generation:
+                return {"status": "approved", "message": "HITL for plan generation skipped by configuration."}
 
-        logger.debug(f"🐛 HITL DEBUG: PROCEEDING with plan generation HITL for {node.task_id}")
+        # If we reach here, HITL should proceed
+        logger.debug(f"🎯 PROCEEDING with plan generation HITL for {node.task_id} (layer {node.layer})")
         
-        # FIXED: Move all expensive operations AFTER the HITL checks
+        # Continue with existing HITL logic...
         hitl_context_msg = f"Review {'re-generated plan' if is_replan else 'initial plan'} for task '{node.task_id}'. Goal: {node.goal}"
         plan_for_review = plan_output.model_dump(mode='json') if plan_output else {}
         
@@ -153,24 +148,20 @@ class HITLCoordinator:
         self, node: TaskNode, original_goal: str, updated_goal: str, 
         is_atomic: bool, proposed_next_action: str, context_items: List = None
     ) -> Dict[str, Any]:
-        # COMPREHENSIVE DEBUG: Log all HITL decision factors
-        logger.debug(f"🐛 HITL DEBUG [review_atomizer_output]: Node {node.task_id} (layer {node.layer})")
-        logger.debug(f"🐛 HITL DEBUG: config.hitl_root_plan_only = {getattr(self.config, 'hitl_root_plan_only', 'NOT_SET')}")
-        logger.debug(f"🐛 HITL DEBUG: config.enable_hitl_after_atomizer = {self.config.enable_hitl_after_atomizer}")
-        
-        # FIXED: Add root plan only check for atomizer
+        # Check HITL configuration based on mode
         if hasattr(self.config, 'hitl_root_plan_only') and self.config.hitl_root_plan_only:
-            if node.layer != 0:  # Only review root node (layer 0) atomizer decisions
-                logger.debug(f"🐛 HITL DEBUG: SKIPPING atomizer HITL - root plan only mode (non-root node)")
-                return {"status": "approved", "message": "HITL for atomizer output skipped (root plan only mode, non-root node)."}
+            # ROOT-ONLY MODE: NEVER review atomizer decisions (only plan generation)
+            logger.debug(f"HITL atomizer skipped - root plan only mode (atomizer HITL disabled)")
+            return {"status": "approved", "message": "HITL for atomizer output skipped (root plan only mode - atomizer HITL disabled)."}
+        else:
+            # ALL-NODES MODE: Check if atomizer HITL is enabled
+            if not self.config.enable_hitl_after_atomizer:
+                return {"status": "approved", "message": "HITL for atomizer output skipped by configuration."}
+
+        # If we reach here, HITL should proceed
+        logger.debug(f"🎯 PROCEEDING with atomizer HITL for {node.task_id} (layer {node.layer})")
         
-        if not self.config.enable_hitl_after_atomizer:
-            logger.debug(f"🐛 HITL DEBUG: SKIPPING atomizer HITL - disabled by configuration")
-            return {"status": "approved", "message": "HITL for atomizer output skipped by configuration."}
-
-        logger.debug(f"🐛 HITL DEBUG: PROCEEDING with atomizer HITL for {node.task_id}")
-
-        # FIXED: Only do expensive context summarization when we know HITL will actually run
+        # Continue with existing HITL logic...
         context_summary = get_context_summary(context_items or []) if context_items else "No context available"
 
         hitl_context_msg = (f"Review Atomizer output for task '{node.task_id}'. "
@@ -188,22 +179,18 @@ class HITLCoordinator:
     async def review_before_execution(
         self, node: TaskNode, agent_task_input: AgentTaskInput
     ) -> Dict[str, Any]:
-        # COMPREHENSIVE DEBUG: Log all HITL decision factors
-        logger.debug(f"🐛 HITL DEBUG [review_before_execution]: Node {node.task_id} (layer {node.layer})")
-        logger.debug(f"🐛 HITL DEBUG: config.hitl_root_plan_only = {getattr(self.config, 'hitl_root_plan_only', 'NOT_SET')}")
-        logger.debug(f"🐛 HITL DEBUG: config.enable_hitl_before_execute = {self.config.enable_hitl_before_execute}")
-        
-        # FIXED: Add root plan only check for before execution
+        # Check HITL configuration based on mode
         if hasattr(self.config, 'hitl_root_plan_only') and self.config.hitl_root_plan_only:
-            if node.layer != 0:  # Only review root node (layer 0) before execution
-                logger.debug(f"🐛 HITL DEBUG: SKIPPING before execution HITL - root plan only mode (non-root node)")
+            # ROOT-ONLY MODE: Only review root node before execution
+            if node.layer != 0:
                 return {"status": "approved", "message": "HITL before execution skipped (root plan only mode, non-root node)."}
-        
-        if not self.config.enable_hitl_before_execute:
-            logger.debug(f"🐛 HITL DEBUG: SKIPPING before execution HITL - disabled by configuration")
-            return {"status": "approved", "message": "HITL before execution skipped by configuration."}
+        else:
+            # ALL-NODES MODE: Check if before execution HITL is enabled
+            if not self.config.enable_hitl_before_execute:
+                return {"status": "approved", "message": "HITL before execution skipped by configuration."}
 
-        logger.debug(f"🐛 HITL DEBUG: PROCEEDING with before execution HITL for {node.task_id}")
+        # If we reach here, HITL should proceed  
+        logger.debug(f"🎯 PROCEEDING with before execution HITL for {node.task_id} (layer {node.layer})")
 
         hitl_context_msg = f"Review task before execution: '{node.goal}'. Agent: {node.agent_name or 'Default Executor'}"
         
@@ -276,58 +263,3 @@ class HITLCoordinator:
             node=node,
             current_hitl_attempt=replan_attempt_count # Pass the replan attempt as current_hitl_attempt
         )
-
-    async def review_initial_project_goal(
-        self,
-        root_node: TaskNode,
-        task_graph: "TaskGraph",
-        knowledge_store: KnowledgeStore # Needed to log node updates
-    ) -> None:
-        """
-        Performs HITL review for the root node's initial goal.
-        Updates root_node.goal, task_graph.overall_project_goal, and knowledge_store.
-        This method assumes the root_node is valid and corresponds to the project root.
-        """
-        if not root_node or root_node.task_id != "root": # Basic validation
-            logger.error("HITLCoordinator: review_initial_project_goal called with invalid node.")
-            return
-
-        logger.info(f"HITLCoordinator: Triggering initial HITL review for root node {root_node.task_id} goal: '{root_node.goal}'.")
-        
-        # Data for review now includes the node's model_dump
-        # context_message is more specific
-        context_message = (
-            f"Review the initial root task goal for the project: '{root_node.goal}'. "
-            "You can approve it as is, or provide a modified goal in the 'modification instructions' field. "
-            "If you abort, the project will be cancelled."
-        )
-        data_for_review = root_node.model_dump(mode='json') # Provide full node data for context
-
-        # Call the internal HITL interface.
-        # Note: _call_hitl_interface itself handles node status updates for FAILED/CANCELLED.
-        hitl_outcome = await self._call_hitl_interface(
-            checkpoint_name="RootNodeGoalReview",
-            context_message=context_message,
-            data_for_review=data_for_review,
-            node=root_node
-        )
-
-        if hitl_outcome.get("status") == "approved":
-            logger.info(f"HITLCoordinator: Root node {root_node.task_id} goal approved by user without changes.")
-            # No changes to node.goal or task_graph.overall_project_goal needed.
-            # Node status remains PENDING (or as set by _call_hitl_interface if error/abort).
-            # Knowledge store already updated by _call_hitl_interface if status changed.
-
-        elif hitl_outcome.get("status") == "request_modification":
-            modified_goal = hitl_outcome.get("modification_instructions", "").strip()
-            if modified_goal:
-                logger.info(f"HITLCoordinator: Root node {root_node.task_id} goal modified by user from '{root_node.goal}' to '{modified_goal}'.")
-                root_node.goal = modified_goal
-                task_graph.overall_project_goal = modified_goal # Update task_graph as well
-                knowledge_store.add_or_update_record_from_node(root_node) # Log the goal change
-            else:
-                logger.info(f"HITLCoordinator: Root node {root_node.task_id} goal approved (modification requested but no instructions given, using original).")
-        
-        # If "aborted" or "error", _call_hitl_interface has already updated node status and logged.
-        # No further action needed here for those cases.
-        # The calling function (e.g., in ExecutionEngine) will check root_node.status.
