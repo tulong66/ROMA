@@ -10,6 +10,7 @@ from loguru import logger
 from datetime import datetime
 
 from ..utils.validation import RequestValidator
+from ...hierarchical_agent_framework.tracing.manager import trace_manager
 
 
 def register_websocket_events(socketio, project_service, execution_service):
@@ -451,6 +452,217 @@ def register_websocket_events(socketio, project_service, execution_service):
         """Default error handler for WebSocket events."""
         logger.error(f"SocketIO error: {e}")
         # Don't emit anything here - might cause more connection issues
+
+    # NEW: Tracing endpoints with persistence support
+    @socketio.on('request_node_trace')
+    def handle_request_node_trace(data):
+        """Handle request for node processing trace."""
+        logger.info(f"🔍 WebSocket request for node trace: {data}")
+        try:
+            node_id = data.get('node_id')
+            project_id = data.get('project_id')
+            
+            if not node_id:
+                emit('node_trace_error', {'error': 'node_id is required'})
+                return
+            
+            # ENHANCED: Debug trace manager state
+            debug_state = trace_manager.debug_trace_state()
+            logger.info(f"🔍 TRACE DEBUG: Current state: {debug_state}")
+            
+            # ENHANCED: Check if we have any traces at all
+            all_traces = trace_manager.get_all_traces()
+            logger.info(f"🔍 TRACE DEBUG: Total traces in memory: {len(all_traces)}")
+            for trace in all_traces:
+                logger.info(f"🔍 TRACE DEBUG: - Node {trace.node_id}: {len(trace.stages)} stages: {[s.stage_name for s in trace.stages]}")
+            
+            # ENHANCED: Try to load project traces if project_id provided
+            if project_id:
+                logger.info(f"🔍 TRACE: Attempting to load project traces for {project_id}")
+                
+                # Check if traces directory exists
+                traces_dir = trace_manager.traces_dir / project_id
+                logger.info(f"🔍 TRACE: Looking for traces in: {traces_dir}")
+                logger.info(f"🔍 TRACE: Directory exists: {traces_dir.exists()}")
+                
+                if traces_dir.exists():
+                    trace_files = list(traces_dir.glob("trace_*.json"))
+                    logger.info(f"🔍 TRACE: Found {len(trace_files)} trace files: {[f.name for f in trace_files]}")
+                    
+                    # Try to load specific trace file
+                    expected_trace_file = traces_dir / f"trace_{node_id}.json"
+                    logger.info(f"🔍 TRACE: Looking for {expected_trace_file}")
+                    logger.info(f"🔍 TRACE: File exists: {expected_trace_file.exists()}")
+                    
+                    if expected_trace_file.exists():
+                        try:
+                            with open(expected_trace_file, 'r') as f:
+                                trace_content = f.read()
+                                logger.info(f"🔍 TRACE: File content length: {len(trace_content)} chars")
+                                logger.info(f"🔍 TRACE: File content preview: {trace_content[:200]}...")
+                        except Exception as e:
+                            logger.error(f"🔍 TRACE: Error reading trace file: {e}")
+                
+                trace_manager.load_project_traces(project_id)
+            
+            # Get trace for the node
+            trace = trace_manager.get_trace_for_node(node_id)
+            if trace:
+                logger.info(f"🔍 TRACE: Found trace for {node_id}: {len(trace.stages)} stages")
+                for i, stage in enumerate(trace.stages):
+                    logger.info(f"🔍 TRACE: Stage {i+1}: {stage.stage_name} ({stage.status})")
+                
+                trace_data = trace.to_dict()
+                emit('node_trace_data', {
+                    'node_id': node_id,
+                    'trace': trace_data
+                })
+                logger.info(f"✅ Sent trace data for node {node_id}: {len(trace.stages)} stages")
+            else:
+                # ENHANCED: Create sample trace data for testing
+                logger.warning(f"❌ No trace found for node: {node_id}")
+                logger.info(f"🔍 TRACE: Creating sample trace data for testing...")
+                
+                sample_trace = {
+                    "node_id": node_id,
+                    "node_goal": f"Sample goal for {node_id}",
+                    "trace_id": f"sample-{node_id}",
+                    "created_at": "2024-01-01T10:00:00Z",
+                    "stages": [
+                        {
+                            "stage_name": "atomization",
+                            "stage_id": f"stage-1-{node_id}",
+                            "started_at": "2024-01-01T10:00:00Z",
+                            "completed_at": "2024-01-01T10:00:05Z",
+                            "status": "completed",
+                            "agent_name": "sample_agent",
+                            "adapter_name": "AtomizerAdapter",
+                            "system_prompt": "You are an atomizer agent determining if a task is atomic.",
+                            "user_input": f"Please analyze this task: {node_id}",
+                            "llm_response": "This task requires further decomposition.",
+                            "output_data": "Task is not atomic, should be planned",
+                            "duration_ms": 5000
+                        },
+                        {
+                            "stage_name": "planning",
+                            "stage_id": f"stage-2-{node_id}",
+                            "started_at": "2024-01-01T10:00:05Z",
+                            "completed_at": "2024-01-01T10:00:15Z", 
+                            "status": "completed",
+                            "agent_name": "planner_agent",
+                            "adapter_name": "PlannerAdapter",
+                            "system_prompt": "You are a planning agent that breaks down tasks.",
+                            "user_input": f"Create a plan for: {node_id}",
+                            "llm_response": "Here's a step-by-step plan...",
+                            "output_data": "Generated plan with 3 sub-tasks",
+                            "duration_ms": 10000
+                        },
+                        {
+                            "stage_name": "execution",
+                            "stage_id": f"stage-3-{node_id}",
+                            "started_at": "2024-01-01T10:00:15Z",
+                            "completed_at": "2024-01-01T10:00:30Z",
+                            "status": "completed", 
+                            "agent_name": "executor_agent",
+                            "adapter_name": "ExecutorAdapter",
+                            "system_prompt": "You are an execution agent that performs tasks.",
+                            "user_input": f"Execute this task: {node_id}",
+                            "llm_response": "Task completed successfully with detailed results.",
+                            "output_data": "Execution completed with results",
+                            "duration_ms": 15000
+                        }
+                    ],
+                    "metadata": {"sample": True}
+                }
+                
+                emit('node_trace_data', {
+                    'node_id': node_id,
+                    'trace': sample_trace,
+                    'debug_info': debug_state,
+                    'message': 'Sample trace data (no real traces found)'
+                })
+                
+        except Exception as e:
+            logger.error(f"Node trace request error: {e}")
+            import traceback
+            traceback.print_exc()
+            emit('node_trace_error', {'error': str(e)})
+    
+    @socketio.on('request_stage_details')
+    def handle_request_stage_details(data):
+        """Handle request for detailed stage information."""
+        logger.info(f"🔍 WebSocket request for stage details: {data}")
+        try:
+            node_id = data.get('node_id')
+            stage_id = data.get('stage_id')
+            
+            if not node_id or not stage_id:
+                emit('stage_details_error', {
+                    'error': 'node_id and stage_id are required'
+                })
+                return
+            
+            # Get trace for the node
+            trace = trace_manager.get_trace_for_node(node_id)
+            if trace:
+                stage = trace.get_stage_by_id(stage_id)
+                if stage:
+                    stage_data = {
+                        "stage_name": stage.stage_name,
+                        "stage_id": stage.stage_id,
+                        "started_at": stage.started_at.isoformat(),
+                        "completed_at": stage.completed_at.isoformat() if stage.completed_at else None,
+                        "status": stage.status,
+                        "agent_name": stage.agent_name,
+                        "adapter_name": stage.adapter_name,
+                        "model_info": stage.model_info,
+                        "system_prompt": stage.system_prompt,
+                        "user_input": stage.user_input,
+                        "llm_response": stage.llm_response,
+                        "input_context": stage.input_context,
+                        "processing_parameters": stage.processing_parameters,
+                        "output_data": stage.output_data,
+                        "error_message": stage.error_message,
+                        "error_details": stage.error_details,
+                        "duration_ms": stage.get_duration_ms()
+                    }
+                    
+                    emit('stage_details_data', {
+                        'node_id': node_id,
+                        'stage_id': stage_id,
+                        'stage': stage_data
+                    })
+                    logger.info(f"✅ Sent stage details for node {node_id}, stage {stage_id}")
+                else:
+                    emit('stage_details_error', {
+                        'error': f'Stage {stage_id} not found'
+                    })
+            else:
+                emit('stage_details_error', {
+                    'error': f'No trace found for node {node_id}'
+                })
+                
+        except Exception as e:
+            logger.error(f"Stage details request error: {e}")
+            emit('stage_details_error', {
+                'error': str(e)
+            })
+
+    @socketio.on('clear_traces')
+    def handle_clear_traces(data):
+        """Handle request to clear all traces."""
+        logger.info(f"🔍 WebSocket request to clear traces")
+        try:
+            trace_manager.clear_traces()
+            emit('traces_cleared', {
+                'message': 'All traces cleared successfully'
+            })
+            logger.info("✅ All traces cleared")
+        except Exception as e:
+            logger.error(f"Clear traces error: {e}")
+            emit('clear_traces_error', {
+                'error': str(e)
+            })
 
 
 def _run_simple_streaming_execution(socketio, goal: str, options: dict):

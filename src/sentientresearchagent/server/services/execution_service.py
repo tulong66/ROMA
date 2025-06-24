@@ -497,7 +497,7 @@ class ExecutionService:
         # ... other state loading logic
     
     def _save_final_project_state_enhanced(self, project_task_graph, project_id):
-        """Enhanced final state saving with comprehensive debugging and multiple save attempts."""
+        """Enhanced final state saving with trace persistence."""
         try:
             logger.info(f"🚨 ENHANCED SAVE - Starting comprehensive save for project: {project_id}")
             
@@ -545,6 +545,14 @@ class ExecutionService:
                     if node_data.get('layer') == 0 and not node_data.get('parent_node_id'):
                         full_result_preview = str(node_data.get('full_result', ''))[:200]
                         logger.info(f"🚨 ENHANCED SAVE - ROOT NODE full_result preview: {full_result_preview}...")
+            
+            # NEW: Save traces for this project
+            try:
+                from ...hierarchical_agent_framework.tracing.manager import trace_manager
+                trace_manager.save_project_traces(project_id)
+                logger.info(f"🔍 TRACE: Saved all traces for project {project_id}")
+            except Exception as e:
+                logger.warning(f"🔍 TRACE: Failed to save traces for project {project_id}: {e}")
             
             # MULTIPLE SAVE ATTEMPTS
             save_attempts = [

@@ -72,8 +72,21 @@ class OpenAICustomSearchAdapter(BaseAdapter):
         web_search_preview using client.responses.create.
         Prioritizes response.output_text, and optionally parses nested text/annotations.
         """
+        # Import trace_manager here to avoid circular imports
+        from sentientresearchagent.hierarchical_agent_framework.tracing.manager import trace_manager
+        
         query = agent_task_input.current_goal
         logger.info(f"  Adapter '{self.adapter_name}': Processing node {node.task_id} (Query: '{query[:100]}...') with OpenAI model {self.model_id}")
+        
+        # Start tracing stage
+        trace_manager.start_stage(
+            node_id=node.task_id,
+            stage_name="execution",
+            agent_name=self.adapter_name,
+            adapter_name=self.__class__.__name__,
+            user_input=query,
+            model_info={"model": self.model_id, "provider": "openai"}
+        )
         
         output_text_with_citations = f"Error: Could not retrieve output_text for query: {query}" # Default error
         parsed_text_content: Optional[str] = None
@@ -100,7 +113,7 @@ class OpenAICustomSearchAdapter(BaseAdapter):
                 # Keep the default error message for output_text_with_citations
 
             # 2. Attempt to parse nested text_content and annotations as supplementary info
-            raw_annotations_data = [] # Define here to ensure it's always available
+            raw_annotations_data = []
             if hasattr(api_response, 'output') and \
                isinstance(api_response.output, list) and \
                len(api_response.output) > 1 and \
@@ -155,11 +168,35 @@ class OpenAICustomSearchAdapter(BaseAdapter):
             main_output_preview = output.output_text_with_citations[:150] + "..." if len(output.output_text_with_citations) > 150 else output.output_text_with_citations
             logger.success(f"  Adapter '{self.adapter_name}': Processed. Main output: '{main_output_preview}', Annotations: {len(output.annotations)}")
             node.output_type_description = "custom_searcher_output_with_citations"
+            
+            # FIXED: Complete tracing stage with rich output
+            # First update the stage with LLM response data
+            trace_manager.update_stage(
+                node_id=node.task_id,
+                stage_name="execution",
+                llm_response=output.output_text_with_citations
+            )
+            
+            # Then complete the stage with output data
+            trace_manager.complete_stage(
+                node_id=node.task_id,
+                stage_name="execution",
+                output_data=output.output_text_with_citations
+            )
+            
             return output
 
         except Exception as e:
             error_message = f"Error during {self.adapter_name} execution for node {node.task_id} (Query: {query}): {e}"
             logger.error(f"  Adapter Error: {error_message}")
+            
+            # FIXED: Complete tracing stage with error
+            trace_manager.complete_stage(
+                node_id=node.task_id,
+                stage_name="execution",
+                error=error_message
+            )
+            
             # Return a CustomSearcherOutput with the error message if the API call itself fails
             return CustomSearcherOutput(
                 query_used=query,
@@ -206,8 +243,21 @@ class GeminiCustomSearchAdapter(BaseAdapter):
         google_search tool using client.aio.models.generate_content (async API).
         Parses response.text and grounding_metadata for citations.
         """
+        # Import trace_manager here to avoid circular imports
+        from sentientresearchagent.hierarchical_agent_framework.tracing.manager import trace_manager
+        
         query = agent_task_input.current_goal
         logger.info(f"  Adapter '{self.adapter_name}': Processing node {node.task_id} (Query: '{query[:100]}...') with Gemini model {self.model_id}")
+        
+        # Start tracing stage
+        trace_manager.start_stage(
+            node_id=node.task_id,
+            stage_name="execution",
+            agent_name=self.adapter_name,
+            adapter_name=self.__class__.__name__,
+            user_input=query,
+            model_info={"model": self.model_id, "provider": "google_gemini"}
+        )
         
         output_text_with_citations = f"Error: Could not retrieve output_text for query: {query}" # Default error
         parsed_text_content: Optional[str] = None
@@ -278,11 +328,33 @@ class GeminiCustomSearchAdapter(BaseAdapter):
             main_output_preview = output.output_text_with_citations[:150] + "..." if len(output.output_text_with_citations) > 150 else output.output_text_with_citations
             logger.success(f"  Adapter '{self.adapter_name}': Processed. Main output: '{main_output_preview}', Annotations: {len(output.annotations)}")
             node.output_type_description = "custom_searcher_output_with_citations"
+            
+            # Complete tracing stage with rich output
+            trace_manager.update_stage(
+                node_id=node.task_id,
+                stage_name="execution",
+                llm_response=output.output_text_with_citations
+            )
+            
+            trace_manager.complete_stage(
+                node_id=node.task_id,
+                stage_name="execution",
+                output_data=output.output_text_with_citations
+            )
+            
             return output
 
         except Exception as e:
             error_message = f"Error during {self.adapter_name} execution for node {node.task_id} (Query: {query}): {e}"
             logger.error(f"  Adapter Error: {error_message}")
+            
+            # Complete tracing stage with error
+            trace_manager.complete_stage(
+                node_id=node.task_id,
+                stage_name="execution",
+                error=error_message
+            )
+            
             # Return a CustomSearcherOutput with the error message if the API call itself fails
             return CustomSearcherOutput(
                 query_used=query,

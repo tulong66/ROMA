@@ -26,6 +26,8 @@ from sentientresearchagent.exceptions import (
 from sentientresearchagent.core.error_handler import handle_agent_errors, ErrorRecovery
 from sentientresearchagent.core.cache.decorators import cache_agent_response, cache_get, cache_set
 
+from ..tracing.manager import trace_manager
+
 InputType = TypeVar('InputType')
 OutputType = TypeVar('OutputType')
 
@@ -361,6 +363,42 @@ Ensure your output is a valid JSON conforming to the PlanOutput schema, containi
         """
         logger.info(f"  Adapter '{self.agent_name}': Processing node {node.task_id} (Goal: '{node.goal[:50]}...')")
 
+        # Determine the stage name based on adapter type
+        stage_name = self._get_stage_name()
+        
+        # 🚨 CRITICAL VALIDATION: Prevent execution nodes from getting aggregation stages
+        if hasattr(node, 'task_type') and node.task_type and str(node.task_type).upper() == 'SEARCH':
+            if stage_name == 'aggregation':
+                logger.error(f"🚨 CRITICAL ERROR: SEARCH node {node.task_id} attempted to create aggregation stage!")
+                logger.error(f"🚨 Adapter: {self.__class__.__name__}, Agent: {self.agent_name}")
+                stage_name = 'execution'  # Force to execution
+        
+        # Additional validation based on adapter name
+        if 'search' in self.__class__.__name__.lower() and stage_name == 'aggregation':
+            logger.error(f"🚨 CRITICAL ERROR: Search adapter {self.__class__.__name__} attempted aggregation stage!")
+            stage_name = 'execution'  # Force to execution
+        
+        # CRITICAL FIX: Don't create new stage, just update existing one
+        # The node handlers should already have created the stage
+        trace = trace_manager.get_trace_for_node(node.task_id)
+        if not trace:
+            logger.warning(f"No trace found for node {node.task_id}, creating one")
+            trace = trace_manager.create_trace(node.task_id, node.goal)
+        
+        # Find existing stage or create if not exists
+        existing_stage = trace.get_stage(stage_name)
+        if not existing_stage:
+            logger.info(f"Creating new {stage_name} stage for node {node.task_id}")
+            stage = trace_manager.start_stage(
+                node_id=node.task_id,
+                stage_name=stage_name,
+                agent_name=self.agent_name,
+                adapter_name=self.__class__.__name__
+            )
+        else:
+            logger.info(f"Updating existing {stage_name} stage for node {node.task_id}")
+            stage = existing_stage
+
         # Capture model information before processing
         model_info = self._get_model_info()
         
@@ -369,33 +407,53 @@ Ensure your output is a valid JSON conforming to the PlanOutput schema, containi
         node.aux_data["execution_details"]["model_info"] = model_info
         node.aux_data["execution_details"]["processing_started"] = datetime.now().isoformat()
 
-        # NEW: Store system prompt if available
+        # Get system prompt
         system_prompt = getattr(self.agno_agent, 'system_message', None) or getattr(self.agno_agent, 'system_prompt', None)
         if system_prompt:
             node.aux_data["execution_details"]["system_prompt"] = system_prompt
 
-        # Check if we should skip cache for this request
-        if hasattr(agent_task_input, 'force_refresh') and agent_task_input.force_refresh:
-            logger.debug(f"  Adapter '{self.agent_name}': Skipping cache due to force_refresh flag")
-        
         try:
             user_message_string = self._prepare_agno_run_arguments(agent_task_input)
             
-            # Store the final formatted input for frontend display
+            # Store the final formatted input for frontend display and tracing
             node.aux_data["execution_details"]["final_llm_input"] = user_message_string
             
+            # CRITICAL FIX: Update trace stage with all LLM interaction data
+            trace_manager.update_stage(
+                node_id=node.task_id,
+                stage_name=stage_name,
+                agent_name=self.agent_name,
+                adapter_name=self.__class__.__name__,
+                model_info=model_info,
+                system_prompt=system_prompt,
+                user_input=user_message_string,
+                input_context={
+                    "agent_task_input": str(agent_task_input)[:1000],
+                    "formatted_input_length": len(user_message_string),
+                    "task_type": str(node.task_type),
+                    "node_type": str(node.node_type)
+                },
+                processing_parameters={
+                    "temperature": getattr(self.agno_agent, 'temperature', None),
+                    "max_tokens": getattr(self.agno_agent, 'max_tokens', None),
+                    "model": getattr(self.agno_agent, 'model', None)
+                }
+            )
+            
         except Exception as e:
+            trace_manager.complete_stage(
+                node_id=node.task_id,
+                stage_name=stage_name,
+                error=str(e)
+            )
             raise AgentExecutionError(
                 agent_name=self.agent_name,
                 task_id=node.task_id,
                 original_error=e,
                 attempt_number=1
             )
-        
-        agno_agent_name = getattr(self.agno_agent, 'name', 'N/A') or 'N/A'
-        logger.debug(f"    DEBUG: User message string to Agno Agent '{agno_agent_name}':\\n{user_message_string[:200]}...")
 
-        # Use the retry utility instead of manual retry logic
+        # Execute agent with proper response capture
         async def execute_agent():
             if not hasattr(self.agno_agent, 'arun'):
                 raise AgentExecutionError(
@@ -407,49 +465,51 @@ Ensure your output is a valid JSON conforming to the PlanOutput schema, containi
 
             try:
                 run_response_obj = await self.agno_agent.arun(user_message_string)
-                logger.debug(f"    Adapter '{self.agent_name}': After await self.agno_agent.arun(), run_response_obj type: {type(run_response_obj)}")
                 
                 actual_content_data = None
+                raw_response = None
+                
                 if hasattr(run_response_obj, 'content'):
                     content_attr = run_response_obj.content
-                    logger.debug(f"    Adapter '{self.agent_name}': run_response_obj.content exists. Type of content_attr: {type(content_attr)}")
-
-                    if asyncio.iscoroutine(content_attr):
-                        logger.info(f"    Adapter '{self.agent_name}': content_attr IS a coroutine. Awaiting it now.")
-                        actual_content_data = await content_attr
-                        logger.debug(f"    Adapter '{self.agent_name}': After awaiting content_attr, actual_content_data type: {type(actual_content_data)}")
-                    else:
-                        logger.info(f"    Adapter '{self.agent_name}': content_attr is NOT a coroutine. Using its value directly.")
-                        actual_content_data = content_attr
-                else:
-                    logger.warning(f"    Adapter Warning: Agno agent '{self.agent_name}' RunResponse object has no 'content' attribute for node {node.task_id}.")
-                
-                # If a response model is expected but we got a string, try to parse it.
-                if self.agno_agent.response_model and isinstance(actual_content_data, str):
-                    logger.warning(f"    Adapter '{self.agent_name}': Expected a structured object but got a string. Attempting to extract and parse JSON.")
                     
-                    parsed_data = self._extract_and_parse_json(actual_content_data, self.agno_agent.response_model)
-
-                    if parsed_data:
-                        logger.info(f"    Adapter '{self.agent_name}': Successfully extracted and parsed JSON.")
-                        actual_content_data = parsed_data
+                    if asyncio.iscoroutine(content_attr):
+                        actual_content_data = await content_attr
                     else:
-                        logger.error(f"    Adapter '{self.agent_name}': Failed to recover structured data from string response.")
-                        # Keep actual_content_data as string so downstream can see the raw output
-
-                # Check if response_model was set and if content is None
-                if self.agno_agent.response_model is not None and actual_content_data is None:
-                    raise AgentExecutionError(
-                        agent_name=self.agent_name,
-                        task_id=node.task_id,
-                        original_error=ValueError(
-                            f"Agno agent '{self.agent_name}' with response_model "
-                            f"'{self.agno_agent.response_model.__name__}' returned None."
-                        ),
-                        attempt_number=1
+                        actual_content_data = content_attr
+                        
+                    # Store raw response for tracing - NO TRUNCATION for aggregation
+                    stage_name = self._get_stage_name()
+                    if stage_name == 'aggregation':
+                        # For aggregation, store the COMPLETE response - this is the final output users need to see
+                        raw_response = str(actual_content_data)
+                        logger.info(f"🔍 AGGREGATION: Storing FULL response ({len(raw_response)} characters) for tracing")
+                    else:
+                        # For other stages, limit to prevent memory issues
+                        full_response = str(actual_content_data)
+                        if len(full_response) > 5000:  # Increased from 2000 to 5000 for better debugging
+                            raw_response = full_response[:5000] + f"... [Response truncated from {len(full_response)} characters for memory efficiency]"
+                            logger.info(f"🔍 {stage_name.upper()}: Truncated response from {len(full_response)} to 5000 characters for tracing")
+                        else:
+                            raw_response = full_response
+                            logger.info(f"🔍 {stage_name.upper()}: Storing full response ({len(raw_response)} characters) for tracing")
+                else:
+                    logger.warning(f"Agno agent '{self.agent_name}' RunResponse object has no 'content' attribute for node {node.task_id}.")
+                
+                # CRITICAL FIX: Update trace stage with LLM response
+                if raw_response:
+                    trace_manager.update_stage(
+                        node_id=node.task_id,
+                        stage_name=stage_name,
+                        llm_response=raw_response
                     )
+                
+                # Handle structured output parsing if needed
+                if self.agno_agent.response_model and isinstance(actual_content_data, str):
+                    parsed_data = self._extract_and_parse_json(actual_content_data, self.agno_agent.response_model)
+                    if parsed_data:
+                        actual_content_data = parsed_data
 
-                logger.info(f"    Adapter '{self.agent_name}': Successfully processed. Type of actual_content_data: {type(actual_content_data)}")
+                logger.info(f"Adapter '{self.agent_name}': Successfully processed. Type of actual_content_data: {type(actual_content_data)}")
                 return actual_content_data
                 
             except Exception as e:
@@ -457,20 +517,10 @@ Ensure your output is a valid JSON conforming to the PlanOutput schema, containi
                 if "rate limit" in str(e).lower() or "429" in str(e):
                     raise AgentRateLimitError(agent_name=self.agent_name)
                 elif "timeout" in str(e).lower():
-                    raise AgentTimeoutError(
-                        agent_name=self.agent_name, 
-                        task_id=node.task_id, 
-                        timeout_seconds=30.0
-                    )
+                    raise AgentTimeoutError(agent_name=self.agent_name, task_id=node.task_id, timeout_seconds=30.0)
                 else:
-                    raise AgentExecutionError(
-                        agent_name=self.agent_name,
-                        task_id=node.task_id,
-                        original_error=e,
-                        attempt_number=1
-                    )
+                    raise AgentExecutionError(agent_name=self.agent_name, task_id=node.task_id, original_error=e, attempt_number=1)
 
-        # Use ErrorRecovery for retry logic with better error handling
         try:
             result = await ErrorRecovery.retry_with_backoff(
                 func=execute_agent,
@@ -483,13 +533,28 @@ Ensure your output is a valid JSON conforming to the PlanOutput schema, containi
             node.aux_data["execution_details"]["processing_completed"] = datetime.now().isoformat()
             node.aux_data["execution_details"]["success"] = True
             
-            # Cache result manually with additional metadata if needed
-            cache_set(
-                namespace="agent_responses", 
-                identifier=f"{self.agent_name}:{node.task_id}",
-                value=result,
-                context={"task_type": str(node.task_type), "node_type": str(node.node_type)},
-                ttl_seconds=3600
+            # CRITICAL FIX: Complete tracing stage with rich output data - NO TRUNCATION for aggregation
+            stage_name = self._get_stage_name()
+            if stage_name == 'aggregation':
+                # For aggregation, store the COMPLETE result - this is what users are paying for
+                output_data = str(result) if result else "No output"
+                logger.info(f"🔍 AGGREGATION: Storing COMPLETE output data ({len(output_data)} characters) for tracing")
+            else:
+                # For other stages, use reasonable summary
+                if result:
+                    full_output = str(result)
+                    if len(full_output) > 2000:  # Reasonable limit for non-aggregation stages
+                        output_data = full_output[:2000] + f"... [Output truncated from {len(full_output)} characters]"
+                    else:
+                        output_data = full_output
+                else:
+                    output_data = "No output"
+                logger.info(f"🔍 {stage_name.upper()}: Storing output data ({len(output_data)} characters) for tracing")
+
+            trace_manager.complete_stage(
+                node_id=node.task_id,
+                stage_name=stage_name,
+                output_data=output_data
             )
             
             return result
@@ -500,17 +565,35 @@ Ensure your output is a valid JSON conforming to the PlanOutput schema, containi
             node.aux_data["execution_details"]["success"] = False
             node.aux_data["execution_details"]["error"] = str(e)
             
-            # Final error handling - convert any remaining exceptions
-            raise handle_exception(
-                e, 
-                task_id=node.task_id, 
-                agent_name=self.agent_name,
-                context=create_error_context(
-                    task_goal=node.goal,
-                    task_type=node.task_type,
-                    node_type=node.node_type
-                )
+            # Complete tracing stage with error
+            trace_manager.complete_stage(
+                node_id=node.task_id,
+                stage_name=stage_name,
+                error=str(e)
             )
+            
+            raise
+
+    def _get_stage_name(self) -> str:
+        """Determine the stage name based on adapter type."""
+        class_name = self.__class__.__name__.lower()
+        
+        # CRITICAL FIX: Strict validation to prevent incorrect stage assignment
+        if 'planner' in class_name:
+            return 'planning'
+        elif 'executor' in class_name:
+            return 'execution'
+        elif 'aggregator' in class_name:
+            return 'aggregation'
+        elif 'atomizer' in class_name:
+            return 'atomization'
+        elif 'customsearch' in class_name or 'search' in class_name:
+            # EXPLICIT: All search adapters should NEVER do aggregation
+            return 'execution'
+        else:
+            # Default to processing, but log a warning
+            logger.warning(f"🚨 Unknown adapter type '{self.__class__.__name__}' - defaulting to 'processing' stage")
+            return 'processing'
 
     def close(self):
         """Closes the underlying Agno agent's resources."""

@@ -27,13 +27,15 @@ import {
   Cpu,
   MessageSquare,
   ExternalLink,
-  Settings
+  Settings,
+  Eye
 } from 'lucide-react'
 import { getStatusColor, cn } from '@/lib/utils'
 import type { TaskNode, ContextSource } from '@/types'
 import FullResultModal from './FullResultModal'
 import FinalInputModal from './FinalInputModal'
 import NodeNavigator from './NodeNavigator'
+import NodeTracingModal from '../debug/NodeTracingModal'
 
 const getStatusIcon = (status: string) => {
   const iconProps = { className: "w-4 h-4" }
@@ -245,6 +247,7 @@ const NodeDetailsPanel: React.FC = () => {
   const [isFullResultModalOpen, setIsFullResultModalOpen] = useState(false)
   const [isFinalInputModalOpen, setIsFinalInputModalOpen] = useState(false)
   const [isNavigationExpanded, setIsNavigationExpanded] = useState(false)
+  const [showTracingModal, setShowTracingModal] = useState(false)
   
   const selectedNode = selectedNodeId ? nodes[selectedNodeId] : null
 
@@ -295,6 +298,8 @@ const NodeDetailsPanel: React.FC = () => {
     auxDataKeys: Object.keys((selectedNode as any).aux_data || {}),
     executionDetailsExists: !!executionDetails
   })
+
+  const hasBeenProcessed = selectedNode && ['RUNNING', 'DONE', 'FAILED', 'PLAN_DONE', 'AGGREGATING'].includes(selectedNode.status)
 
   return (
     <>
@@ -611,6 +616,18 @@ const NodeDetailsPanel: React.FC = () => {
                 Copy Task ID
               </Button>
               
+              {hasBeenProcessed && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowTracingModal(true)}
+                  className="w-full justify-start"
+                >
+                  <Eye className="w-4 h-4 mr-2" />
+                  View Stage Tracing
+                </Button>
+              )}
+              
               {hasFullResult && (
                 <Button
                   variant="outline"
@@ -682,6 +699,16 @@ const NodeDetailsPanel: React.FC = () => {
           isOpen={isFinalInputModalOpen}
           onClose={() => setIsFinalInputModalOpen(false)}
           node={selectedNode}
+        />
+      )}
+
+      {/* Add Stage Tracing Modal */}
+      {selectedNode && (
+        <NodeTracingModal
+          isOpen={showTracingModal}
+          onClose={() => setShowTracingModal(false)}
+          nodeId={selectedNode.task_id}
+          nodeGoal={selectedNode.goal}
         />
       )}
     </>

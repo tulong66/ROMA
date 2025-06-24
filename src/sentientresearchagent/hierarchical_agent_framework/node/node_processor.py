@@ -27,6 +27,7 @@ from .node_creation_utils import SubNodeCreator
 from .node_atomizer_utils import NodeAtomizer
 from .node_configs import NodeProcessorConfig
 from sentientresearchagent.config import SentientConfig
+from ..tracing.manager import trace_manager
 
 if TYPE_CHECKING:
     from sentientresearchagent.hierarchical_agent_framework.graph.task_graph import TaskGraph
@@ -135,6 +136,9 @@ class NodeProcessor:
         original_status = node.status
 
         logger.info(f"NodeProcessor: Processing node {node.task_id} (Status: {node.status.name}, Type: {node.node_type}, Goal: '{node.goal[:30]}...')")
+        
+        # Create trace when node starts processing (if not already exists)
+        trace_manager.create_trace(node.task_id, node.goal)
         
         handler = self.handler_strategies.get(node.status)
 

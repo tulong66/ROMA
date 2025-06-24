@@ -183,7 +183,13 @@ class ProjectService:
             project_components = self.project_graphs[project_id]
             project_task_graph = project_components['task_graph']
             
+            # CRITICAL FIX: Check if task graph is None or empty
+            if not project_task_graph:
+                logger.warning(f"Task graph is None for project {project_id}")
+                return self._get_empty_display_data()
+            
             # Serialize project data
+            data = None
             if hasattr(project_task_graph, 'to_visualization_dict'):
                 data = project_task_graph.to_visualization_dict()
             else:
@@ -192,11 +198,23 @@ class ProjectService:
                 serializer = GraphSerializer(project_task_graph)
                 data = serializer.to_visualization_dict()
             
+            # CRITICAL FIX: Check if serialization returned None
+            if data is None:
+                logger.warning(f"Serialization returned None for project {project_id}")
+                return self._get_empty_display_data()
+            
+            # CRITICAL FIX: Ensure data is a dict and has expected structure
+            if not isinstance(data, dict):
+                logger.warning(f"Serialization returned non-dict ({type(data)}) for project {project_id}")
+                return self._get_empty_display_data()
+            
             logger.debug(f"Retrieved display data for project {project_id}: {len(data.get('all_nodes', {}))} nodes")
             return data
             
         except Exception as e:
             logger.error(f"Failed to get display data for project {project_id}: {e}")
+            import traceback
+            traceback.print_exc()
             return self._get_empty_display_data()
     
     def _get_empty_display_data(self) -> Dict[str, Any]:

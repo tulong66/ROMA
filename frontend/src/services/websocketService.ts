@@ -481,6 +481,37 @@ class WebSocketService {
         }
       }, 1000)
     })
+
+    // Tracing event handlers
+    this.socket.on('node_trace_data', (data: any) => {
+      console.log('🔍 WebSocket: Received node trace data:', data)
+      // The NodeTracingModal will handle this via its own listeners
+    })
+
+    this.socket.on('node_trace_error', (data: any) => {
+      console.error('❌ WebSocket: Node trace error:', data)
+      // The NodeTracingModal will handle this via its own listeners
+    })
+
+    this.socket.on('stage_details_data', (data: any) => {
+      console.log('🔍 WebSocket: Received stage details:', data)
+      // Future enhancement for detailed stage view
+    })
+
+    this.socket.on('stage_details_error', (data: any) => {
+      console.error('❌ WebSocket: Stage details error:', data)
+      // Future enhancement for detailed stage view
+    })
+
+    this.socket.on('traces_cleared', (data: any) => {
+      console.log('🔍 WebSocket: Traces cleared:', data)
+      // Future enhancement for trace management
+    })
+
+    this.socket.on('clear_traces_error', (data: any) => {
+      console.error('❌ WebSocket: Clear traces error:', data)
+      // Future enhancement for trace management
+    })
   }
 
   private handleReconnect() {
@@ -703,7 +734,7 @@ class WebSocketService {
     return this.socket
   }
 
-  // NEW: Auto-save project data for persistence
+  // ENHANCED: Auto-save project data with quota management
   private autoSaveProjectData(projectId: string, data: any) {
     try {
       const timestamp = new Date().toISOString()
@@ -713,8 +744,52 @@ class WebSocketService {
         auto_saved: true
       }
       
-      // Save to localStorage as backup
-      localStorage.setItem(`project_${projectId}_backup`, JSON.stringify(saveData))
+      // Check data size before saving
+      const dataString = JSON.stringify(saveData)
+      const dataSizeKB = new Blob([dataString]).size / 1024
+      
+      console.log(`💾 Auto-save data size: ${dataSizeKB.toFixed(2)}KB`)
+      
+      // If data is too large (>2MB), skip localStorage save
+      if (dataSizeKB > 2048) {
+        console.warn(`⚠️ Project data too large (${dataSizeKB.toFixed(2)}KB), skipping localStorage save`)
+        
+        // Still try to save to backend
+        if (this.isConnected()) {
+          this.socket?.emit('auto_save_project', {
+            project_id: projectId,
+            data: saveData
+          })
+        }
+        return
+      }
+      
+      // Clean up old backups before saving new one
+      this.cleanupOldProjectBackups(projectId)
+      
+      // Try to save to localStorage
+      try {
+        localStorage.setItem(`project_${projectId}_backup`, dataString)
+        console.log('💾 Auto-saved project data to localStorage for:', projectId)
+      } catch (storageError) {
+        if (storageError.name === 'QuotaExceededError') {
+          console.warn('💾 localStorage quota exceeded, attempting cleanup...')
+          
+          // Emergency cleanup - remove oldest backups
+          this.emergencyCleanupLocalStorage()
+          
+          // Try saving again after cleanup
+          try {
+            localStorage.setItem(`project_${projectId}_backup`, dataString)
+            console.log('💾 Auto-saved project data after cleanup for:', projectId)
+          } catch (secondError) {
+            console.warn('💾 Still failed after cleanup, data too large for localStorage')
+            // Don't throw - just log and continue
+          }
+        } else {
+          throw storageError
+        }
+      }
       
       // Also try to save to backend (non-blocking)
       if (this.isConnected()) {
@@ -724,72 +799,110 @@ class WebSocketService {
         })
       }
       
-      console.log('💾 Auto-saved project data for:', projectId)
     } catch (error) {
       console.warn('Failed to auto-save project data:', error)
+      // Don't re-throw - let the application continue
     }
   }
 
-  // NEW: Add method to re-run project execution
-  rerunProject(projectId: string) {
-    if (this.socket && this.isConnected()) {
-      console.log('🚨 RE-RUN - Triggering project re-execution:', projectId)
+  // NEW: Clean up old project backups
+  private cleanupOldProjectBackups(currentProjectId: string) {
+    try {
+      const keys = Object.keys(localStorage)
+      const projectBackupKeys = keys.filter(key => key.startsWith('project_') && key.endsWith('_backup'))
       
-      // Get project details
-      const projectStore = useProjectStore.getState()
-      const project = projectStore.projects.find(p => p.id === projectId)
+      // Keep only the 5 most recent project backups (excluding current)
+      const otherProjectBackups = projectBackupKeys.filter(key => 
+        !key.includes(currentProjectId)
+      )
       
-      if (project) {
-        console.log('🚨 RE-RUN - Project goal:', project.goal)
+      if (otherProjectBackups.length > 5) {
+        // Sort by last modified time (if available) or just remove oldest keys
+        const keysToRemove = otherProjectBackups.slice(0, otherProjectBackups.length - 5)
         
-        // Clear any existing state first
-        const taskGraphStore = useTaskGraphStore.getState()
-        taskGraphStore.clearProjectData(projectId)
-        
-        // Start fresh execution
-        this.socket.emit('start_project_execution', {
-          project_id: projectId,
-          goal: project.goal,
-          max_steps: project.max_steps || 250
+        keysToRemove.forEach(key => {
+          try {
+            localStorage.removeItem(key)
+            console.log(`🧹 Cleaned up old backup: ${key}`)
+          } catch (error) {
+            console.warn(`Failed to remove backup ${key}:`, error)
+          }
         })
-        
-        // Set loading state
-        taskGraphStore.setLoading(true)
-        
-        console.log('🚨 RE-RUN - Execution request sent')
-      } else {
-        console.error('❌ RE-RUN - Project not found:', projectId)
       }
-    } else {
-      console.error('❌ RE-RUN - WebSocket not connected')
+    } catch (error) {
+      console.warn('Failed to cleanup old backups:', error)
     }
   }
 
-  // NEW: Add method to force save current project
-  forceSaveCurrentProject() {
-    const taskGraphStore = useTaskGraphStore.getState()
-    const projectStore = useProjectStore.getState()
-    const currentProjectId = projectStore.currentProjectId || taskGraphStore.currentProjectId
-    
-    if (currentProjectId && this.socket && this.isConnected()) {
-      console.log('🚨 FORCE SAVE - Manually saving current project:', currentProjectId)
-      this.socket.emit('force_save_project', { project_id: currentProjectId })
-    } else {
-      console.error('❌ Cannot force save: no current project or not connected')
+  // NEW: Emergency cleanup when quota is exceeded
+  private emergencyCleanupLocalStorage() {
+    try {
+      const keys = Object.keys(localStorage)
+      const projectBackupKeys = keys.filter(key => key.startsWith('project_') && key.endsWith('_backup'))
+      
+      // Remove half of the project backups
+      const keysToRemove = projectBackupKeys.slice(0, Math.floor(projectBackupKeys.length / 2))
+      
+      keysToRemove.forEach(key => {
+        try {
+          localStorage.removeItem(key)
+          console.log(`🚨 Emergency cleanup removed: ${key}`)
+        } catch (error) {
+          console.warn(`Failed to remove backup ${key}:`, error)
+        }
+      })
+      
+      // Also clean up any other large items
+      keys.forEach(key => {
+        if (!key.startsWith('project_')) {
+          try {
+            const item = localStorage.getItem(key)
+            if (item && item.length > 100000) { // Remove items larger than 100KB
+              localStorage.removeItem(key)
+              console.log(`🚨 Emergency cleanup removed large item: ${key}`)
+            }
+          } catch (error) {
+            // Ignore errors when checking individual items
+          }
+        }
+      })
+      
+    } catch (error) {
+      console.warn('Emergency cleanup failed:', error)
     }
   }
 
-  // NEW: Add method to force restore current project
-  forceRestoreCurrentProject() {
-    const taskGraphStore = useTaskGraphStore.getState()
-    const projectStore = useProjectStore.getState()
-    const currentProjectId = projectStore.currentProjectId || taskGraphStore.currentProjectId
-    
-    if (currentProjectId) {
-      console.log('🚨 FORCE RESTORE - Manually restoring current project:', currentProjectId)
-      this.requestProjectRestore(currentProjectId)
-    } else {
-      console.error('❌ Cannot force restore: no current project')
+  // NEW: Add method to manually clean localStorage
+  cleanLocalStorage() {
+    try {
+      const keys = Object.keys(localStorage)
+      const projectBackupKeys = keys.filter(key => key.startsWith('project_') && key.endsWith('_backup'))
+      
+      console.log(`🧹 Found ${projectBackupKeys.length} project backups in localStorage`)
+      
+      projectBackupKeys.forEach(key => {
+        try {
+          const item = localStorage.getItem(key)
+          const sizeKB = item ? new Blob([item]).size / 1024 : 0
+          console.log(`🧹 ${key}: ${sizeKB.toFixed(2)}KB`)
+        } catch (error) {
+          console.warn(`Failed to check size of ${key}`)
+        }
+      })
+      
+      // Remove all project backups
+      projectBackupKeys.forEach(key => {
+        try {
+          localStorage.removeItem(key)
+          console.log(`🧹 Removed: ${key}`)
+        } catch (error) {
+          console.warn(`Failed to remove ${key}:`, error)
+        }
+      })
+      
+      console.log('✅ localStorage cleanup completed')
+    } catch (error) {
+      console.error('Failed to clean localStorage:', error)
     }
   }
 
@@ -800,6 +913,34 @@ class WebSocketService {
     if (typeof window !== 'undefined') {
       (window as any).websocketService = this
     }
+  }
+
+  // NEW: Add methods for external event listening
+  on(event: string, callback: Function) {
+    if (this.socket) {
+      this.socket.on(event, callback)
+    } else {
+      console.warn(`WebSocket not connected, cannot listen for event: ${event}`)
+    }
+  }
+
+  off(event: string, callback?: Function) {
+    if (this.socket) {
+      this.socket.off(event, callback)
+    }
+  }
+
+  emit(event: string, data?: any) {
+    if (this.socket && this.isConnected()) {
+      this.socket.emit(event, data)
+    } else {
+      console.warn(`WebSocket not connected, cannot emit event: ${event}`)
+    }
+  }
+
+  // Add a getter for socket access (safer alternative)
+  getSocket() {
+    return this.socket
   }
 }
 
@@ -843,6 +984,9 @@ if (typeof window !== 'undefined') {
   globalWindow.switchProjectWS = (projectId: string) => webSocketService.switchProject(projectId)
   globalWindow.restoreProjectWS = (projectId: string) => webSocketService.requestProjectRestore(projectId)
   globalWindow.simulateProjectUpdate = (projectId: string) => webSocketService.simulateProjectUpdate(projectId)
+  
+  // NEW: localStorage management functions
+  globalWindow.cleanLocalStorage = () => webSocketService.cleanLocalStorage()
 }
 
 // Make the service available globally for debugging

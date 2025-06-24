@@ -262,3 +262,79 @@ def create_system_routes(app, system_manager):
         except Exception as e:
             logger.error(f"Error getting HITL response: {e}")
             return jsonify({"error": str(e)}), 500
+
+    @app.route('/api/system/create-sample-traces', methods=['POST'])
+    def create_sample_traces():
+        """Create sample trace data for testing the tracing modal."""
+        try:
+            data = request.get_json()
+            project_id = data.get('project_id')
+            node_ids = data.get('node_ids', ['root'])
+            
+            if not project_id:
+                return jsonify({"error": "project_id required"}), 400
+            
+            from ...hierarchical_agent_framework.tracing.manager import trace_manager
+            
+            created_traces = []
+            for node_id in node_ids:
+                # Create trace
+                trace = trace_manager.create_trace(node_id, f"Sample goal for {node_id}")
+                
+                # Add atomization stage
+                atomization_stage = trace_manager.start_stage(
+                    node_id=node_id,
+                    stage_name="atomization",
+                    agent_name="sample_atomizer",
+                    adapter_name="AtomizerAdapter"
+                )
+                trace_manager.complete_stage(
+                    node_id=node_id,
+                    stage_name="atomization",
+                    output_data="Determined task needs planning"
+                )
+                
+                # Add planning stage
+                planning_stage = trace_manager.start_stage(
+                    node_id=node_id,
+                    stage_name="planning", 
+                    agent_name="sample_planner",
+                    adapter_name="PlannerAdapter"
+                )
+                trace_manager.complete_stage(
+                    node_id=node_id,
+                    stage_name="planning",
+                    output_data="Created detailed plan with sub-tasks"
+                )
+                
+                # Add execution stage
+                execution_stage = trace_manager.start_stage(
+                    node_id=node_id,
+                    stage_name="execution",
+                    agent_name="sample_executor", 
+                    adapter_name="ExecutorAdapter"
+                )
+                trace_manager.complete_stage(
+                    node_id=node_id,
+                    stage_name="execution",
+                    output_data="Successfully executed task"
+                )
+                
+                created_traces.append({
+                    "node_id": node_id,
+                    "stages": len(trace.stages),
+                    "stage_names": [s.stage_name for s in trace.stages]
+                })
+            
+            # Save traces for the project
+            trace_manager.save_project_traces(project_id)
+            
+            return jsonify({
+                "success": True,
+                "message": f"Created sample traces for {len(node_ids)} nodes",
+                "traces": created_traces
+            })
+            
+        except Exception as e:
+            logger.error(f"Error creating sample traces: {e}")
+            return jsonify({"error": str(e)}), 500

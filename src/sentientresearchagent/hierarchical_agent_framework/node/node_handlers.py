@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from .inode_handler import INodeHandler, ProcessorContext
 from ..context.enhanced_context_builder import resolve_context_for_agent_with_parents
 from ..context.smart_context_utils import get_smart_child_context
+from ..tracing.manager import trace_manager
 
 
 def get_planner_from_blueprint(blueprint: 'AgentBlueprint', task_type: TaskType, fallback_name: Optional[str] = None, node: Optional[TaskNode] = None) -> Optional[str]:
@@ -117,6 +118,14 @@ class ReadyPlanHandler(INodeHandler):
         blueprint_name_log = context.current_agent_blueprint.name if context.current_agent_blueprint else "N/A"
         logger.info(f"    ReadyPlanHandler: Planning for node {node.task_id} (Blueprint: {blueprint_name_log}, Goal: '{node.goal[:50]}...', Original Agent Name at Entry: {agent_name_at_entry})")
         
+        # Start tracing for planning stage
+        stage = trace_manager.start_stage(
+            node_id=node.task_id,
+            stage_name="planning",
+            agent_name=agent_name_at_entry,
+            adapter_name="ReadyPlanHandler"
+        )
+        
         try:
             current_overall_objective = node.overall_objective or getattr(context.task_graph, 'overall_project_goal', "Undefined overall project goal")
             
@@ -140,6 +149,14 @@ class ReadyPlanHandler(INodeHandler):
                 final_tried_name = node.agent_name or lookup_name_for_planner or agent_name_at_entry
                 error_msg = f"No PLAN adapter found for node {node.task_id} (TaskType: {node.task_type}, Effective Agent Name tried: {final_tried_name or 'None'})"
                 logger.error(error_msg)
+                
+                # Complete tracing stage with error
+                trace_manager.complete_stage(
+                    node_id=node.task_id,
+                    stage_name="planning",
+                    error=error_msg
+                )
+                
                 node.update_status(TaskStatus.FAILED, error_msg=error_msg)
                 return
 
@@ -164,18 +181,39 @@ class ReadyPlanHandler(INodeHandler):
             formatted_context = agent_task_input_model.formatted_full_context
             node.input_payload_dict = agent_task_input_model.model_dump()
             
+            # Update tracing stage with input context (MOVED HERE - after formatted_context is defined)
+            if stage:
+                stage.input_context = {
+                    "formatted_context_length": len(formatted_context) if formatted_context else 0,
+                    "context_items_count": len(agent_task_input_model.context_items) if hasattr(agent_task_input_model, 'context_items') else 0,
+                    "overall_project_goal": context.task_graph.overall_project_goal[:200] if context.task_graph.overall_project_goal else None
+                }
+            
             plan_output: Optional[PlanOutput] = await planner_adapter.process(node, agent_task_input_model)
 
             if plan_output is None or not plan_output.sub_tasks:
                 if node.status not in [TaskStatus.CANCELLED, TaskStatus.FAILED]:
                     logger.warning(f"    Node {node.task_id} (PLAN): Planner returned no sub-tasks or None.")
                     if plan_output is None:
-                        node.update_status(TaskStatus.FAILED, error_msg="Planner failed to produce an output.")
+                        error_msg = "Planner failed to produce an output."
+                        trace_manager.complete_stage(
+                            node_id=node.task_id,
+                            stage_name="planning",
+                            error=error_msg
+                        )
+                        node.update_status(TaskStatus.FAILED, error_msg=error_msg)
                     else: 
                         logger.info(f"    Node {node.task_id} (PLAN): Planner returned an empty list. Interpreting as atomic.")
                         node.node_type = NodeType.EXECUTE
                         node.output_summary = "Planner determined no further sub-tasks are needed; task is atomic."
-                        node.update_status(TaskStatus.PLAN_DONE) 
+                        node.update_status(TaskStatus.PLAN_DONE)
+                        
+                        # Complete tracing stage successfully
+                        trace_manager.complete_stage(
+                            node_id=node.task_id,
+                            stage_name="planning",
+                            output_data="Task determined to be atomic"
+                        )
                 return
 
             hitl_outcome_plan = await context.hitl_coordinator.review_plan_generation(
@@ -196,34 +234,58 @@ class ReadyPlanHandler(INodeHandler):
                 
                 # Update knowledge store to persist the status change
                 context.knowledge_store.add_or_update_record_from_node(node)
+                
+                # Complete tracing stage with modification request
+                trace_manager.complete_stage(
+                    node_id=node.task_id,
+                    stage_name="planning",
+                    output_data=f"User requested modification: {modification_instructions[:200]}"
+                )
+                
                 logger.info(f"✅ Node {node.task_id} set up for modification and transitioned to NEEDS_REPLAN")
                 return
+            
             elif hitl_outcome_plan["status"] != "approved":
-                # Handle other non-approved statuses (aborted, error, etc.)
+                # Handle non-approved HITL outcomes (aborted, error, etc.)
+                status = hitl_outcome_plan["status"]
+                if status == "aborted":
+                    logger.info(f"ReadyPlanHandler: Node {node.task_id} planning aborted by user")
+                elif status == "error":
+                    logger.info(f"ReadyPlanHandler: Node {node.task_id} planning failed due to HITL error")
+                else:
+                    logger.warning(f"ReadyPlanHandler: Node {node.task_id} planning not approved: {status}")
+                # HITLCoordinator already set appropriate status, just return
                 return
-
-            if node.layer + 1 >= context.config.max_planning_layer:
-                logger.warning(f"    ReadyPlanHandler: Creating sub-nodes for {node.task_id} at layer {node.layer} would exceed max planning depth ({context.config.max_planning_layer}). Converting to atomic execution task.")
-                node.node_type = NodeType.EXECUTE
-                node.result = plan_output
-                node.output_summary = f"Plan created but converted to atomic task due to max depth limit. Contains {len(plan_output.sub_tasks)} potential sub-tasks."
-                node.update_status(TaskStatus.READY)
-                logger.info(f"    ReadyPlanHandler: Node {node.task_id} converted to atomic execution task due to depth limit and set to READY for execution.")
-                return
-            else:
-                logger.debug(f"    ReadyPlanHandler: Depth check passed for {node.task_id}, proceeding to create {len(plan_output.sub_tasks)} sub-nodes")
-
+            
+            # HITL approved - continue with plan implementation
+            logger.info(f"✅ ReadyPlanHandler: Plan approved for node {node.task_id}, creating {len(plan_output.sub_tasks)} sub-tasks")
+            
+            # Create sub-nodes from the approved plan
             context.sub_node_creator.create_sub_nodes(node, plan_output)
+            
+            # Store the plan result and update status
             node.result = plan_output
-            node.output_summary = f"Planned {len(plan_output.sub_tasks)} sub-tasks."
+            node.output_summary = f"Planned with {len(plan_output.sub_tasks)} sub-tasks."
             node.update_status(TaskStatus.PLAN_DONE)
-            logger.success(f"    ReadyPlanHandler: Node {node.task_id} planning complete. Status: {node.status.name}")
-
-        finally:
-            if node.agent_name != agent_name_at_entry:
-                logger.debug(f"        ReadyPlanHandler: Restoring node.agent_name from '{node.agent_name}' to entry value '{agent_name_at_entry}' for node {node.task_id}")
-                node.agent_name = agent_name_at_entry
-
+            
+            logger.success(f"✅ ReadyPlanHandler: Node {node.task_id} planning complete. Status: {node.status.name}")
+            
+            # Complete tracing stage successfully
+            sub_task_count = len(plan_output.sub_tasks) if plan_output.sub_tasks else 0
+            trace_manager.complete_stage(
+                node_id=node.task_id,
+                stage_name="planning",
+                output_data=f"Successfully created {sub_task_count} sub-tasks"
+            )
+            
+        except Exception as e:
+            # Complete tracing stage with error
+            trace_manager.complete_stage(
+                node_id=node.task_id,
+                stage_name="planning",
+                error=str(e)
+            )
+            raise
 
 class ReadyExecuteHandler(INodeHandler):
     """Handles a READY node that needs to be EXECUTED."""
@@ -231,6 +293,14 @@ class ReadyExecuteHandler(INodeHandler):
         agent_name_at_entry = node.agent_name
         blueprint_name_log = context.current_agent_blueprint.name if context.current_agent_blueprint else "N/A"
         logger.info(f"    ReadyExecuteHandler: Executing node {node.task_id} (Blueprint: {blueprint_name_log}, Goal: '{node.goal[:50]}...', Original Agent Name at Entry: {agent_name_at_entry})")
+
+        # CRITICAL FIX: Start execution stage here (base adapter will update it)
+        execution_stage = trace_manager.start_stage(
+            node_id=node.task_id,
+            stage_name="execution",
+            agent_name=agent_name_at_entry,
+            adapter_name="ReadyExecuteHandler"
+        )
 
         try:
             # ENHANCED: Use blueprint for context builder agent selection
@@ -250,10 +320,45 @@ class ReadyExecuteHandler(INodeHandler):
             )
             node.input_payload_dict = agent_task_input_model.model_dump()
 
+            # Update trace with input context
+            if execution_stage:
+                trace_manager.update_stage(
+                    node_id=node.task_id,
+                    stage_name="execution",
+                    input_context=agent_task_input_model.model_dump(),
+                    user_input=agent_task_input_model.current_goal
+                )
+
             hitl_outcome_exec = await context.hitl_coordinator.review_before_execution(
                 node=node, agent_task_input=agent_task_input_model
             )
             if hitl_outcome_exec["status"] != "approved":
+                # Handle non-approved HITL outcomes properly
+                status = hitl_outcome_exec["status"]
+                error_msg = f"HITL execution not approved: {status}"
+                
+                # Complete tracing stage with error
+                trace_manager.complete_stage(
+                    node_id=node.task_id,
+                    stage_name="execution",
+                    error=error_msg
+                )
+                
+                if status == "aborted":
+                    # Node status already set to CANCELLED by HITLCoordinator
+                    logger.info(f"ReadyExecuteHandler: Node {node.task_id} execution aborted by user")
+                elif status == "error":
+                    # Node status already set to FAILED by HITLCoordinator  
+                    logger.info(f"ReadyExecuteHandler: Node {node.task_id} execution failed due to HITL error")
+                elif status == "request_modification":
+                    # For execution stage, modification requests should be treated as failed
+                    # since we can't modify execution like we can modify plans
+                    if node.status not in [TaskStatus.FAILED, TaskStatus.CANCELLED]:
+                        node.update_status(TaskStatus.FAILED, error_msg="User requested modification for execution, but execution cannot be modified")
+                else:
+                    # Unknown status - fail safe
+                    if node.status not in [TaskStatus.FAILED, TaskStatus.CANCELLED]:
+                        node.update_status(TaskStatus.FAILED, error_msg=f"Unknown HITL outcome status: {status}")
                 return
 
             # ENHANCED: Use new blueprint system for executor selection
@@ -275,13 +380,31 @@ class ReadyExecuteHandler(INodeHandler):
                 final_tried_name = node.agent_name or lookup_name_for_executor or agent_name_at_entry
                 error_msg = f"No EXECUTE adapter found for node {node.task_id} (TaskType: {node.task_type}, NodeType: {node.node_type}, Effective Agent Name tried: {final_tried_name or 'None'})"
                 logger.error(error_msg)
+                
+                # Complete tracing stage with error
+                trace_manager.complete_stage(
+                    node_id=node.task_id,
+                    stage_name="execution",
+                    error=error_msg
+                )
+                
                 node.update_status(TaskStatus.FAILED, error_msg=error_msg)
                 return
             
             adapter_used_name = getattr(executor_adapter, 'agent_name', type(executor_adapter).__name__)
             logger.info(f"    ReadyExecuteHandler: Using EXECUTE adapter '{adapter_used_name}' for node {node.task_id}")
 
+            # Update trace with adapter info
+            trace_manager.update_stage(
+                node_id=node.task_id,
+                stage_name="execution",
+                agent_name=adapter_used_name,
+                adapter_name=type(executor_adapter).__name__
+            )
+
             node.update_status(TaskStatus.RUNNING)
+            
+            # IMPORTANT: Base adapter will update the trace stage during execution
             execution_result = await executor_adapter.process(node, agent_task_input_model)
 
             if execution_result is not None:
@@ -290,23 +413,84 @@ class ReadyExecuteHandler(INodeHandler):
                 # CRITICAL FIX: Store full result in aux_data for persistence
                 node.aux_data['full_result'] = execution_result
                 
-                if hasattr(execution_result, 'model_dump'):
-                    node.output_summary = f"Execution completed. Structured output stored."
+                # ENHANCED: Extract meaningful output based on result type
+                if hasattr(execution_result, 'output_text_with_citations'):
+                    # CustomSearcherOutput - extract the actual search results
+                    output_summary = execution_result.output_text_with_citations[:500] + "..." if len(execution_result.output_text_with_citations) > 500 else execution_result.output_text_with_citations
+                    node.output_summary = f"Search Results: {output_summary}"
+                    
+                    # Update trace with meaningful output
+                    trace_manager.update_stage(
+                        node_id=node.task_id,
+                        stage_name="execution",
+                        output_data=execution_result.output_text_with_citations,
+                        llm_response=execution_result.output_text_with_citations  # Show search results as "LLM response"
+                    )
+                    
+                elif hasattr(execution_result, 'model_dump'):
+                    # Structured output - extract key information
+                    dumped = execution_result.model_dump()
+                    output_summary = f"Structured output: {str(dumped)[:200]}..."
+                    node.output_summary = output_summary
+                    
+                    # Update trace with structured output
+                    trace_manager.update_stage(
+                        node_id=node.task_id,
+                        stage_name="execution",
+                        output_data=dumped
+                    )
+                    
                 elif isinstance(execution_result, str):
-                    node.output_summary = execution_result[:250] + "..." if len(execution_result) > 250 else execution_result
+                    output_summary = execution_result[:250] + "..." if len(execution_result) > 250 else execution_result
+                    node.output_summary = output_summary
+                    
+                    # Update trace with string output
+                    trace_manager.update_stage(
+                        node_id=node.task_id,
+                        stage_name="execution",
+                        output_data=execution_result,
+                        llm_response=execution_result
+                    )
+                    
                 else:
-                    node.output_summary = f"Execution completed. Data stored in result."
+                    output_summary = f"Execution completed. Data type: {type(execution_result).__name__}"
+                    node.output_summary = output_summary
+                    
+                    # Update trace with generic output
+                    trace_manager.update_stage(
+                        node_id=node.task_id,
+                        stage_name="execution",
+                        output_data=str(execution_result)[:1000]
+                    )
                 
                 # CRITICAL FIX: Store execution details in aux_data
                 if hasattr(context, 'execution_details'):
                     node.aux_data['execution_details'] = context.execution_details
                 
                 node.update_status(TaskStatus.DONE)
-                logger.success(f"    ReadyExecuteHandler: Node {node.task_id} execution complete. Status: {node.status.name}.")
+                logger.success(f"ReadyExecuteHandler: Node {node.task_id} execution complete. Status: {node.status.name}.")
+                
+                # Stage completion is handled by BaseAdapter, but we enhance it here
             else:
+                error_msg = "Executor returned no result."
                 if node.status not in [TaskStatus.CANCELLED, TaskStatus.FAILED]:
-                    logger.warning(f"    ReadyExecuteHandler: Executor for {node.task_id} returned None. Marking as FAILED if not already handled.")
-                    node.update_status(TaskStatus.FAILED, error_msg="Executor returned no result.")
+                    node.update_status(TaskStatus.FAILED, error_msg=error_msg)
+                
+                # Complete stage with error if adapter didn't do it
+                trace_manager.complete_stage(
+                    node_id=node.task_id,
+                    stage_name="execution",
+                    error=error_msg
+                )
+                
+        except Exception as e:
+            # Complete tracing stage with error
+            trace_manager.complete_stage(
+                node_id=node.task_id,
+                stage_name="execution",
+                error=str(e)
+            )
+            raise
         finally:
             if node.agent_name != agent_name_at_entry:
                 logger.debug(f"        ReadyExecuteHandler: Restoring node.agent_name from '{node.agent_name}' to entry value '{agent_name_at_entry}' for node {node.task_id}")
@@ -371,11 +555,6 @@ class ReadyNodeHandler(INodeHandler):
         final_node_type = atomizer_decision_type
 
         # 2. Critical Depth Constraint for Atomizer's PLAN decision:
-        # If the atomizer suggests PLAN, but the node is at the layer (max_planning_layer - 1),
-        # it would be converted to EXECUTE by ReadyPlanHandler (because its children would be at max_planning_layer).
-        # This would lead to the infinite loop if ReadyPlanHandler sets status to READY.
-        # So, we override the atomizer's PLAN decision to EXECUTE here to prevent the loop.
-        # (e.g. if max_planning_layer = 5, nodes at layer 4 decided PLAN by atomizer are forced EXECUTE here)
         if atomizer_decision_type == NodeType.PLAN and node.layer == (max_planning_layer - 1):
             logger.warning(
                 f"    ReadyNodeHandler: Node {node.task_id} (Layer {node.layer}) determined PLAN by atomizer, "
@@ -383,7 +562,12 @@ class ReadyNodeHandler(INodeHandler):
                 f"Overriding to EXECUTE to prevent planning loop."
             )
             final_node_type = NodeType.EXECUTE
-        
+            
+            # 🚨 CRITICAL FIX: Clear any existing planning/aggregation stages from previous cycles
+            if hasattr(trace_manager, 'clear_stages_by_type'):
+                trace_manager.clear_stages_by_type(node.task_id, ['planning', 'aggregation'])
+                logger.info(f"    ReadyNodeHandler: Cleared invalid planning/aggregation stages for node {node.task_id}")
+
         # --- Dispatch Based on Final Determined Node Type ---
         node.node_type = final_node_type # Set the node's type definitively
 

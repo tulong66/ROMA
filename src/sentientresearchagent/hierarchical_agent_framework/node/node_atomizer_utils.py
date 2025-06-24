@@ -11,6 +11,7 @@ from .hitl_coordinator import HITLCoordinator
 # Corrected import: 'apply_blueprint_to_node' is in 'registry_integration', not 'inode_handler'
 from .inode_handler import ProcessorContext
 from ..agent_configs.registry_integration import apply_blueprint_to_node
+from ..tracing.manager import trace_manager
 
 if TYPE_CHECKING:
     from sentientresearchagent.hierarchical_agent_framework.graph.task_graph import TaskGraph
@@ -36,6 +37,14 @@ class NodeAtomizer:
         """
         logger.info(f"    🐛 DEBUG: atomize_node called for {node.task_id}")
         
+        # Start tracing for atomization stage
+        stage = trace_manager.start_stage(
+            node_id=node.task_id,
+            stage_name="atomization",
+            agent_name=node.agent_name,
+            adapter_name="NodeAtomizer"
+        )
+        
         knowledge_store: KnowledgeStore = context.knowledge_store
         task_graph: 'TaskGraph' = context.task_graph
         blueprint_name_log = context.current_agent_blueprint.name if context.current_agent_blueprint else "N/A"
@@ -49,6 +58,14 @@ class NodeAtomizer:
             
             current_task_type_value = node.task_type.value if isinstance(node.task_type, TaskType) else str(node.task_type)
             logger.info(f"    🐛 DEBUG: current_task_type_value = {current_task_type_value}")
+            
+            # Update tracing stage with initial context
+            if stage:
+                stage.processing_parameters = {
+                    "task_type": current_task_type_value,
+                    "blueprint": blueprint_name_log,
+                    "original_goal": node.goal[:200]
+                }
             
             # Determine agent_name for context resolution (less critical, uses a default)
             context_builder_agent_name = agent_name_at_atomizer_entry or "default_atomizer"
@@ -67,6 +84,14 @@ class NodeAtomizer:
                 knowledge_store=knowledge_store, overall_project_goal=task_graph.overall_project_goal
             )
             logger.info(f"    🐛 DEBUG: Context resolved successfully")
+            
+            # Update tracing stage with context info
+            if stage:
+                stage.input_context = {
+                    "context_builder_agent": context_builder_agent_name,
+                    "context_items_count": len(atomizer_input_model.relevant_context_items) if hasattr(atomizer_input_model, 'relevant_context_items') else 0,
+                    "overall_project_goal": task_graph.overall_project_goal[:200] if task_graph.overall_project_goal else None
+                }
             
             # Determine the name to use for looking up the atomizer adapter
             lookup_name_for_atomizer = agent_name_at_atomizer_entry # Start with pre-existing name
@@ -97,14 +122,27 @@ class NodeAtomizer:
                 adapter_used_name = getattr(atomizer_adapter, 'agent_name', type(atomizer_adapter).__name__)
                 logger.info(f"    NodeAtomizer: Calling Atomizer adapter '{adapter_used_name}' for node {node.task_id} ('{node.goal[:30]}...')")
                 
+                # Update tracing stage with atomizer adapter info
+                if stage:
+                    stage.agent_name = adapter_used_name
+                
                 logger.info(f"    🐛 DEBUG: About to call atomizer_adapter.process")
                 atomizer_output: Optional[AtomizerOutput] = await atomizer_adapter.process(node, atomizer_input_model)
                 logger.info(f"    🐛 DEBUG: atomizer_adapter.process returned: {atomizer_output}")
                 
                 if atomizer_output is None:
+                    error_msg = "Atomizer returned None, cannot determine next step."
                     logger.warning(f"    NodeAtomizer: Atomizer for {node.task_id} returned None.")
+                    
+                    # Complete tracing stage with error
+                    trace_manager.complete_stage(
+                        node_id=node.task_id,
+                        stage_name="atomization",
+                        error=error_msg
+                    )
+                    
                     if node.status not in [TaskStatus.FAILED, TaskStatus.CANCELLED]: 
-                         node.update_status(TaskStatus.FAILED, error_msg="Atomizer returned None, cannot determine next step.") 
+                         node.update_status(TaskStatus.FAILED, error_msg=error_msg) 
                     return None
 
                 original_goal_for_hitl = atomizer_input_model.current_goal 
@@ -119,6 +157,15 @@ class NodeAtomizer:
                 
                 action_to_take = NodeType.EXECUTE if atomizer_output.is_atomic else NodeType.PLAN
                 logger.info(f"    Atomizer determined {node.task_id} as {action_to_take.name}.")
+                
+                # Update tracing stage with atomizer output
+                if stage:
+                    stage.output_data = {
+                        "is_atomic": atomizer_output.is_atomic,
+                        "suggested_goal": suggested_goal_for_hitl[:200],
+                        "action_to_take": action_to_take.name,
+                        "goal_changed": atomizer_output.updated_goal != node.goal
+                    }
                 
                 # COMPREHENSIVE DEBUG: Log HITL decision factors before calling
                 logger.debug(f"🐛 ATOMIZER DEBUG: About to call HITL review for {node.task_id}")
@@ -140,7 +187,21 @@ class NodeAtomizer:
                 
                 if hitl_outcome_atomizer.get("status") != "approved": 
                     logger.info(f"NodeAtomizer: HITL review for atomizer output of {node.task_id} was not 'approved'. Status is {node.status}. HITL outcome: {hitl_outcome_atomizer}")
+                    
+                    # Complete tracing stage with HITL rejection
+                    trace_manager.complete_stage(
+                        node_id=node.task_id,
+                        stage_name="atomization",
+                        error=f"HITL rejected atomizer output: {hitl_outcome_atomizer.get('status', 'unknown')}"
+                    )
                     return None 
+                
+                # Complete tracing stage successfully
+                trace_manager.complete_stage(
+                    node_id=node.task_id,
+                    stage_name="atomization",
+                    output_data=f"Determined as {action_to_take.name}, is_atomic: {atomizer_output.is_atomic}"
+                )
                 
                 logger.info(f"    🐛 DEBUG: Returning action_to_take: {action_to_take}")
                 return action_to_take 
@@ -150,16 +211,50 @@ class NodeAtomizer:
                 logger.warning(f"    NodeAtomizer: No AtomizerAdapter found for node {node.task_id} (tried: {final_tried_name or 'None'}). Defaulting its NodeType based on current value or to EXECUTE.")
                 logger.info(f"    🐛 DEBUG: No atomizer adapter found, using fallback logic")
                 
+                result = None
                 if isinstance(node.node_type, str):
                     try: 
                         result = NodeType(node.node_type)
                         logger.info(f"    🐛 DEBUG: Fallback returning NodeType from string: {result}")
-                        return result
                     except ValueError: 
+                        result = NodeType.EXECUTE
                         logger.info(f"    🐛 DEBUG: Fallback returning NodeType.EXECUTE for invalid string format")
-                        return NodeType.EXECUTE
-                elif isinstance(node.node_type, NodeType): return node.node_type 
-                else: return NodeType.EXECUTE
+                elif isinstance(node.node_type, NodeType): 
+                    result = node.node_type 
+                else: 
+                    result = NodeType.EXECUTE
+                
+                # Complete tracing stage with fallback result
+                trace_manager.complete_stage(
+                    node_id=node.task_id,
+                    stage_name="atomization",
+                    output_data=f"No atomizer found, fallback to {result.name}"
+                )
+                
+                return result
+                
+            # 🚨 CRITICAL FIX: SEARCH nodes should NEVER be atomized as PLAN nodes
+            if hasattr(node, 'task_type') and node.task_type and str(node.task_type).upper() == 'SEARCH':
+                logger.info(f"🚨 SEARCH NODE OVERRIDE: Node {node.task_id} is SEARCH type - forcing EXECUTE to prevent incorrect planning/aggregation")
+                
+                # Complete tracing stage  
+                trace_manager.complete_stage(
+                    node_id=node.task_id,
+                    stage_name="atomization",
+                    output_data="SEARCH node forced to EXECUTE (skipped atomizer)"
+                )
+                
+                return NodeType.EXECUTE
+                
+        except Exception as e:
+            # Complete tracing stage with error
+            trace_manager.complete_stage(
+                node_id=node.task_id,
+                stage_name="atomization",
+                error=str(e)
+            )
+            raise
+            
         finally:
             # Restore node.agent_name to what it was when this function was entered.
             # The atomizer's specific name should not persist on the node object for subsequent unrelated steps.
