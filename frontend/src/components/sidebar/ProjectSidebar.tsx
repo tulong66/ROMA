@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useProjectStore } from '@/stores/projectStore'
 import { useTaskGraphStore } from '@/stores/taskGraphStore'
-import { projectService } from '@/services/projectService'
+import projectService from '@/services/projectService'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'

@@ -162,7 +162,7 @@ class ProjectService:
     
     def get_project_display_data(self, project_id: str) -> Dict[str, Any]:
         """
-        Get display data for a specific project without side effects.
+        Get display data for a specific project with enhanced error handling.
         This method ensures project isolation and prevents data conflicts.
         
         Args:
@@ -172,50 +172,163 @@ class ProjectService:
             Serialized project data ready for frontend display
         """
         try:
+            logger.debug(f"🔍 Getting display data for project {project_id}")
+            
             # Ensure project is loaded in memory
             if project_id not in self.project_graphs:
                 logger.debug(f"Loading project {project_id} into memory for display")
                 if not self.load_project_into_graph(project_id):
                     logger.warning(f"Failed to load project {project_id}")
-                    return self._get_empty_display_data()
+                    # Try to get data from comprehensive results as fallback
+                    return self._try_comprehensive_results_fallback(project_id)
             
             # Get project-specific task graph
             project_components = self.project_graphs[project_id]
             project_task_graph = project_components['task_graph']
             
-            # CRITICAL FIX: Check if task graph is None or empty
+            # Check if task graph is None or empty
             if not project_task_graph:
                 logger.warning(f"Task graph is None for project {project_id}")
-                return self._get_empty_display_data()
+                return self._try_comprehensive_results_fallback(project_id)
             
-            # Serialize project data
+            # Log node count for debugging
+            node_count = len(project_task_graph.nodes) if project_task_graph.nodes else 0
+            logger.debug(f"🔍 Project {project_id} has {node_count} nodes in memory")
+            
+            # Serialize project data with enhanced error handling
             data = None
-            if hasattr(project_task_graph, 'to_visualization_dict'):
-                data = project_task_graph.to_visualization_dict()
-            else:
-                # Fallback serialization
-                from ...hierarchical_agent_framework.graph.graph_serializer import GraphSerializer
-                serializer = GraphSerializer(project_task_graph)
-                data = serializer.to_visualization_dict()
+            try:
+                if hasattr(project_task_graph, 'to_visualization_dict'):
+                    data = project_task_graph.to_visualization_dict()
+                else:
+                    # Fallback serialization
+                    from ...hierarchical_agent_framework.graph.graph_serializer import GraphSerializer
+                    serializer = GraphSerializer(project_task_graph)
+                    data = serializer.to_visualization_dict()
+                
+            except Exception as serialize_error:
+                logger.error(f"🚨 SERIALIZATION ERROR for project {project_id}: {serialize_error}")
+                logger.error(f"🚨 Node count in graph: {len(project_task_graph.nodes)}")
+                
+                # Try manual serialization as fallback
+                try:
+                    logger.info(f"🔄 Attempting manual serialization for project {project_id}")
+                    data = self._manual_serialize_project_graph(project_task_graph)
+                    logger.info(f"✅ Manual serialization successful: {len(data.get('all_nodes', {}))} nodes")
+                except Exception as manual_error:
+                    logger.error(f"🚨 Manual serialization also failed: {manual_error}")
+                    # Final fallback to comprehensive results
+                    return self._try_comprehensive_results_fallback(project_id)
             
-            # CRITICAL FIX: Check if serialization returned None
+            # Check if serialization returned valid data
             if data is None:
                 logger.warning(f"Serialization returned None for project {project_id}")
-                return self._get_empty_display_data()
+                return self._try_comprehensive_results_fallback(project_id)
             
-            # CRITICAL FIX: Ensure data is a dict and has expected structure
             if not isinstance(data, dict):
                 logger.warning(f"Serialization returned non-dict ({type(data)}) for project {project_id}")
-                return self._get_empty_display_data()
+                return self._try_comprehensive_results_fallback(project_id)
             
-            logger.debug(f"Retrieved display data for project {project_id}: {len(data.get('all_nodes', {}))} nodes")
+            # Verify we have the expected structure
+            node_count_serialized = len(data.get('all_nodes', {}))
+            logger.debug(f"✅ Retrieved display data for project {project_id}: {node_count_serialized} nodes")
+            
+            # If serialization succeeded but returned 0 nodes when we know there should be more
+            if node_count_serialized == 0 and node_count > 0:
+                logger.warning(f"🚨 Serialization returned 0 nodes but task graph has {node_count} nodes!")
+                return self._try_comprehensive_results_fallback(project_id)
+            
             return data
             
         except Exception as e:
             logger.error(f"Failed to get display data for project {project_id}: {e}")
             import traceback
             traceback.print_exc()
+            return self._try_comprehensive_results_fallback(project_id)
+    
+    def _try_comprehensive_results_fallback(self, project_id: str) -> Dict[str, Any]:
+        """
+        Try to get project data from comprehensive results as a fallback.
+        
+        Args:
+            project_id: Project identifier
+            
+        Returns:
+            Project data from comprehensive results or empty data structure
+        """
+        try:
+            logger.info(f"🔄 Attempting comprehensive results fallback for project {project_id}")
+            
+            # Try to load comprehensive results
+            results = self.load_project_results(project_id)
+            if results and results.get('basic_state'):
+                basic_state = results['basic_state']
+                node_count = len(basic_state.get('all_nodes', {}))
+                logger.info(f"✅ Comprehensive results fallback successful: {node_count} nodes")
+                return basic_state
+            elif results and results.get('graph_data'):
+                graph_data = results['graph_data']
+                node_count = len(graph_data.get('all_nodes', {}))
+                logger.info(f"✅ Graph data fallback successful: {node_count} nodes")
+                return graph_data
+            else:
+                logger.warning(f"No comprehensive results found for project {project_id}")
+                return self._get_empty_display_data()
+            
+        except Exception as e:
+            logger.error(f"Comprehensive results fallback failed for project {project_id}: {e}")
             return self._get_empty_display_data()
+    
+    def _manual_serialize_project_graph(self, project_task_graph) -> Dict[str, Any]:
+        """
+        Manual fallback serialization for when the standard serialization fails.
+        
+        Args:
+            project_task_graph: TaskGraph to serialize
+            
+        Returns:
+            Manually serialized graph data
+        """
+        data = {
+            'all_nodes': {},
+            'graphs': {},
+            'overall_project_goal': getattr(project_task_graph, 'overall_project_goal', None),
+            'root_graph_id': getattr(project_task_graph, 'root_graph_id', None)
+        }
+        
+        # Manually serialize nodes
+        if hasattr(project_task_graph, 'nodes') and project_task_graph.nodes:
+            from ...hierarchical_agent_framework.graph.graph_serializer import GraphSerializer
+            temp_serializer = GraphSerializer(project_task_graph)
+            
+            for node_id, node in project_task_graph.nodes.items():
+                try:
+                    data['all_nodes'][node_id] = temp_serializer._serialize_node(node)
+                except Exception as e:
+                    logger.warning(f"Failed to manually serialize node {node_id}: {e}")
+                    # Create minimal node representation
+                    data['all_nodes'][node_id] = {
+                        'task_id': node_id,
+                        'goal': getattr(node, 'goal', 'Unknown goal'),
+                        'status': str(getattr(node, 'status', 'UNKNOWN')),
+                        'layer': getattr(node, 'layer', 0),
+                        'full_result': getattr(node, 'result', None),
+                        'error': str(e)
+                    }
+        
+        # Manually serialize graphs
+        if hasattr(project_task_graph, 'graphs') and project_task_graph.graphs:
+            for graph_id, graph in project_task_graph.graphs.items():
+                try:
+                    if hasattr(graph, 'nodes') and hasattr(graph, 'edges'):
+                        data['graphs'][graph_id] = {
+                            'nodes': list(graph.nodes()),
+                            'edges': [{"source": u, "target": v} for u, v in graph.edges()]
+                        }
+                except Exception as e:
+                    logger.warning(f"Failed to manually serialize graph {graph_id}: {e}")
+        
+        return data
     
     def _get_empty_display_data(self) -> Dict[str, Any]:
         """Return empty display data structure."""
@@ -456,7 +569,7 @@ class ProjectService:
     
     def load_project_into_graph(self, project_id: str) -> bool:
         """
-        Load a project's state into its task graph for display.
+        Load a project's state into its task graph for display with comprehensive debugging.
         
         Args:
             project_id: Project identifier to load
@@ -465,71 +578,93 @@ class ProjectService:
             True if successful, False otherwise
         """
         try:
-            # Get or create project-specific graph
+            logger.info(f"🚨 LOAD DEBUG - Starting load for project: {project_id}")
+            
+            # Get or create project-specific execution context
             project_components = self.get_or_create_project_graph(project_id)
-            project_task_graph = project_components['task_graph']
+            
+            if not project_components:
+                logger.error(f"🚨 LOAD DEBUG - Failed to get or create project components for {project_id}")
+                return False
+            
+            logger.info(f"🚨 LOAD DEBUG - Project graph created/retrieved: {project_components is not None}")
             
             # Load saved state into the project's task graph
             project_state = self.project_manager.load_project_state(project_id)
             project = self.project_manager.get_project(project_id)
             
+            logger.info(f"🚨 LOAD DEBUG - Project state loaded: {project_state is not None}")
+            logger.info(f"🚨 LOAD DEBUG - Project metadata loaded: {project is not None}")
+            
             if project_state:
+                node_count = len(project_state.get('all_nodes', {}))
+                logger.info(f"🚨 LOAD DEBUG - Project state contains {node_count} nodes")
+                
+                # Get the task graph from the components
+                project_task_graph = project_components.get('task_graph')
+                if not project_task_graph:
+                    logger.error(f"🚨 LOAD DEBUG - Task graph is missing from project components for {project_id}")
+                    return False
+                
                 # Clear and reload the project's task graph
                 project_task_graph.nodes.clear()
                 project_task_graph.graphs.clear()
                 project_task_graph.root_graph_id = None
                 project_task_graph.overall_project_goal = None
                 
-                if 'all_nodes' in project_state:
+                if 'all_nodes' in project_state and node_count > 0:
                     # Load nodes by deserializing dictionaries back to TaskNode objects
+                    successful_nodes = 0
+                    failed_nodes = 0
+                    
+                    from ...hierarchical_agent_framework.node.task_node import TaskNode
+                    
                     for node_id, node_data in project_state['all_nodes'].items():
                         try:
-                            # Convert datetime strings back to datetime objects if needed
+                            # Prepare data for deserialization
                             self._deserialize_node_timestamps(node_data)
                             self._deserialize_node_enums(node_data)
-                            
-                            # CRITICAL FIX: Prepare data for deserialization
                             prepared_data = self._prepare_node_data_for_deserialization(node_data)
                             
-                            # Create TaskNode object from dictionary
                             task_node = TaskNode(**prepared_data)
                             project_task_graph.nodes[node_id] = task_node
-                            
-                            # AGGRESSIVE DEBUGGING
-                            logger.debug(f"🔄 Deserialized node {node_id}: "
-                                       f"has_full_result={task_node.aux_data.get('full_result') is not None}, "
-                                       f"has_execution_details={task_node.aux_data.get('execution_details') is not None}, "
-                                       f"status={task_node.status}")
+                            successful_nodes += 1
                             
                         except Exception as e:
-                            logger.warning(f"Failed to deserialize node {node_id}: {e}")
-                            logger.debug(f"Node data that failed: {node_data}")
-                            continue
+                            logger.warning(f"🚨 LOAD DEBUG - Failed to deserialize node {node_id}: {e}")
+                            logger.debug(f"🚨 LOAD DEBUG - Node data that failed: {node_data}")
+                            failed_nodes += 1
+                    
+                    logger.info(f"🚨 LOAD DEBUG - Node deserialization: {successful_nodes} successful, {failed_nodes} failed")
                 
-                # Properly reconstruct graphs
+                # Reconstruct graphs
                 if 'graphs' in project_state:
                     self._reconstruct_graphs(project_task_graph, project_state['graphs'])
+                    logger.info(f"🚨 LOAD DEBUG - Reconstructed {len(project_state['graphs'])} graphs")
                 
+                # Set project goal
                 if 'overall_project_goal' in project_state:
                     project_task_graph.overall_project_goal = project_state['overall_project_goal']
                 elif project:
                     project_task_graph.overall_project_goal = project.goal
-                    
+                
+                # Set root graph ID
                 if 'root_graph_id' in project_state:
                     project_task_graph.root_graph_id = project_state['root_graph_id']
             
             elif project:
                 # No saved state, just set the goal
-                project_task_graph.overall_project_goal = project.goal
+                project_task_graph = project_components.get('task_graph')
+                if project_task_graph:
+                    project_task_graph.overall_project_goal = project.goal
+                    logger.info(f"🚨 LOAD DEBUG - No saved state, only set goal from metadata")
             
-            # Sync to display
-            self.sync_project_to_display(project_id)
-            
-            logger.info(f"✅ Loaded project {project_id}: {len(project_task_graph.nodes)} nodes")
+            logger.info(f"✅ LOAD DEBUG - Loaded project {project_id}: {len(project_components.get('task_graph').nodes)} nodes")
             return True
             
         except Exception as e:
             logger.error(f"Failed to load project {project_id}: {e}")
+            import traceback
             traceback.print_exc()
             return False
     
@@ -1001,3 +1136,126 @@ class ProjectService:
             logger.error(f"Failed to get saved projects summary: {e}")
         
         return sorted(summaries, key=lambda x: x.get('saved_at', ''), reverse=True)
+
+    def debug_project_serialization_flow(self, project_id: str) -> Dict[str, Any]:
+        """
+        Comprehensive debugging method to trace project serialization issues.
+        
+        Args:
+            project_id: Project identifier to debug
+            
+        Returns:
+            Debug information about the serialization flow
+        """
+        debug_info = {
+            'project_id': project_id,
+            'timestamp': datetime.now().isoformat(),
+            'debug_steps': []
+        }
+        
+        try:
+            # Step 1: Check if project exists
+            project = self.project_manager.get_project(project_id)
+            debug_info['debug_steps'].append({
+                'step': 'project_metadata_check',
+                'success': project is not None,
+                'data': project.to_dict() if project else None
+            })
+            
+            if not project:
+                debug_info['issue'] = 'Project metadata not found'
+                return debug_info
+            
+            # Step 2: Check if project has saved state
+            saved_state = self.project_manager.load_project_state(project_id)
+            debug_info['debug_steps'].append({
+                'step': 'saved_state_check',
+                'success': saved_state is not None,
+                'node_count': len(saved_state.get('all_nodes', {})) if saved_state else 0,
+                'has_root_graph': saved_state.get('root_graph_id') is not None if saved_state else False
+            })
+            
+            # Step 3: Check if project has comprehensive results
+            results = self.load_project_results(project_id)
+            debug_info['debug_steps'].append({
+                'step': 'comprehensive_results_check',
+                'success': results is not None,
+                'has_basic_state': results.get('basic_state') is not None if results else False,
+                'has_graph_data': results.get('graph_data') is not None if results else False,
+                'node_count_from_results': len(results.get('graph_data', {}).get('all_nodes', {})) if results and results.get('graph_data') else 0
+            })
+            
+            # Step 4: Check project graph in memory
+            if project_id in self.project_graphs:
+                project_components = self.project_graphs[project_id]
+                project_task_graph = project_components['task_graph']
+                debug_info['debug_steps'].append({
+                    'step': 'in_memory_graph_check',
+                    'success': project_task_graph is not None,
+                    'node_count': len(project_task_graph.nodes) if project_task_graph else 0,
+                    'has_root_graph': project_task_graph.root_graph_id is not None if project_task_graph else False
+                })
+                
+                # Step 5: Test serialization
+                if project_task_graph:
+                    try:
+                        if hasattr(project_task_graph, 'to_visualization_dict'):
+                            serialized_data = project_task_graph.to_visualization_dict()
+                        else:
+                            from ...hierarchical_agent_framework.graph.graph_serializer import GraphSerializer
+                            serializer = GraphSerializer(project_task_graph)
+                            serialized_data = serializer.to_visualization_dict()
+                        
+                        debug_info['debug_steps'].append({
+                            'step': 'serialization_test',
+                            'success': serialized_data is not None,
+                            'node_count': len(serialized_data.get('all_nodes', {})) if serialized_data else 0,
+                            'has_root_graph': serialized_data.get('root_graph_id') is not None if serialized_data else False
+                        })
+                        
+                        # Step 6: Check individual nodes for full results
+                        if serialized_data and serialized_data.get('all_nodes'):
+                            nodes_with_results = 0
+                            nodes_with_execution_details = 0
+                            for node_id, node_data in serialized_data['all_nodes'].items():
+                                if node_data.get('full_result'):
+                                    nodes_with_results += 1
+                                if node_data.get('execution_details'):
+                                    nodes_with_execution_details += 1
+                        
+                            debug_info['debug_steps'].append({
+                                'step': 'node_content_analysis',
+                                'total_nodes': len(serialized_data['all_nodes']),
+                                'nodes_with_full_result': nodes_with_results,
+                                'nodes_with_execution_details': nodes_with_execution_details
+                            })
+                            
+                    except Exception as e:
+                        debug_info['debug_steps'].append({
+                            'step': 'serialization_test',
+                            'success': False,
+                            'error': str(e)
+                        })
+            else:
+                debug_info['debug_steps'].append({
+                    'step': 'in_memory_graph_check',
+                    'success': False,
+                    'error': 'Project not loaded in memory'
+                })
+            
+            # Step 7: Check system manager's task graph (current execution state)
+            if hasattr(self.system_manager, 'task_graph') and self.system_manager.task_graph:
+                current_graph = self.system_manager.task_graph
+                debug_info['debug_steps'].append({
+                    'step': 'system_manager_graph_check',
+                    'node_count': len(current_graph.nodes),
+                    'overall_goal': current_graph.overall_project_goal,
+                    'has_root_graph': current_graph.root_graph_id is not None
+                })
+            
+            return debug_info
+            
+        except Exception as e:
+            debug_info['error'] = str(e)
+            debug_info['exception_traceback'] = __import__('traceback').format_exc()
+            return debug_info

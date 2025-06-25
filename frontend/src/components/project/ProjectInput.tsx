@@ -4,7 +4,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Send, Loader2, Settings } from 'lucide-react'
 import { useTaskGraphStore } from '@/stores/taskGraphStore'
 import { useProjectStore } from '@/stores/projectStore'
-import { projectService } from '@/services/projectService'
+import projectService from '@/services/projectService'
 import { toast } from '@/components/ui/use-toast'
 import {
   Dialog,

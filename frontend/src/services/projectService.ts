@@ -461,14 +461,24 @@ class ProjectService {
       return []
     }
   }
+
+  async getRunningExecutions(): Promise<any> {
+    try {
+      const response = await fetch(`${this.baseUrl}/executions`)
+      if (!response.ok) {
+        return {}
+      }
+      return response.json()
+    } catch (error) {
+      console.warn('Failed to get running executions:', error)
+      return {}
+    }
+  }
 }
 
-// Export singleton instance
-export const projectService = new ProjectService()
-export default projectService
-
-// Simple debug setup without problematic code
+// Make service available globally for debugging
 if (typeof window !== 'undefined') {
-  (window as any).projectService = projectService
-  console.log('🔧 ProjectService available on window.projectService')
-} 
+  (window as any).projectService = new ProjectService()
+}
+
+export default new ProjectService() 

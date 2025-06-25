@@ -267,25 +267,33 @@ def register_websocket_events(socketio, project_service, execution_service):
     
     @socketio.on('auto_save_project')
     def handle_auto_save_project(data):
-        """Handle automatic project saving from frontend."""
+        """
+        Handle automatic project saving from frontend.
+        This now uses the server's state as the source of truth.
+        """
         try:
             project_id = data.get('project_id')
-            project_data = data.get('data')
-            
-            if not project_id or not project_data:
-                logger.warning("Auto-save request missing project_id or data")
+            if not project_id:
+                logger.warning("Auto-save request missing project_id")
                 return
-            
-            logger.info(f"💾 Auto-saving project data: {project_id}")
-            
-            # Save to project service
+
+            logger.info(f"💾 Auto-saving project data for: {project_id}")
+
+            # THE FIX: Get the authoritative state from the server, don't trust the client's data.
+            project_data = project_service.get_project_display_data(project_id)
+
+            if not project_data or not project_data.get('all_nodes'):
+                logger.warning(f"💾 Auto-save skipped for {project_id}: No nodes found in server state.")
+                return
+
+            # Save the authoritative state
             project_service.save_project_state_async(project_id, project_data)
             
             # Also save as results for persistence
             results_package = {
                 "project_id": project_id,
                 "saved_at": datetime.now().isoformat(),
-                "graph_data": project_data,
+                "basic_state": project_data, # Use basic_state to be consistent
                 "auto_saved": True,
                 "metadata": {
                     "total_nodes": len(project_data.get('all_nodes', {})),
@@ -293,10 +301,9 @@ def register_websocket_events(socketio, project_service, execution_service):
                     "completion_status": "auto_saved"
                 }
             }
-            
             project_service.save_project_results(project_id, results_package)
             
-            logger.info(f"✅ Auto-saved project: {project_id}")
+            logger.info(f"✅ Auto-saved project using server-side state: {project_id}")
             
         except Exception as e:
             logger.error(f"Auto-save error: {e}")
@@ -317,21 +324,15 @@ def register_websocket_events(socketio, project_service, execution_service):
             
             # 1. Try to load comprehensive saved results first
             results = project_service.load_project_results(project_id)
-            if results and results.get('basic_state'):
-                project_data = results['basic_state']
+            if results and (results.get('basic_state') or results.get('graph_data')):
+                project_data = results.get('basic_state') or results.get('graph_data')
                 project_data['project_id'] = project_id
                 project_data['restored'] = True
                 project_data['restored_at'] = datetime.now().isoformat()
                 project_data['restored_from'] = 'comprehensive_results'
                 
-                # AGGRESSIVE DEBUGGING
                 node_count = len(project_data.get('all_nodes', {}))
-                logger.info(f"🚨 RESTORE DEBUG - From comprehensive results: {node_count} nodes")
-                
-                if project_data.get('all_nodes'):
-                    for node_id, node_data in list(project_data['all_nodes'].items())[:3]:
-                        has_full_result = bool(node_data.get('full_result'))
-                        logger.info(f"🚨 RESTORE DEBUG - Node {node_id}: has_full_result={has_full_result}")
+                logger.info(f"Restoring project from comprehensive results: {node_count} nodes")
 
                 emit('project_restored', project_data)
                 logger.info(f"✅ Restored project from comprehensive results: {project_id}")
@@ -346,9 +347,8 @@ def register_websocket_events(socketio, project_service, execution_service):
                     project_state['restored_at'] = datetime.now().isoformat()
                     project_state['restored_from'] = 'basic_state'
 
-                    # AGGRESSIVE DEBUGGING
                     node_count = len(project_state.get('all_nodes', {}))
-                    logger.info(f"🚨 RESTORE DEBUG - From basic state: {node_count} nodes")
+                    logger.info(f"Restoring project from basic state: {node_count} nodes")
 
                     emit('project_restored', project_state)
                     logger.info(f"✅ Restored project from basic state: {project_id}")
@@ -360,10 +360,7 @@ def register_websocket_events(socketio, project_service, execution_service):
 
         except Exception as e:
             logger.error(f"Project restore error: {e}")
-            import traceback
-            traceback.print_exc()
-            emit('project_restore_error', {'error': str(e)})
-
+    
     # NEW: Manual save trigger
     @socketio.on('force_save_project')
     def handle_force_save_project(data):

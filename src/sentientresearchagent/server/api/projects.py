@@ -294,7 +294,7 @@ def create_project_routes(app, project_service, execution_service):
         except Exception as e:
             logger.error(f"Download project report error: {e}")
             return jsonify({"error": str(e)}), 500
-    
+        
     @app.route('/api/executions', methods=['GET'])
     def get_running_executions():
         """Get information about currently running executions."""
