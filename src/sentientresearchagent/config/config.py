@@ -393,6 +393,16 @@ class SentientConfig(BaseModel):
         
         # File handler with clean format (no colors)
         if self.logging.enable_file and self.logging.file_path:
+            # Remove existing log file to start fresh (no appending)
+            log_path = Path(self.logging.file_path)
+            if log_path.exists():
+                try:
+                    log_path.unlink()  # Delete the existing log file
+                except OSError as e:
+                    # If we can't delete (e.g., permission issues), just log a warning
+                    # The logger hasn't been configured yet, so we use print
+                    print(f"Warning: Could not delete existing log file {log_path}: {e}")
+            
             clean_format = (
                 "{time:HH:mm:ss} | {level: <5} | {message}"
             )

@@ -38,7 +38,7 @@ const ProjectInput: React.FC = () => {
     execution: {
       max_concurrent_nodes: 3,
       max_execution_steps: 250,
-      max_recursion_depth: 3,
+      max_recursion_depth: 2,
       task_timeout_seconds: 300,
       enable_hitl: true,
       hitl_root_plan_only: true,
