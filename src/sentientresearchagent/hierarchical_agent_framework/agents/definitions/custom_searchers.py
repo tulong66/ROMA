@@ -66,7 +66,7 @@ class OpenAICustomSearchAdapter(BaseAdapter):
         self.model_id = model_id
         logger.info(f"Initialized {self.agent_name} with model: {self.model_id} (API key: {api_key[:10]}...{api_key[-4:]})")
 
-    async def process(self, node: TaskNode, agent_task_input: AgentTaskInput) -> CustomSearcherOutput:
+    async def process(self, node: TaskNode, agent_task_input: AgentTaskInput) -> Dict:
         """
         Processes the task by extracting the goal as a query, calling OpenAI with
         web_search_preview using client.responses.create.
@@ -158,15 +158,14 @@ class OpenAICustomSearchAdapter(BaseAdapter):
                 except Exception as e_pydantic:
                     logger.warning(f"    {self.adapter_name}: Error parsing an annotation dict: {ann_data}, Error: {e_pydantic}")
 
-            output = CustomSearcherOutput(
-                query_used=query,
-                output_text_with_citations=output_text_with_citations,
-                text_content=parsed_text_content,
-                annotations=parsed_annotations
-            )
-            
-            main_output_preview = output.output_text_with_citations[:150] + "..." if len(output.output_text_with_citations) > 150 else output.output_text_with_citations
-            logger.success(f"  Adapter '{self.adapter_name}': Processed. Main output: '{main_output_preview}', Annotations: {len(output.annotations)}")
+            # Return a simple dictionary instead of the full Pydantic model
+            clean_output = {
+                "query_used": query,
+                "output_text_with_citations": output_text_with_citations
+            }
+
+            main_output_preview = clean_output["output_text_with_citations"][:150] + "..." if len(clean_output["output_text_with_citations"]) > 150 else clean_output["output_text_with_citations"]
+            logger.success(f"  Adapter '{self.adapter_name}': Processed. Main output: '{main_output_preview}'")
             node.output_type_description = "custom_searcher_output_with_citations"
             
             # FIXED: Complete tracing stage with rich output
@@ -174,17 +173,17 @@ class OpenAICustomSearchAdapter(BaseAdapter):
             trace_manager.update_stage(
                 node_id=node.task_id,
                 stage_name="execution",
-                llm_response=output.output_text_with_citations
+                llm_response=clean_output["output_text_with_citations"]
             )
             
             # Then complete the stage with output data
             trace_manager.complete_stage(
                 node_id=node.task_id,
                 stage_name="execution",
-                output_data=output.output_text_with_citations
+                output_data=clean_output["output_text_with_citations"]
             )
             
-            return output
+            return clean_output
 
         except Exception as e:
             error_message = f"Error during {self.adapter_name} execution for node {node.task_id} (Query: {query}): {e}"
@@ -197,13 +196,11 @@ class OpenAICustomSearchAdapter(BaseAdapter):
                 error=error_message
             )
             
-            # Return a CustomSearcherOutput with the error message if the API call itself fails
-            return CustomSearcherOutput(
-                query_used=query,
-                output_text_with_citations=f"API Call Failed: {e}",
-                text_content=None,
-                annotations=[]
-            )
+            # Return a simple dictionary with the error
+            return {
+                "query_used": query,
+                "output_text_with_citations": f"API Call Failed: {e}"
+            }
 
 
 # --- Gemini Custom Searcher with Annotations (Adapter Version) ---
@@ -237,7 +234,7 @@ class GeminiCustomSearchAdapter(BaseAdapter):
         self.model_id = model_id
         logger.info(f"Initialized {self.agent_name} with model: {self.model_id} (API key: {api_key[:10]}...{api_key[-4:]})")
 
-    async def process(self, node: TaskNode, agent_task_input: AgentTaskInput) -> CustomSearcherOutput:
+    async def process(self, node: TaskNode, agent_task_input: AgentTaskInput) -> Dict:
         """
         Processes the task by extracting the goal as a query, calling Gemini with
         google_search tool using client.aio.models.generate_content (async API).
@@ -318,48 +315,44 @@ class GeminiCustomSearchAdapter(BaseAdapter):
                 except Exception as e_pydantic:
                     logger.warning(f"    {self.adapter_name}: Error parsing an annotation dict: {ann_data}, Error: {e_pydantic}")
 
-            output = CustomSearcherOutput(
-                query_used=query,
-                output_text_with_citations=output_text_with_citations,
-                text_content=parsed_text_content,
-                annotations=parsed_annotations
-            )
+            # Return a simple dictionary instead of the full Pydantic model
+            clean_output = {
+                "query_used": query,
+                "output_text_with_citations": output_text_with_citations
+            }
             
-            main_output_preview = output.output_text_with_citations[:150] + "..." if len(output.output_text_with_citations) > 150 else output.output_text_with_citations
-            logger.success(f"  Adapter '{self.adapter_name}': Processed. Main output: '{main_output_preview}', Annotations: {len(output.annotations)}")
+            main_output_preview = clean_output["output_text_with_citations"][:150] + "..." if len(clean_output["output_text_with_citations"]) > 150 else clean_output["output_text_with_citations"]
+            logger.success(f"  Adapter '{self.adapter_name}': Processed. Main output: '{main_output_preview}', Citations processed: {len(parsed_annotations)}")
             node.output_type_description = "custom_searcher_output_with_citations"
             
-            # Complete tracing stage with rich output
+            # FIXED: Complete tracing stage with rich output
             trace_manager.update_stage(
                 node_id=node.task_id,
                 stage_name="execution",
-                llm_response=output.output_text_with_citations
+                llm_response=clean_output["output_text_with_citations"]
             )
             
             trace_manager.complete_stage(
                 node_id=node.task_id,
                 stage_name="execution",
-                output_data=output.output_text_with_citations
+                output_data=clean_output["output_text_with_citations"]
             )
             
-            return output
+            return clean_output
 
         except Exception as e:
             error_message = f"Error during {self.adapter_name} execution for node {node.task_id} (Query: {query}): {e}"
             logger.error(f"  Adapter Error: {error_message}")
             
-            # Complete tracing stage with error
             trace_manager.complete_stage(
                 node_id=node.task_id,
                 stage_name="execution",
                 error=error_message
             )
             
-            # Return a CustomSearcherOutput with the error message if the API call itself fails
-            return CustomSearcherOutput(
-                query_used=query,
-                output_text_with_citations=f"API Call Failed: {e}",
-                text_content=None,
-                annotations=[]
-            )
+            # Return a simple dictionary with the error
+            return {
+                "query_used": query,
+                "output_text_with_citations": f"API Call Failed: {e}"
+            }
 

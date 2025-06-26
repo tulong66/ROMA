@@ -2,11 +2,11 @@ from typing import Any, Optional
 from loguru import logger
 from ..agents.definitions.utility_agents import context_summarizer_agno_agent
 
-# New intelligent thresholds
-FULL_CONTENT_WORD_LIMIT = 5000      # Your requested increase from 2000
-FULL_CONTENT_CHAR_LIMIT = 37500     # 5000 words * 7.5 chars/word average
-DETAILED_SUMMARY_TARGET_WORDS = 1250  # Middle of your 1000-1500 range
-MAX_DETAILED_SUMMARY_CHARS = 9375   # 1250 words * 7.5 chars/word average
+# New intelligent thresholds - INCREASED LIMITS
+FULL_CONTENT_WORD_LIMIT = 20000      # Increased from 5000
+FULL_CONTENT_CHAR_LIMIT = 150000     # 20000 words * 7.5 chars/word average
+DETAILED_SUMMARY_TARGET_WORDS = 4000  # Increased from 1250
+MAX_DETAILED_SUMMARY_CHARS = 30000   # 4000 words * 7.5 chars/word average
 
 def get_smart_child_context(
     content: Any, 

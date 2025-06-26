@@ -92,12 +92,8 @@ class LlmApiAdapter(BaseAdapter, Generic[InputType, OutputType]):
         for item in context_items:
             content_str = str(item.content) # Basic string conversion
             # Consider adding more sophisticated formatting based on item.content_type_description
-            # Truncate very long individual context items if necessary
-            max_len = 2000 # Max length for a single context item string
-            if len(content_str) > max_len:
-                content_str = content_str[:max_len] + f"... (truncated, original length {len(content_str)})"
             
-            context_parts.append(f"--- Context from Task '{item.source_task_id}' (Goal: {item.source_task_goal[:100]}{'...' if len(item.source_task_goal)>100 else ''}) ---")
+            context_parts.append(f"--- Context from Task '{item.source_task_id}' (Goal: {item.source_task_goal}) ---")
             context_parts.append(content_str)
             context_parts.append(f"--- End Context from Task '{item.source_task_id}' ---")
         
