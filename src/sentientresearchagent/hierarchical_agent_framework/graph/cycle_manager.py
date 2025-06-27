@@ -82,9 +82,16 @@ class CycleManager:
             if node.status == TaskStatus.PLAN_DONE:
                 # ENHANCED: Check if this node was converted to EXECUTE type during planning
                 if node.node_type == NodeType.EXECUTE:
-                    # This node was planned but determined to be atomic - convert to READY for execution
-                    logger.info(f"  CycleManager Transition: Node {node.task_id} PLAN_DONE -> READY (atomic execution, Goal: '{node.goal[:30]}...')")
-                    node.update_status(TaskStatus.READY)
+                    # A PLAN node that becomes EXECUTE is an atomic task
+                    logger.info(f"  CycleManager Transition: Node {node.task_id} was atomic. Transitioning PLAN_DONE -> DONE.")
+                    node.update_status(TaskStatus.DONE)
+                    knowledge_store.add_or_update_record_from_node(node)
+                    processed_in_step = True
+                    made_plan_done_transition = True
+                # Also check if this was originally an EXECUTE node that somehow got planned
+                elif hasattr(node, 'aux_data') and node.aux_data.get('was_executed_as_atomic'):
+                    logger.warning(f"  CycleManager: Node {node.task_id} was already executed as atomic but reached PLAN_DONE. Transitioning directly to DONE.")
+                    node.update_status(TaskStatus.DONE)
                     knowledge_store.add_or_update_record_from_node(node)
                     processed_in_step = True
                     made_plan_done_transition = True

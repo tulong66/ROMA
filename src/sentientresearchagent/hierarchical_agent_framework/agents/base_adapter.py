@@ -16,6 +16,9 @@ from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models 
     PlanModifierInput # Added PlanModifierInput
 )
 
+# FIX: Import NodeType from types module
+from sentientresearchagent.hierarchical_agent_framework.types import NodeType
+
 # Import prompt templates
 from .prompts import INPUT_PROMPT, AGGREGATOR_PROMPT
 
@@ -359,15 +362,25 @@ Ensure your output is a valid JSON conforming to the PlanOutput schema, containi
         """
         logger.info(f"  Adapter '{self.agent_name}': Processing node {node.task_id} (Goal: '{node.goal[:50]}...')")
 
-        # Determine the stage name based on adapter type
-        stage_name = self._get_stage_name()
+        # Determine the stage name based on adapter type AND node status
+        stage_name = self._get_stage_name(node)
         
-        # 🚨 CRITICAL VALIDATION: Prevent execution nodes from getting aggregation stages
-        if hasattr(node, 'task_type') and node.task_type and str(node.task_type).upper() == 'SEARCH':
-            if stage_name == 'aggregation':
-                logger.error(f"🚨 CRITICAL ERROR: SEARCH node {node.task_id} attempted to create aggregation stage!")
-                logger.error(f"🚨 Adapter: {self.__class__.__name__}, Agent: {self.agent_name}")
-                stage_name = 'execution'  # Force to execution
+        # CRITICAL FIX: Override stage name based on node status
+        # This ensures the stage matches what's actually happening
+        if hasattr(node, 'status'):
+            from sentientresearchagent.hierarchical_agent_framework.types import TaskStatus
+            
+            if node.status == TaskStatus.AGGREGATING:
+                # Node is actually aggregating - use aggregation stage
+                stage_name = 'aggregation'
+            elif node.status in [TaskStatus.READY, TaskStatus.RUNNING] and stage_name == 'aggregation':
+                # Node is not aggregating but adapter thinks it should be
+                # This is the bug - force to execution
+                logger.warning(
+                    f"🚨 FIX: Node {node.task_id} (status: {node.status}) using aggregator adapter "
+                    f"but not in AGGREGATING status. Forcing stage to 'execution'."
+                )
+                stage_name = 'execution'
         
         # Additional validation based on adapter name
         if 'search' in self.__class__.__name__.lower() and stage_name == 'aggregation':
@@ -474,7 +487,7 @@ Ensure your output is a valid JSON conforming to the PlanOutput schema, containi
                         actual_content_data = content_attr
                         
                     # Store raw response for tracing - NO TRUNCATION for aggregation
-                    stage_name = self._get_stage_name()
+                    stage_name = self._get_stage_name(node)
                     if stage_name == 'aggregation':
                         # For aggregation, store the COMPLETE response - this is the final output users need to see
                         raw_response = str(actual_content_data)
@@ -530,7 +543,7 @@ Ensure your output is a valid JSON conforming to the PlanOutput schema, containi
             node.aux_data["execution_details"]["success"] = True
             
             # CRITICAL FIX: Complete tracing stage with rich output data - NO TRUNCATION for aggregation
-            stage_name = self._get_stage_name()
+            stage_name = self._get_stage_name(node)
             if stage_name == 'aggregation':
                 # For aggregation, store the COMPLETE result - this is what users are paying for
                 output_data = str(result) if result else "No output"
@@ -570,11 +583,33 @@ Ensure your output is a valid JSON conforming to the PlanOutput schema, containi
             
             raise
 
-    def _get_stage_name(self) -> str:
-        """Determine the stage name based on adapter type."""
+    def _get_stage_name(self, node: Optional[TaskNode] = None) -> str:
+        """
+        Determine the stage name based on adapter type AND node status.
+        
+        Args:
+            node: Optional TaskNode to consider for status-based stage determination
+        """
         class_name = self.__class__.__name__.lower()
         
-        # CRITICAL FIX: Strict validation to prevent incorrect stage assignment
+        # CRITICAL FIX: Consider node status when determining stage
+        if node and hasattr(node, 'status'):
+            from sentientresearchagent.hierarchical_agent_framework.types import TaskStatus
+            
+            # If node is AGGREGATING, it should be aggregation stage regardless of adapter
+            if node.status == TaskStatus.AGGREGATING:
+                return 'aggregation'
+            
+            # If node is NOT aggregating but adapter is an aggregator, this is wrong
+            if 'aggregator' in class_name and node.status in [TaskStatus.READY, TaskStatus.RUNNING]:
+                logger.warning(
+                    f"🚨 ADAPTER MISMATCH: Node {node.task_id} (status: {node.status}) "
+                    f"is using aggregator adapter '{self.__class__.__name__}' but not in AGGREGATING status!"
+                )
+                # Force to execution stage to prevent confusion
+                return 'execution'
+        
+        # Default behavior based on adapter type
         if 'planner' in class_name:
             return 'planning'
         elif 'executor' in class_name:

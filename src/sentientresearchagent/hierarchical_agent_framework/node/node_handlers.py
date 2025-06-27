@@ -137,6 +137,23 @@ class ReadyPlanHandler(INodeHandler):
                 node  # NEW: Pass the node so we can check if it's root
             )
 
+            # Validate that we're not using an aggregator for planning
+            if lookup_name_for_planner and 'aggregator' in lookup_name_for_planner.lower():
+                logger.error(
+                    f"🚨 CRITICAL: Attempted to use aggregator '{lookup_name_for_planner}' "
+                    f"for planning node {node.task_id}. This is incorrect!"
+                )
+                # Clear the bad agent name and try to find a proper planner
+                lookup_name_for_planner = None
+                if context.current_agent_blueprint:
+                    # Try to get the correct planner from blueprint
+                    lookup_name_for_planner = get_planner_from_blueprint(
+                        context.current_agent_blueprint,
+                        node.task_type,
+                        None,  # Don't use the aggregator as fallback
+                        node
+                    )
+
             node.agent_name = lookup_name_for_planner 
             planner_adapter = context.agent_registry.get_agent_adapter(node, action_verb="plan")
 
@@ -510,13 +527,29 @@ class ReadyNodeHandler(INodeHandler):
         # Use the max_planning_layer from the NodeProcessorConfig
         max_planning_layer = context.config.max_planning_layer
         
-        # CORRECTED: If the node is at max_planning_layer, it should be forced to EXECUTE
-        # and skip atomization entirely (as per user clarification #3)
+        # CRITICAL FIX: When forcing a PLAN node to EXECUTE, ensure it has the right adapter
         if node.layer >= max_planning_layer:
             logger.info(
                 f"    ReadyNodeHandler: Node {node.task_id} (Layer {node.layer}) is at or exceeds max_planning_layer "
                 f"({max_planning_layer}). Forcing to EXECUTE and skipping atomization."
             )
+            
+            # CRITICAL FIX: When forcing a PLAN node to EXECUTE, ensure it has the right adapter
+            if node.node_type == NodeType.PLAN:
+                # This was intended to be a PLAN node but we're forcing it to execute
+                # Clear any aggregator configuration and let the execute handler pick the right executor
+                logger.info(
+                    f"    ReadyNodeHandler: Clearing aggregator configuration for forced-execute node {node.task_id}"
+                )
+                
+                # Clear the agent_name if it's an aggregator
+                if node.agent_name and 'aggregator' in node.agent_name.lower():
+                    original_agent = node.agent_name
+                    node.agent_name = None  # Let execute handler determine the right executor
+                    logger.info(
+                        f"    ReadyNodeHandler: Cleared aggregator '{original_agent}' from node {node.task_id}"
+                    )
+            
             node.node_type = NodeType.EXECUTE
             await self.ready_execute_handler.handle(node, context)
             return

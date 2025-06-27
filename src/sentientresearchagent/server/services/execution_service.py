@@ -428,6 +428,12 @@ class ExecutionService:
                 project_task_graph.root_graph_id = None
                 project_task_graph.overall_project_goal = None
                 
+                # CRITICAL FIX: Clear the knowledge store for the project
+                knowledge_store = project_components.get('knowledge_store')
+                if knowledge_store:
+                    knowledge_store.clear()
+                    logger.info("KnowledgeStore cleared for fresh project start.")
+                
                 # Clear project-specific cache
                 cache_manager = self.system_manager.cache_manager
                 if cache_manager and self.system_manager.config.cache.enabled:

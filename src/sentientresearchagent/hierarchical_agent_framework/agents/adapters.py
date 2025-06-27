@@ -46,11 +46,25 @@ class ExecutorAdapter(LlmApiAdapter):
         super().__init__(agno_agent_instance, agent_name)
 
     async def process(self, node: TaskNode, agent_task_input: AgentTaskInput) -> Any:
-        """Process execution task and return result."""
+        """
+        Process execution task.
+        If the underlying agent returns a raw string, wrap it in a standardized
+        dictionary to ensure consistent output format from all executors.
+        """
         logger.info(f"  ExecutorAdapter: Processing execution task for node {node.task_id}")
         
         # Call the parent's process method which handles the AgnoAgent execution
         result = await super().process(node, agent_task_input)
+        
+        # NEW: Standardize string outputs into a dictionary consistent with searcher output
+        if isinstance(result, str):
+            logger.info(f"    ExecutorAdapter: Wrapping raw string output in standardized dictionary for node {node.task_id}")
+            return {
+                "query_used": agent_task_input.current_goal,
+                "output_text": result
+            }
+        
+        # If it's not a string, return it as is (e.g., a dictionary from a custom searcher)
         return result
 
 

@@ -599,3 +599,31 @@ class SystemManager:
                 "error": str(e),
                 "profile": profile_name
             }
+
+    def clear_all_execution_state(self, task_graph, knowledge_store, cache_manager=None, project_id=None):
+        """Clear all execution state to prevent data pollution."""
+        # Clear task graph
+        task_graph.nodes.clear()
+        task_graph.graphs.clear()
+        task_graph.root_graph_id = None
+        task_graph.overall_project_goal = None
+        
+        # Clear knowledge store
+        if hasattr(knowledge_store, 'clear_all_records'):
+            knowledge_store.clear_all_records()
+        elif hasattr(knowledge_store, 'clear'):
+            knowledge_store.clear()
+        else:
+            # If no clear method, recreate the store
+            knowledge_store.records.clear() if hasattr(knowledge_store, 'records') else None
+        
+        # Clear cache if available
+        if cache_manager and project_id:
+            cache_manager.clear_namespace(f"project_{project_id}")
+        
+        # Clear any trace data
+        from sentientresearchagent.hierarchical_agent_framework.tracing.manager import trace_manager
+        if hasattr(trace_manager, 'clear_all_traces'):
+            trace_manager.clear_all_traces()
+        
+        logger.info("✅ All execution state cleared successfully")

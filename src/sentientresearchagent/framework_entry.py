@@ -10,6 +10,7 @@ from datetime import datetime
 import uuid
 import asyncio
 import nest_asyncio
+from asyncio import Lock
 
 from loguru import logger
 
@@ -160,6 +161,9 @@ class SentientAgent:
         self.cache_manager = self.system_manager.cache_manager
         self.error_handler = self.system_manager.error_handler
         
+        # THE FIX: Add a lock to the agent instance to serialize executions
+        self._execution_lock = Lock()
+        
         if not all([
             self.config, self.task_graph, self.knowledge_store, self.state_manager, 
             self.hitl_coordinator, self.node_processor, self.execution_engine, 
@@ -278,12 +282,6 @@ class SentientAgent:
                            f"root_only: {getattr(self.config.execution, 'hitl_root_plan_only', False)}")
             
             try:
-                # Clear previous state
-                self.task_graph.nodes.clear()
-                self.task_graph.graphs.clear()
-                self.task_graph.root_graph_id = None
-                self.task_graph.overall_project_goal = None
-                
                 # Run the async execution - JUPYTER SAFE
                 execution_result = _run_async_safely(self._run_async_execution(goal, max_steps))
                 
@@ -342,16 +340,28 @@ class SentientAgent:
     
     async def _run_async_execution(self, goal: str, max_steps: int):
         """Run the async execution flow"""
-        # ExecutionEngine is obtained from self.system_manager.execution_engine
-        if not self.execution_engine:
-            logger.error("ExecutionEngine not available on SystemManager for _run_async_execution")
-            # This would be a critical error in SystemManager's initialization
-            raise SentientError("ExecutionEngine not initialized properly.")
+        # THE FIX: Use a lock to ensure only one execution runs at a time, preventing state corruption.
+        async with self._execution_lock:
+            # Clear previous state right before execution, inside the lock
+            logger.debug("Execution lock acquired. Clearing previous task graph state.")
+            self.task_graph.nodes.clear()
+            self.task_graph.graphs.clear()
+            self.task_graph.root_graph_id = None
+            self.task_graph.overall_project_goal = None
+            # Also clear the knowledge store to prevent context from leaking between runs
+            if hasattr(self.knowledge_store, 'clear_all_records'):
+                 self.knowledge_store.clear_all_records()
             
-        return await self.execution_engine.run_project_flow(
-            root_goal=goal,
-            max_steps=max_steps
-        )
+            # ExecutionEngine is obtained from self.system_manager.execution_engine
+            if not self.execution_engine:
+                logger.error("ExecutionEngine not available on SystemManager for _run_async_execution")
+                # This would be a critical error in SystemManager's initialization
+                raise SentientError("ExecutionEngine not initialized properly.")
+                
+            return await self.execution_engine.run_project_flow(
+                root_goal=goal,
+                max_steps=max_steps
+            )
     
     def stream_execution(self, goal: str, **options) -> Iterator[Dict[str, Any]]:
         """
@@ -399,12 +409,6 @@ class SentientAgent:
                     'progress': 10,
                     'hitl_enabled': self.config.execution.enable_hitl
                 }
-                
-                # Clear previous state
-                self.task_graph.nodes.clear()
-                self.task_graph.graphs.clear()
-                self.task_graph.root_graph_id = None
-                self.task_graph.overall_project_goal = None
                 
                 # Run execution with periodic updates - JUPYTER SAFE
                 result = _run_async_safely(self._run_async_execution(goal, max_steps))
