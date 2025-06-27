@@ -1,6 +1,12 @@
 from typing import Dict, Optional, List
 from pydantic import BaseModel
-from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskType
+from loguru import logger
+
+# Import TaskType from the centralized types module
+from .types import TaskType
+
+# REMOVED: These imports create a circular dependency with profile_loader.py
+# from .agent_configs.profile_loader import load_profile, list_profiles
 
 
 class AgentBlueprint(BaseModel):
@@ -100,8 +106,28 @@ AVAILABLE_AGENT_BLUEPRINTS: List[AgentBlueprint] = [
     DEFAULT_GENERAL_AGENT_BLUEPRINT,
 ]
 
-def get_blueprint_by_name(name: str) -> Optional[AgentBlueprint]:
-    for bp in AVAILABLE_AGENT_BLUEPRINTS:
-        if bp.name == name:
-            return bp
-    return None
+def get_blueprint_by_name(profile_name: str) -> Optional[AgentBlueprint]:
+    """
+    Loads an agent blueprint by its profile name.
+    
+    DEPRECATED: This function's presence here creates a circular dependency.
+    Use ProfileLoader().load_profile(profile_name) from a higher-level module instead.
+    """
+    logger.warning("get_blueprint_by_name is deprecated here due to circular imports. Use ProfileLoader directly.")
+    # To prevent a hard crash, we do a local import, but this is not ideal.
+    from .agent_configs.profile_loader import load_profile
+    return load_profile(profile_name)
+
+
+def get_available_blueprints() -> Dict[str, AgentBlueprint]:
+    """
+    Loads all available blueprints from profiles.
+    
+    DEPRECATED: This function's presence here creates a circular dependency.
+    Use ProfileLoader().load_all_profiles() from a higher-level module instead.
+    """
+    logger.warning("get_available_blueprints is deprecated here due to circular imports. Use ProfileLoader directly.")
+    # To prevent a hard crash, we do a local import, but this is not ideal.
+    from .agent_configs.profile_loader import ProfileLoader
+    loader = ProfileLoader()
+    return loader.load_all_profiles()

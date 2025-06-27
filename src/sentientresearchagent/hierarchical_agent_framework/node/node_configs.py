@@ -1,7 +1,13 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 class NodeProcessorConfig(BaseModel):
-    enable_hitl_after_plan_generation: bool = True 
+    """Configuration for the NodeProcessor and its components."""
+    
+    # Master switch for HITL feature
+    enable_hitl: bool = True
+    
+    # Specific HITL checkpoints
+    enable_hitl_after_plan_generation: bool = True
     enable_hitl_after_atomizer: bool = False
     enable_hitl_before_execute: bool = False
     enable_hitl_after_modified_plan: bool = True

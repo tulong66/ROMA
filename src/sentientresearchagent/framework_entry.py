@@ -96,6 +96,9 @@ def create_node_processor_config_from_main_config(main_config: "SentientConfig")
     
     node_config = NodeProcessorConfig()
     
+    # THE CORRECT FIX: Set the master HITL switch on the NodeProcessorConfig
+    node_config.enable_hitl = main_config.execution.enable_hitl
+    
     # Set max_planning_layer from max_recursion_depth
     node_config.max_planning_layer = getattr(main_config.execution, 'max_recursion_depth', 5)
     

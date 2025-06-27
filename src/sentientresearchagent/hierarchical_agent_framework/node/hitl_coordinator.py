@@ -88,6 +88,10 @@ class HITLCoordinator:
     async def review_plan_generation(
         self, node: TaskNode, plan_output: PlanOutput, planner_input: Union[PlannerInput, PlanModifierInput], is_replan: bool = False
     ) -> Dict[str, Any]:
+        # THE CORRECT FIX: Check the master HITL switch first.
+        if not self.config.enable_hitl:
+             return {"status": "approved", "message": "HITL skipped (master setting is disabled)."}
+
         # Check HITL configuration based on mode
         if hasattr(self.config, 'hitl_root_plan_only') and self.config.hitl_root_plan_only:
             # ROOT-ONLY MODE: Only review root node (layer 0) initial plans and replans
@@ -148,6 +152,10 @@ class HITLCoordinator:
         self, node: TaskNode, original_goal: str, updated_goal: str, 
         is_atomic: bool, proposed_next_action: str, context_items: List = None
     ) -> Dict[str, Any]:
+        # THE CORRECT FIX: Check the master HITL switch first.
+        if not self.config.enable_hitl:
+             return {"status": "approved", "message": "HITL skipped (master setting is disabled)."}
+
         # Check HITL configuration based on mode
         if hasattr(self.config, 'hitl_root_plan_only') and self.config.hitl_root_plan_only:
             # ROOT-ONLY MODE: NEVER review atomizer decisions (only plan generation)
@@ -179,6 +187,10 @@ class HITLCoordinator:
     async def review_before_execution(
         self, node: TaskNode, agent_task_input: AgentTaskInput
     ) -> Dict[str, Any]:
+        # THE CORRECT FIX: Check the master HITL switch first.
+        if not self.config.enable_hitl:
+             return {"status": "approved", "message": "HITL skipped (master setting is disabled)."}
+
         # Check HITL configuration based on mode
         if hasattr(self.config, 'hitl_root_plan_only') and self.config.hitl_root_plan_only:
             # ROOT-ONLY MODE: Only review root node before execution
@@ -207,6 +219,10 @@ class HITLCoordinator:
     async def review_modified_plan(
         self, node: TaskNode, modified_plan: PlanOutput, replan_attempt_count: int
     ) -> Dict[str, Any]:
+        # THE CORRECT FIX: Check the master HITL switch first.
+        if not self.config.enable_hitl:
+             return {"status": "approved", "message": "HITL skipped (master setting is disabled)."}
+             
         # COMPREHENSIVE DEBUG: Log all HITL decision factors
         logger.debug(f"🐛 HITL DEBUG [review_modified_plan]: Node {node.task_id} (layer {node.layer})")
         logger.debug(f"🐛 HITL DEBUG: config.hitl_root_plan_only = {getattr(self.config, 'hitl_root_plan_only', 'NOT_SET')}")
