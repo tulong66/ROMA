@@ -421,6 +421,9 @@ class AgentFactory:
                 agno_kwargs.update(additional_params)
                 logger.debug(f"Added additional AgnoAgent params for {agent_config.name}: {list(additional_params.keys())}")
             
+            # Log the arguments before creating the agent to verify
+            logger.info(f"Creating AgnoAgent for {agent_config.name} with kwargs: {agno_kwargs}")
+
             # Create AgnoAgent
             agno_agent = AgnoAgent(**agno_kwargs)
             

@@ -82,6 +82,8 @@ agents:
       provider: "litellm"
       model_id: "openrouter/google/gemini-2.5-pro" #"openrouter/anthropic/claude-sonnet-4"
       # temperature: 0.7
+    agno_params:
+      reasoning: true
     prompt_source: "prompts.planner_prompts.DEEP_RESEARCH_PLANNER_SYSTEM_MESSAGE"
     response_model: "PlanOutput"
     registration:
