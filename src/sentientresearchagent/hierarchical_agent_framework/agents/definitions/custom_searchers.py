@@ -31,6 +31,7 @@ from sentientresearchagent.hierarchical_agent_framework.agents.base_adapter impo
 # Use TYPE_CHECKING to avoid circular imports
 if TYPE_CHECKING:
     from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode
+    from sentientresearchagent.hierarchical_agent_framework.tracing.manager import TraceManager
 
 load_dotenv()
 
@@ -66,14 +67,14 @@ class OpenAICustomSearchAdapter(BaseAdapter):
         self.model_id = model_id
         logger.info(f"Initialized {self.agent_name} with model: {self.model_id} (API key: {api_key[:10]}...{api_key[-4:]})")
 
-    async def process(self, node: TaskNode, agent_task_input: AgentTaskInput) -> Dict:
+    async def process(self, node: TaskNode, agent_task_input: AgentTaskInput, trace_manager: "TraceManager") -> Dict:
         """
         Processes the task by extracting the goal as a query, calling OpenAI with
         web_search_preview using client.responses.create.
         Prioritizes response.output_text, and optionally parses nested text/annotations.
         """
         # Import trace_manager here to avoid circular imports
-        from sentientresearchagent.hierarchical_agent_framework.tracing.manager import trace_manager
+        from sentientresearchagent.hierarchical_agent_framework.tracing.manager import TraceManager
         
         query = agent_task_input.current_goal
         logger.info(f"  Adapter '{self.adapter_name}': Processing node {node.task_id} (Query: '{query[:100]}...') with OpenAI model {self.model_id}")
@@ -234,14 +235,14 @@ class GeminiCustomSearchAdapter(BaseAdapter):
         self.model_id = model_id
         logger.info(f"Initialized {self.agent_name} with model: {self.model_id} (API key: {api_key[:10]}...{api_key[-4:]})")
 
-    async def process(self, node: TaskNode, agent_task_input: AgentTaskInput) -> Dict:
+    async def process(self, node: TaskNode, agent_task_input: AgentTaskInput, trace_manager: "TraceManager") -> Dict:
         """
         Processes the task by extracting the goal as a query, calling Gemini with
         google_search tool using client.aio.models.generate_content (async API).
         Parses response.text and grounding_metadata for citations.
         """
         # Import trace_manager here to avoid circular imports
-        from sentientresearchagent.hierarchical_agent_framework.tracing.manager import trace_manager
+        from sentientresearchagent.hierarchical_agent_framework.tracing.manager import TraceManager
         
         query = agent_task_input.current_goal
         logger.info(f"  Adapter '{self.adapter_name}': Processing node {node.task_id} (Query: '{query[:100]}...') with Gemini model {self.model_id}")

@@ -27,7 +27,7 @@ from .node_creation_utils import SubNodeCreator
 from .node_atomizer_utils import NodeAtomizer
 from .node_configs import NodeProcessorConfig
 from sentientresearchagent.config import SentientConfig
-from ..tracing.manager import trace_manager
+from ..tracing.manager import TraceManager
 
 if TYPE_CHECKING:
     from sentientresearchagent.hierarchical_agent_framework.graph.task_graph import TaskGraph
@@ -47,6 +47,7 @@ class ProcessorContext:
                  hitl_coordinator: HITLCoordinator,
                  sub_node_creator: SubNodeCreator,
                  node_atomizer: NodeAtomizer,
+                 trace_manager: TraceManager,
                  current_agent_blueprint: Optional[AgentBlueprint] = None):
         self.task_graph = task_graph
         self.knowledge_store = knowledge_store
@@ -55,6 +56,7 @@ class ProcessorContext:
         self.hitl_coordinator = hitl_coordinator
         self.sub_node_creator = sub_node_creator
         self.node_atomizer = node_atomizer
+        self.trace_manager = trace_manager
         self.current_agent_blueprint = current_agent_blueprint
 
 
@@ -68,6 +70,7 @@ class NodeProcessor:
                  task_graph: "TaskGraph",
                  knowledge_store: KnowledgeStore,
                  agent_registry: AgentRegistry,
+                 trace_manager: TraceManager,
                  config: Optional[SentientConfig] = None,
                  node_processor_config: Optional[NodeProcessorConfig] = None,
                  agent_blueprint_name: Optional[str] = None,
@@ -80,6 +83,7 @@ class NodeProcessor:
         self.task_graph = task_graph
         self.knowledge_store = knowledge_store
         self.agent_registry = agent_registry
+        self.trace_manager = trace_manager
         
         active_blueprint: Optional[AgentBlueprint] = None
         
@@ -110,6 +114,7 @@ class NodeProcessor:
             hitl_coordinator=self.hitl_coordinator,
             sub_node_creator=self.sub_node_creator,
             node_atomizer=self.node_atomizer,
+            trace_manager=self.trace_manager,
             current_agent_blueprint=active_blueprint
         )
 
@@ -138,7 +143,7 @@ class NodeProcessor:
         logger.info(f"NodeProcessor: Processing node {node.task_id} (Status: {node.status.name}, Type: {node.node_type}, Goal: '{node.goal[:30]}...')")
         
         # Create trace when node starts processing (if not already exists)
-        trace_manager.create_trace(node.task_id, node.goal)
+        self.trace_manager.create_trace(node.task_id, node.goal)
         
         handler = self.handler_strategies.get(node.status)
 

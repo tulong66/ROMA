@@ -7,7 +7,7 @@ from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models 
 )
 from .node_configs import NodeProcessorConfig # For HITL feature flags
 from sentientresearchagent.hierarchical_agent_framework.utils.hitl_utils import request_human_review
-from sentientresearchagent.hierarchical_agent_framework.agents.utils import get_context_summary, TARGET_WORD_COUNT_FOR_CTX_SUMMARIES
+# get_context_summary and TARGET_WORD_COUNT_FOR_CTX_SUMMARIES moved to local imports to avoid circular import
 from sentientresearchagent.hierarchical_agent_framework.context.knowledge_store import KnowledgeStore
 from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskType # For type hinting
 
@@ -88,6 +88,8 @@ class HITLCoordinator:
     async def review_plan_generation(
         self, node: TaskNode, plan_output: PlanOutput, planner_input: Union[PlannerInput, PlanModifierInput], is_replan: bool = False
     ) -> Dict[str, Any]:
+        from sentientresearchagent.hierarchical_agent_framework.agents.utils import get_context_summary, TARGET_WORD_COUNT_FOR_CTX_SUMMARIES
+        
         # THE CORRECT FIX: Check the master HITL switch first.
         if not self.config.enable_hitl:
              return {"status": "approved", "message": "HITL skipped (master setting is disabled)."}
@@ -152,6 +154,8 @@ class HITLCoordinator:
         self, node: TaskNode, original_goal: str, updated_goal: str, 
         is_atomic: bool, proposed_next_action: str, context_items: List = None
     ) -> Dict[str, Any]:
+        from sentientresearchagent.hierarchical_agent_framework.agents.utils import get_context_summary
+        
         # THE CORRECT FIX: Check the master HITL switch first.
         if not self.config.enable_hitl:
              return {"status": "approved", "message": "HITL skipped (master setting is disabled)."}
@@ -187,6 +191,8 @@ class HITLCoordinator:
     async def review_before_execution(
         self, node: TaskNode, agent_task_input: AgentTaskInput
     ) -> Dict[str, Any]:
+        from sentientresearchagent.hierarchical_agent_framework.agents.utils import get_context_summary, TARGET_WORD_COUNT_FOR_CTX_SUMMARIES
+        
         # THE CORRECT FIX: Check the master HITL switch first.
         if not self.config.enable_hitl:
              return {"status": "approved", "message": "HITL skipped (master setting is disabled)."}

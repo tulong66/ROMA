@@ -52,6 +52,7 @@ class ProjectService:
         # Store project-specific components
         self.project_graphs: Dict[str, Dict[str, Any]] = {}
         self.project_configs: Dict[str, Any] = {}
+        self.project_execution_contexts: Dict[str, "ProjectExecutionContext"] = {}
         
         # Track current display state to prevent conflicts
         self.current_display_project_id: Optional[str] = None
@@ -533,6 +534,9 @@ class ProjectService:
                 update_callback=update_callback
             )
             
+            # Store the full project execution context for trace access
+            self.project_execution_contexts[project_id] = project_context
+            
             # Store the project execution context components
             self.project_graphs[project_id] = project_context.get_components()
             
@@ -541,6 +545,18 @@ class ProjectService:
                        f"({config_type} config, HITL: {'enabled' if custom_config.execution.enable_hitl else 'disabled'})")
         
         return self.project_graphs[project_id]
+    
+    def get_project_execution_context(self, project_id: str) -> Optional["ProjectExecutionContext"]:
+        """
+        Get the project execution context for accessing project-specific components like TraceManager.
+        
+        Args:
+            project_id: Project identifier
+            
+        Returns:
+            ProjectExecutionContext object or None if not found
+        """
+        return self.project_execution_contexts.get(project_id)
     
     def sync_project_to_display(self, project_id: str) -> bool:
         """

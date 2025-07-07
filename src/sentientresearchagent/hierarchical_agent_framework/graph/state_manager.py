@@ -1,9 +1,10 @@
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 from collections import deque
 from loguru import logger
 
-from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode
-from sentientresearchagent.hierarchical_agent_framework.graph.task_graph import TaskGraph
+if TYPE_CHECKING:
+    from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode
+    from sentientresearchagent.hierarchical_agent_framework.graph.task_graph import TaskGraph
 # Import from our consolidated types module
 from sentientresearchagent.hierarchical_agent_framework.types import (
     TaskStatus, NodeType, safe_task_status, safe_node_type, 
@@ -13,10 +14,10 @@ from sentientresearchagent.hierarchical_agent_framework.types import (
 class StateManager:
     """Handles logic for checking if nodes can transition state."""
 
-    def __init__(self, task_graph: TaskGraph):
+    def __init__(self, task_graph: "TaskGraph"):
         self.task_graph = task_graph
 
-    def _find_container_graph_id_for_node(self, node: TaskNode) -> Optional[str]:
+    def _find_container_graph_id_for_node(self, node: "TaskNode") -> Optional[str]:
         """
         Helper to find which graph contains a node.
         A node lives in the sub_graph of its parent.
@@ -43,7 +44,7 @@ class StateManager:
             logger.error(f"StateManager: Node {node.task_id} could not be located in any graph.")
             return None
 
-    def _check_parent_conditions_for_ready(self, node: TaskNode) -> bool:
+    def _check_parent_conditions_for_ready(self, node: "TaskNode") -> bool:
         """Checks if the parent node's status allows the current node to become READY."""
         if node.parent_node_id:
             parent_node = self.task_graph.get_node(node.parent_node_id)
@@ -52,7 +53,7 @@ class StateManager:
         # If no parent_node_id, it's a root node, so parent conditions are implicitly met.
         return True
 
-    def _check_predecessor_conditions_for_ready(self, node: TaskNode, container_graph_id: str) -> bool:
+    def _check_predecessor_conditions_for_ready(self, node: "TaskNode", container_graph_id: str) -> bool:
         """Checks if all predecessors of the node in its container graph are DONE."""
         predecessors = self.task_graph.get_node_predecessors(container_graph_id, node.task_id)
         if not predecessors:  # No predecessors, so dependency condition is met
@@ -61,7 +62,7 @@ class StateManager:
         all_preds_done = all(pred.status == TaskStatus.DONE for pred in predecessors)
         return all_preds_done
 
-    def can_become_ready(self, node: TaskNode) -> bool:
+    def can_become_ready(self, node: "TaskNode") -> bool:
         """Checks if a PENDING node can transition to READY."""
         if node.status != TaskStatus.PENDING:
             return False
@@ -76,7 +77,7 @@ class StateManager:
 
         return self._check_predecessor_conditions_for_ready(node, container_graph_id)
 
-    def can_aggregate(self, node: TaskNode) -> bool:
+    def can_aggregate(self, node: "TaskNode") -> bool:
         """Checks if a PLAN_DONE node (which is a PLAN type node) can transition to AGGREGATING."""
         
         # Use safe conversion for better type handling
@@ -116,13 +117,13 @@ class StateManager:
             
         return all_sub_finished
 
-    def can_transition_to_done(self, node: TaskNode) -> bool:
+    def can_transition_to_done(self, node: "TaskNode") -> bool:
         """Check if a node can transition to DONE status."""
         # Only certain statuses can transition to DONE
         valid_statuses = {TaskStatus.RUNNING, TaskStatus.AGGREGATING}
         return node.status in valid_statuses
 
-    def can_transition_to_failed(self, node: TaskNode) -> bool:
+    def can_transition_to_failed(self, node: "TaskNode") -> bool:
         """Check if a node can transition to FAILED status."""
         # Any non-terminal status can transition to FAILED
         return not is_terminal_status(node.status)

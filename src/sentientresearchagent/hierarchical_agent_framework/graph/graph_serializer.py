@@ -1,4 +1,4 @@
-from typing import Dict, Any, TYPE_CHECKING
+from typing import Dict, Any, TYPE_CHECKING, Union, List
 from enum import Enum
 from pydantic import BaseModel
 
@@ -99,8 +99,58 @@ class GraphSerializer:
             "timestamp_completed": node_obj.timestamp_completed.isoformat() if node_obj.timestamp_completed else None,
             "model_display": model_display,
             "model_info": model_info,
-            "execution_details": execution_details
+            "execution_details": execution_details,
+            
+            # CRITICAL FIX: Include aux_data for frontend access, but process Pydantic models
+            "aux_data": self._process_aux_data(node_obj.aux_data)
         }
+
+    def _process_aux_data(self, aux_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Process aux_data to convert Pydantic models to JSON-serializable dictionaries.
+        
+        Args:
+            aux_data: The auxiliary data dictionary from a TaskNode
+            
+        Returns:
+            A processed dictionary where Pydantic models are converted to dicts
+        """
+        if not aux_data:
+            return {}
+            
+        processed = {}
+        for key, value in aux_data.items():
+            processed[key] = self._process_value(value)
+        return processed
+    
+    def _process_value(self, value: Any) -> Any:
+        """
+        Recursively process a value to convert Pydantic models to dicts.
+        
+        Args:
+            value: The value to process
+            
+        Returns:
+            A JSON-serializable version of the value
+        """
+        if isinstance(value, BaseModel):
+            # Convert Pydantic model to dictionary
+            try:
+                return value.model_dump(mode='json')
+            except AttributeError:  # For older Pydantic versions
+                return value.dict()
+        elif isinstance(value, dict):
+            # Recursively process dictionary values
+            return {k: self._process_value(v) for k, v in value.items()}
+        elif isinstance(value, (list, tuple)):
+            # Recursively process list/tuple items
+            return [self._process_value(item) for item in value]
+        elif isinstance(value, Enum):
+            # Convert enums to their values
+            return value.value
+        else:
+            # Return as-is for basic types (str, int, float, bool, None)
+            return value
 
     def to_visualization_dict(self) -> Dict[str, Any]:
         """Serializes the entire task graph."""

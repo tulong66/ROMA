@@ -11,7 +11,7 @@ from .hitl_coordinator import HITLCoordinator
 # Corrected import: 'apply_blueprint_to_node' is in 'registry_integration', not 'inode_handler'
 from .inode_handler import ProcessorContext
 from ..agent_configs.registry_integration import apply_blueprint_to_node
-from ..tracing.manager import trace_manager
+# TraceManager is now accessed via ProcessorContext instead of global singleton
 
 if TYPE_CHECKING:
     from sentientresearchagent.hierarchical_agent_framework.graph.task_graph import TaskGraph
@@ -38,7 +38,7 @@ class NodeAtomizer:
         logger.info(f"    🐛 DEBUG: atomize_node called for {node.task_id}")
         
         # Start tracing for atomization stage
-        stage = trace_manager.start_stage(
+        stage = context.trace_manager.start_stage(
             node_id=node.task_id,
             stage_name="atomization",
             agent_name=node.agent_name,
@@ -127,7 +127,7 @@ class NodeAtomizer:
                     stage.agent_name = adapter_used_name
                 
                 logger.info(f"    🐛 DEBUG: About to call atomizer_adapter.process")
-                atomizer_output: Optional[AtomizerOutput] = await atomizer_adapter.process(node, atomizer_input_model)
+                atomizer_output: Optional[AtomizerOutput] = await atomizer_adapter.process(node, atomizer_input_model, context.trace_manager)
                 logger.info(f"    🐛 DEBUG: atomizer_adapter.process returned: {atomizer_output}")
                 
                 if atomizer_output is None:
@@ -135,7 +135,7 @@ class NodeAtomizer:
                     logger.warning(f"    NodeAtomizer: Atomizer for {node.task_id} returned None.")
                     
                     # Complete tracing stage with error
-                    trace_manager.complete_stage(
+                    context.trace_manager.complete_stage(
                         node_id=node.task_id,
                         stage_name="atomization",
                         error=error_msg
@@ -189,7 +189,7 @@ class NodeAtomizer:
                     logger.info(f"NodeAtomizer: HITL review for atomizer output of {node.task_id} was not 'approved'. Status is {node.status}. HITL outcome: {hitl_outcome_atomizer}")
                     
                     # Complete tracing stage with HITL rejection
-                    trace_manager.complete_stage(
+                    context.trace_manager.complete_stage(
                         node_id=node.task_id,
                         stage_name="atomization",
                         error=f"HITL rejected atomizer output: {hitl_outcome_atomizer.get('status', 'unknown')}"
@@ -197,7 +197,7 @@ class NodeAtomizer:
                     return None 
                 
                 # Complete tracing stage successfully
-                trace_manager.complete_stage(
+                context.trace_manager.complete_stage(
                     node_id=node.task_id,
                     stage_name="atomization",
                     output_data=f"Determined as {action_to_take.name}, is_atomic: {atomizer_output.is_atomic}"
@@ -225,7 +225,7 @@ class NodeAtomizer:
                     result = NodeType.EXECUTE
                 
                 # Complete tracing stage with fallback result
-                trace_manager.complete_stage(
+                context.trace_manager.complete_stage(
                     node_id=node.task_id,
                     stage_name="atomization",
                     output_data=f"No atomizer found, fallback to {result.name}"
@@ -238,7 +238,7 @@ class NodeAtomizer:
                 logger.info(f"🚨 SEARCH NODE OVERRIDE: Node {node.task_id} is SEARCH type - forcing EXECUTE to prevent incorrect planning/aggregation")
                 
                 # Complete tracing stage  
-                trace_manager.complete_stage(
+                context.trace_manager.complete_stage(
                     node_id=node.task_id,
                     stage_name="atomization",
                     output_data="SEARCH node forced to EXECUTE (skipped atomizer)"
@@ -248,7 +248,7 @@ class NodeAtomizer:
                 
         except Exception as e:
             # Complete tracing stage with error
-            trace_manager.complete_stage(
+            context.trace_manager.complete_stage(
                 node_id=node.task_id,
                 stage_name="atomization",
                 error=str(e)

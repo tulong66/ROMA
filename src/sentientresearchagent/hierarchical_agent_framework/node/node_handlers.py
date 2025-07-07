@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from .inode_handler import INodeHandler, ProcessorContext
 from ..context.enhanced_context_builder import resolve_context_for_agent_with_parents
 from ..context.smart_context_utils import get_smart_child_context
-from ..tracing.manager import trace_manager
+# TraceManager is now accessed via ProcessorContext instead of global singleton
 
 
 def get_planner_from_blueprint(blueprint: 'AgentBlueprint', task_type: TaskType, fallback_name: Optional[str] = None, node: Optional[TaskNode] = None) -> Optional[str]:
@@ -119,7 +119,7 @@ class ReadyPlanHandler(INodeHandler):
         logger.info(f"    ReadyPlanHandler: Planning for node {node.task_id} (Blueprint: {blueprint_name_log}, Goal: '{node.goal[:50]}...', Original Agent Name at Entry: {agent_name_at_entry})")
         
         # Start tracing for planning stage
-        stage = trace_manager.start_stage(
+        stage = context.trace_manager.start_stage(
             node_id=node.task_id,
             stage_name="planning",
             agent_name=agent_name_at_entry,
@@ -168,7 +168,7 @@ class ReadyPlanHandler(INodeHandler):
                 logger.error(error_msg)
                 
                 # Complete tracing stage with error
-                trace_manager.complete_stage(
+                context.trace_manager.complete_stage(
                     node_id=node.task_id,
                     stage_name="planning",
                     error=error_msg
@@ -206,14 +206,14 @@ class ReadyPlanHandler(INodeHandler):
                     "overall_project_goal": context.task_graph.overall_project_goal[:200] if context.task_graph.overall_project_goal else None
                 }
             
-            plan_output: Optional[PlanOutput] = await planner_adapter.process(node, agent_task_input_model)
+            plan_output: Optional[PlanOutput] = await planner_adapter.process(node, agent_task_input_model, context.trace_manager)
 
             if plan_output is None or not plan_output.sub_tasks:
                 if node.status not in [TaskStatus.CANCELLED, TaskStatus.FAILED]:
                     logger.warning(f"    Node {node.task_id} (PLAN): Planner returned no sub-tasks or None.")
                     if plan_output is None:
                         error_msg = "Planner failed to produce an output."
-                        trace_manager.complete_stage(
+                        context.trace_manager.complete_stage(
                             node_id=node.task_id,
                             stage_name="planning",
                             error=error_msg
@@ -226,7 +226,7 @@ class ReadyPlanHandler(INodeHandler):
                         node.update_status(TaskStatus.PLAN_DONE)
                         
                         # Complete tracing stage successfully
-                        trace_manager.complete_stage(
+                        context.trace_manager.complete_stage(
                             node_id=node.task_id,
                             stage_name="planning",
                             output_data="Task determined to be atomic"
@@ -253,7 +253,7 @@ class ReadyPlanHandler(INodeHandler):
                 context.knowledge_store.add_or_update_record_from_node(node)
                 
                 # Complete tracing stage with modification request
-                trace_manager.complete_stage(
+                context.trace_manager.complete_stage(
                     node_id=node.task_id,
                     stage_name="planning",
                     output_data=f"User requested modification: {modification_instructions[:200]}"
@@ -282,6 +282,10 @@ class ReadyPlanHandler(INodeHandler):
             
             # Store the plan result and update status
             node.result = plan_output
+            
+            # CRITICAL FIX: Store full result in aux_data for consistency
+            node.aux_data['full_result'] = plan_output
+            
             node.output_summary = f"Planned with {len(plan_output.sub_tasks)} sub-tasks."
             node.update_status(TaskStatus.PLAN_DONE)
             
@@ -289,7 +293,7 @@ class ReadyPlanHandler(INodeHandler):
             
             # Complete tracing stage successfully
             sub_task_count = len(plan_output.sub_tasks) if plan_output.sub_tasks else 0
-            trace_manager.complete_stage(
+            context.trace_manager.complete_stage(
                 node_id=node.task_id,
                 stage_name="planning",
                 output_data=f"Successfully created {sub_task_count} sub-tasks"
@@ -297,7 +301,7 @@ class ReadyPlanHandler(INodeHandler):
             
         except Exception as e:
             # Complete tracing stage with error
-            trace_manager.complete_stage(
+            context.trace_manager.complete_stage(
                 node_id=node.task_id,
                 stage_name="planning",
                 error=str(e)
@@ -312,7 +316,7 @@ class ReadyExecuteHandler(INodeHandler):
         logger.info(f"    ReadyExecuteHandler: Executing node {node.task_id} (Blueprint: {blueprint_name_log}, Goal: '{node.goal[:50]}...', Original Agent Name at Entry: {agent_name_at_entry})")
 
         # CRITICAL FIX: Start execution stage here (base adapter will update it)
-        execution_stage = trace_manager.start_stage(
+        execution_stage = context.trace_manager.start_stage(
             node_id=node.task_id,
             stage_name="execution",
             agent_name=agent_name_at_entry,
@@ -339,7 +343,7 @@ class ReadyExecuteHandler(INodeHandler):
 
             # Update trace with input context
             if execution_stage:
-                trace_manager.update_stage(
+                context.trace_manager.update_stage(
                     node_id=node.task_id,
                     stage_name="execution",
                     input_context=agent_task_input_model.model_dump(),
@@ -355,7 +359,7 @@ class ReadyExecuteHandler(INodeHandler):
                 error_msg = f"HITL execution not approved: {status}"
                 
                 # Complete tracing stage with error
-                trace_manager.complete_stage(
+                context.trace_manager.complete_stage(
                     node_id=node.task_id,
                     stage_name="execution",
                     error=error_msg
@@ -399,7 +403,7 @@ class ReadyExecuteHandler(INodeHandler):
                 logger.error(error_msg)
                 
                 # Complete tracing stage with error
-                trace_manager.complete_stage(
+                context.trace_manager.complete_stage(
                     node_id=node.task_id,
                     stage_name="execution",
                     error=error_msg
@@ -412,7 +416,7 @@ class ReadyExecuteHandler(INodeHandler):
             logger.info(f"    ReadyExecuteHandler: Using EXECUTE adapter '{adapter_used_name}' for node {node.task_id}")
 
             # Update trace with adapter info
-            trace_manager.update_stage(
+            context.trace_manager.update_stage(
                 node_id=node.task_id,
                 stage_name="execution",
                 agent_name=adapter_used_name,
@@ -422,7 +426,7 @@ class ReadyExecuteHandler(INodeHandler):
             node.update_status(TaskStatus.RUNNING)
             
             # IMPORTANT: Base adapter will update the trace stage during execution
-            execution_result = await executor_adapter.process(node, agent_task_input_model)
+            execution_result = await executor_adapter.process(node, agent_task_input_model, context.trace_manager)
 
             if execution_result is not None:
                 node.result = execution_result
@@ -437,7 +441,7 @@ class ReadyExecuteHandler(INodeHandler):
                     node.output_summary = f"Search Results: {output_summary}"
                     
                     # Update trace with meaningful output
-                    trace_manager.update_stage(
+                    context.trace_manager.update_stage(
                         node_id=node.task_id,
                         stage_name="execution",
                         output_data=execution_result.output_text_with_citations,
@@ -451,7 +455,7 @@ class ReadyExecuteHandler(INodeHandler):
                     node.output_summary = output_summary
                     
                     # Update trace with structured output
-                    trace_manager.update_stage(
+                    context.trace_manager.update_stage(
                         node_id=node.task_id,
                         stage_name="execution",
                         output_data=dumped
@@ -462,7 +466,7 @@ class ReadyExecuteHandler(INodeHandler):
                     node.output_summary = output_summary
                     
                     # Update trace with string output
-                    trace_manager.update_stage(
+                    context.trace_manager.update_stage(
                         node_id=node.task_id,
                         stage_name="execution",
                         output_data=execution_result,
@@ -474,7 +478,7 @@ class ReadyExecuteHandler(INodeHandler):
                     node.output_summary = output_summary
                     
                     # Update trace with generic output
-                    trace_manager.update_stage(
+                    context.trace_manager.update_stage(
                         node_id=node.task_id,
                         stage_name="execution",
                         output_data=str(execution_result)[:1000]
@@ -494,7 +498,7 @@ class ReadyExecuteHandler(INodeHandler):
                     node.update_status(TaskStatus.FAILED, error_msg=error_msg)
                 
                 # Complete stage with error if adapter didn't do it
-                trace_manager.complete_stage(
+                context.trace_manager.complete_stage(
                     node_id=node.task_id,
                     stage_name="execution",
                     error=error_msg
@@ -502,7 +506,7 @@ class ReadyExecuteHandler(INodeHandler):
                 
         except Exception as e:
             # Complete tracing stage with error
-            trace_manager.complete_stage(
+            context.trace_manager.complete_stage(
                 node_id=node.task_id,
                 stage_name="execution",
                 error=str(e)
@@ -597,6 +601,14 @@ class AggregatingNodeHandler(INodeHandler):
         logger.info(f"  AggregatingNodeHandler: Handling AGGREGATING node {node.task_id} (Blueprint: {blueprint_name_log}, Goal: '{node.goal[:30]}...', Original Agent Name at Entry: {agent_name_at_entry})")
         
         try:
+            # CRITICAL FIX: Start tracing for aggregation stage
+            stage = context.trace_manager.start_stage(
+                node_id=node.task_id,
+                stage_name="aggregation",
+                agent_name=agent_name_at_entry,
+                adapter_name="AggregatingNodeHandler"
+            )
+            
             node.update_status(TaskStatus.RUNNING)
             child_results_for_aggregator: list = [] 
             
@@ -668,16 +680,40 @@ class AggregatingNodeHandler(INodeHandler):
                 final_tried_name = node.agent_name or lookup_name_for_aggregator or agent_name_at_entry
                 error_msg = f"No AGGREGATE adapter found for node {node.task_id} (Effective Agent Name tried: {final_tried_name or 'None'})"
                 logger.error(error_msg)
+                
+                # Complete tracing stage with error
+                context.trace_manager.complete_stage(
+                    node_id=node.task_id,
+                    stage_name="aggregation",
+                    error=error_msg
+                )
+                
                 node.update_status(TaskStatus.FAILED, error_msg=error_msg)
                 return
 
             adapter_used_name = getattr(aggregator_adapter, 'agent_name', type(aggregator_adapter).__name__)
             logger.info(f"    AggregatingNodeHandler: Invoking AGGREGATE adapter '{adapter_used_name}' for {node.task_id}")
 
-            aggregated_result = await aggregator_adapter.process(node, agent_task_input)
+            aggregated_result = await aggregator_adapter.process(node, agent_task_input, context.trace_manager)
+            
+            # CRITICAL FIX: Store full result in both locations for consistency
+            node.result = aggregated_result
+            node.aux_data['full_result'] = aggregated_result
+            
             node.output_type_description = "aggregated_text_result"
             node.update_status(TaskStatus.DONE, result=aggregated_result)
             logger.success(f"    AggregatingNodeHandler: Node {node.task_id} aggregation complete. Status: {node.status.name}.")
+            
+            # Stage completion is handled by BaseAdapter's process method
+            
+        except Exception as e:
+            # Complete tracing stage with error
+            context.trace_manager.complete_stage(
+                node_id=node.task_id,
+                stage_name="aggregation",
+                error=str(e)
+            )
+            raise
         finally:
             if node.agent_name != agent_name_at_entry:
                 logger.debug(f"        AggregatingNodeHandler: Restoring node.agent_name from '{node.agent_name}' to entry value '{agent_name_at_entry}' for node {node.task_id}")
@@ -765,7 +801,7 @@ class NeedsReplanNodeHandler(INodeHandler):
                     replan_details=node.replan_details, global_constraints=getattr(context.task_graph, 'global_constraints', [])
                 )
             node.input_payload_dict = input_for_replan.model_dump()
-            new_plan_output: Optional[PlanOutput] = await active_adapter.process(node, input_for_replan)
+            new_plan_output: Optional[PlanOutput] = await active_adapter.process(node, input_for_replan, context.trace_manager)
 
             if new_plan_output is None or not new_plan_output.sub_tasks:
                 logger.warning(f"    Node {node.task_id} (NEEDS_REPLAN): {'PlanModifier' if is_modifier_agent else 'Planner'} returned no sub-tasks.")
@@ -821,6 +857,10 @@ class NeedsReplanNodeHandler(INodeHandler):
             
             context.sub_node_creator.create_sub_nodes(node, new_plan_output)
             node.result = new_plan_output
+            
+            # CRITICAL FIX: Store full result in aux_data for consistency
+            node.aux_data['full_result'] = new_plan_output
+            
             node.output_summary = f"Replanned with {len(new_plan_output.sub_tasks)} sub-tasks after {node.replan_attempts} attempt(s)."
             node.replan_details = None 
             node.aux_data.pop('original_plan_for_modification', None) 

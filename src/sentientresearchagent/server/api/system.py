@@ -274,7 +274,12 @@ def create_system_routes(app, system_manager):
             if not project_id:
                 return jsonify({"error": "project_id required"}), 400
             
-            from ...hierarchical_agent_framework.tracing.manager import trace_manager
+            # Get project-specific trace manager
+            project_context = project_service.get_project_execution_context(project_id)
+            if not project_context:
+                return jsonify({"error": f"Project {project_id} not found"}), 404
+            
+            trace_manager = project_context.trace_manager
             
             created_traces = []
             for node_id in node_ids:

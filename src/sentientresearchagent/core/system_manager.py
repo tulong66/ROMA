@@ -17,12 +17,10 @@ from .error_handler import ErrorHandler, set_error_handler
 from ..hierarchical_agent_framework.graph.task_graph import TaskGraph
 from ..hierarchical_agent_framework.context.knowledge_store import KnowledgeStore
 from ..hierarchical_agent_framework.graph.state_manager import StateManager
-from ..hierarchical_agent_framework.node.hitl_coordinator import HITLCoordinator
-from ..hierarchical_agent_framework.node.node_processor import NodeProcessor
-from ..hierarchical_agent_framework.graph.execution_engine import ExecutionEngine
+# HITLCoordinator, NodeProcessor, and ExecutionEngine moved to TYPE_CHECKING to avoid circular import
 from ..framework_entry import create_node_processor_config_from_main_config
 from ..hierarchical_agent_framework.agent_configs.profile_loader import ProfileLoader
-from ..hierarchical_agent_framework.agents.registry import AgentRegistry
+# AgentRegistry moved to local import to avoid circular import
 from ..hierarchical_agent_framework.agent_configs.registry_integration import validate_profile
 
 # Import WebSocket HITL utils with error handling
@@ -60,6 +58,9 @@ except ImportError as e:
 
 if TYPE_CHECKING: # For type hints only
     from ..framework_entry import SimpleSentientAgent
+    from ..hierarchical_agent_framework.node.hitl_coordinator import HITLCoordinator
+    from ..hierarchical_agent_framework.node.node_processor import NodeProcessor
+    from ..hierarchical_agent_framework.graph.execution_engine import ExecutionEngine
 
 class SystemManager:
     """
@@ -79,14 +80,15 @@ class SystemManager:
             self.config = config
         
         # Create an isolated agent registry for this instance
+        from ..hierarchical_agent_framework.agents.registry import AgentRegistry
         self.agent_registry = AgentRegistry()
         
         self.task_graph: Optional[TaskGraph] = None
         self.knowledge_store: Optional[KnowledgeStore] = None
         self.state_manager: Optional[StateManager] = None
-        self.hitl_coordinator: Optional[HITLCoordinator] = None
-        self.node_processor: Optional[NodeProcessor] = None
-        self.execution_engine: Optional[ExecutionEngine] = None
+        self.hitl_coordinator: Optional["HITLCoordinator"] = None
+        self.node_processor: Optional["NodeProcessor"] = None
+        self.execution_engine: Optional["ExecutionEngine"] = None
         self.cache_manager = None
         self.error_handler: Optional[ErrorHandler] = None
         self.simple_agent_instance: "Optional[SimpleSentientAgent]" = None
@@ -267,7 +269,6 @@ class SystemManager:
         try:
             from ..hierarchical_agent_framework.node.hitl_coordinator import HITLCoordinator
             from ..hierarchical_agent_framework.node.node_processor import NodeProcessor
-            from ..hierarchical_agent_framework.graph.execution_engine import ExecutionEngine
             
             # Create node processor config
             node_processor_config = create_node_processor_config_from_main_config(self.config)
@@ -275,17 +276,23 @@ class SystemManager:
             # Create HITL coordinator
             self.hitl_coordinator = HITLCoordinator(config=node_processor_config)
             
+            # Create trace manager for backward compatibility (with default project ID)
+            from ..hierarchical_agent_framework.tracing.manager import TraceManager
+            self.trace_manager = TraceManager(project_id="system_manager_default")
+            
             # Create node processor
             self.node_processor = NodeProcessor(
                 task_graph=self.task_graph,
                 knowledge_store=self.knowledge_store,
                 agent_registry=self.agent_registry,
+                trace_manager=self.trace_manager,
                 config=self.config,
                 node_processor_config=node_processor_config,
                 agent_blueprint=None  # Will use active_profile_name from config
             )
             
             # Create execution engine
+            from ..hierarchical_agent_framework.graph.execution_engine import ExecutionEngine
             self.execution_engine = ExecutionEngine(
                 task_graph=self.task_graph,
                 state_manager=self.state_manager,
@@ -621,9 +628,7 @@ class SystemManager:
         if cache_manager and project_id:
             cache_manager.clear_namespace(f"project_{project_id}")
         
-        # Clear any trace data
-        from sentientresearchagent.hierarchical_agent_framework.tracing.manager import trace_manager
-        if hasattr(trace_manager, 'clear_all_traces'):
-            trace_manager.clear_all_traces()
+        # NOTE: Trace data is now project-specific and automatically cleaned up
+        # when ProjectExecutionContext instances are destroyed
         
         logger.info("✅ All execution state cleared successfully")

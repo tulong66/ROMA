@@ -26,10 +26,12 @@ from sentientresearchagent.exceptions import (
     AgentExecutionError, AgentTimeoutError, AgentRateLimitError,
     handle_exception, create_error_context
 )
-from sentientresearchagent.core.error_handler import handle_agent_errors, ErrorRecovery
-from sentientresearchagent.core.cache.decorators import cache_agent_response, cache_get, cache_set
+# Lazy import to avoid circular import
+# from sentientresearchagent.core.error_handler import handle_agent_errors, ErrorRecovery
+# Lazy import to avoid circular import
+# from sentientresearchagent.core.cache.decorators import cache_agent_response, cache_get, cache_set
 
-from ..tracing.manager import trace_manager
+from ..tracing.manager import TraceManager
 
 InputType = TypeVar('InputType')
 OutputType = TypeVar('OutputType')
@@ -50,7 +52,7 @@ class BaseAdapter(ABC):
         self.agent_name = agent_name
 
     @abstractmethod
-    async def process(self, node: TaskNode, agent_task_input: Any) -> Any: # Changed to async def
+    async def process(self, node: TaskNode, agent_task_input: Any, trace_manager: "TraceManager") -> Any: # Changed to async def
         """
         Processes a TaskNode using the adapted agent.
 
@@ -354,9 +356,9 @@ Ensure your output is a valid JSON conforming to the PlanOutput schema, containi
         logger.error(f"All strategies failed. Could not extract or parse a valid JSON for {response_model.__name__} from the text.")
         return None
 
-    @handle_agent_errors(agent_name_param="self.agent_name", component="llm_adapter")
-    @cache_agent_response(ttl_seconds=3600)
-    async def process(self, node: TaskNode, agent_task_input: InputType) -> OutputType:
+    # @handle_agent_errors(agent_name_param="self.agent_name", component="llm_adapter") # Removed to avoid circular import
+    # @cache_agent_response(ttl_seconds=3600) # Removed to avoid circular import
+    async def process(self, node: TaskNode, agent_task_input: InputType, trace_manager: "TraceManager") -> OutputType:
         """
         Processes a TaskNode using the configured AgnoAgent with caching and improved error handling.
         """
@@ -531,6 +533,8 @@ Ensure your output is a valid JSON conforming to the PlanOutput schema, containi
                     raise AgentExecutionError(agent_name=self.agent_name, task_id=node.task_id, original_error=e, attempt_number=1)
 
         try:
+            # Lazy import to avoid circular import
+            from sentientresearchagent.core.error_handler import ErrorRecovery
             result = await ErrorRecovery.retry_with_backoff(
                 func=execute_agent,
                 max_retries=3,

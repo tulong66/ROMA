@@ -1,11 +1,13 @@
 import networkx as nx
-from typing import Dict, List, Optional, Any
-from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode # Assuming TaskNode is in this path
+from typing import Dict, List, Optional, Any, TYPE_CHECKING
 from enum import Enum # Added for isinstance check
+
+if TYPE_CHECKING:
+    from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode
 from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models import CustomSearcherOutput # <--- IMPORT IT
 from pydantic import BaseModel # Make sure this import is present
 from loguru import logger # Add loguru import
-from sentientresearchagent.hierarchical_agent_framework.graph.graph_serializer import GraphSerializer # Import the new serializer
+# GraphSerializer import moved to method level to avoid circular import
 
 class TaskGraph:
     """Manages the hierarchical graph structure of TaskNodes."""
@@ -14,7 +16,7 @@ class TaskGraph:
         # A graph_id typically corresponds to a parent TaskNode's sub_graph_id or a root_graph_id.
         self.graphs: Dict[str, nx.DiGraph] = {}
         # Flat map for quick node lookup by ID across all graphs
-        self.nodes: Dict[str, TaskNode] = {}
+        self.nodes: Dict[str, "TaskNode"] = {}
         self.root_graph_id: Optional[str] = None
         self.overall_project_goal: Optional[str] = None # Store the main goal
 
@@ -35,7 +37,7 @@ class TaskGraph:
     def get_graph(self, graph_id: str) -> Optional[nx.DiGraph]:
         return self.graphs.get(graph_id)
 
-    def add_node_to_graph(self, graph_id: str, node: TaskNode):
+    def add_node_to_graph(self, graph_id: str, node: "TaskNode"):
         """Adds a TaskNode to a specific graph and the global node lookup."""
         if graph_id not in self.graphs:
             raise ValueError(f"Graph ID '{graph_id}' not found. Cannot add node '{node.task_id}'.")
@@ -68,15 +70,15 @@ class TaskGraph:
         graph.add_edge(u_node_id, v_node_id)
         logger.info(f"TaskGraph: Added edge {u_node_id} -> {v_node_id} in graph '{graph_id}'.")
 
-    def get_node(self, node_id: str) -> Optional[TaskNode]:
+    def get_node(self, node_id: str) -> Optional["TaskNode"]:
         """Retrieves a TaskNode by its ID from the global lookup."""
         return self.nodes.get(node_id)
 
-    def get_all_nodes(self) -> List[TaskNode]:
+    def get_all_nodes(self) -> List["TaskNode"]:
         """Returns a list of all TaskNode objects managed."""
         return list(self.nodes.values())
 
-    def get_node_predecessors(self, graph_id: str, node_id: str) -> List[TaskNode]:
+    def get_node_predecessors(self, graph_id: str, node_id: str) -> List["TaskNode"]:
         """Gets all predecessor TaskNodes of a given node within a specific graph."""
         graph = self.get_graph(graph_id)
         if not graph or node_id not in graph:
@@ -90,7 +92,7 @@ class TaskGraph:
                 predecessors.append(node)
         return predecessors
 
-    def get_node_successors(self, graph_id: str, node_id: str) -> List[TaskNode]:
+    def get_node_successors(self, graph_id: str, node_id: str) -> List["TaskNode"]:
         """Gets all successor TaskNodes of a given node within a specific graph."""
         graph = self.get_graph(graph_id)
         if not graph or node_id not in graph:
@@ -104,7 +106,7 @@ class TaskGraph:
                 successors.append(node)
         return successors
 
-    def get_nodes_in_graph(self, graph_id: str) -> List[TaskNode]:
+    def get_nodes_in_graph(self, graph_id: str) -> List["TaskNode"]:
         """Returns all TaskNodes belonging to a specific graph."""
         graph = self.get_graph(graph_id)
         if not graph:
@@ -123,5 +125,6 @@ class TaskGraph:
         Serializes the task graph to a dictionary for frontend visualization
         using the GraphSerializer.
         """
+        from sentientresearchagent.hierarchical_agent_framework.graph.graph_serializer import GraphSerializer
         serializer = GraphSerializer(self)
         return serializer.to_visualization_dict()

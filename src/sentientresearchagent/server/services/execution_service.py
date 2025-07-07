@@ -554,9 +554,13 @@ class ExecutionService:
             
             # NEW: Save traces for this project
             try:
-                from ...hierarchical_agent_framework.tracing.manager import trace_manager
-                trace_manager.save_project_traces(project_id)
-                logger.info(f"🔍 TRACE: Saved all traces for project {project_id}")
+                # Get project-specific trace manager
+                project_context = self.project_service.get_project_execution_context(project_id)
+                if project_context and hasattr(project_context, 'trace_manager'):
+                    project_context.trace_manager.save_project_traces(project_id)
+                    logger.info(f"🔍 TRACE: Saved all traces for project {project_id}")
+                else:
+                    logger.warning(f"🔍 TRACE: No project context or trace manager for project {project_id}")
             except Exception as e:
                 logger.warning(f"🔍 TRACE: Failed to save traces for project {project_id}: {e}")
             

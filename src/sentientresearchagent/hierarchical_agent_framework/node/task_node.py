@@ -11,7 +11,6 @@ from sentientresearchagent.hierarchical_agent_framework.types import (
     TaskStatus, NodeType, TaskType, safe_task_status
 )
 from sentientresearchagent.exceptions import InvalidTaskStateError, TaskError
-from sentientresearchagent.core.error_handler import safe_execute
 
 if TYPE_CHECKING:
     from ...core.system_manager import SystemManager

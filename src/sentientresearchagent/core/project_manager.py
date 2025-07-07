@@ -274,12 +274,16 @@ class ProjectExecutionContext:
         from sentientresearchagent.hierarchical_agent_framework.node.node_processor import NodeProcessor
         from sentientresearchagent.hierarchical_agent_framework.node.hitl_coordinator import HITLCoordinator
         from sentientresearchagent.hierarchical_agent_framework.context.knowledge_store import KnowledgeStore
+        from sentientresearchagent.hierarchical_agent_framework.tracing.manager import TraceManager
         from sentientresearchagent.framework_entry import create_node_processor_config_from_main_config
         
         # Create project-specific components
         self.task_graph = TaskGraph()
         self.knowledge_store = KnowledgeStore()
         self.state_manager = StateManager(self.task_graph)
+        
+        # Create project-specific trace manager
+        self.trace_manager = TraceManager(project_id=self.project_id)
         
         # Create node processor config
         self.node_processor_config = create_node_processor_config_from_main_config(self.config)
@@ -292,6 +296,7 @@ class ProjectExecutionContext:
             task_graph=self.task_graph,
             knowledge_store=self.knowledge_store,
             agent_registry=self.agent_registry,
+            trace_manager=self.trace_manager,
             config=self.config,
             node_processor_config=self.node_processor_config,
             agent_blueprint=self.agent_blueprint
@@ -321,6 +326,7 @@ class ProjectExecutionContext:
             'execution_engine': self.execution_engine,
             'node_processor': self.node_processor,
             'hitl_coordinator': self.hitl_coordinator,
+            'trace_manager': self.trace_manager,
             'update_callback': self.update_callback,
             'config': self.config,
             'node_processor_config': self.node_processor_config

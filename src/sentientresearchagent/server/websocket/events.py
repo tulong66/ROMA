@@ -10,7 +10,7 @@ from loguru import logger
 from datetime import datetime
 
 from ..utils.validation import RequestValidator
-from ...hierarchical_agent_framework.tracing.manager import trace_manager
+# TraceManager is now accessed via project-specific instances instead of global singleton
 
 
 def register_websocket_events(socketio, project_service, execution_service):
@@ -463,6 +463,18 @@ def register_websocket_events(socketio, project_service, execution_service):
                 emit('node_trace_error', {'error': 'node_id is required'})
                 return
             
+            if not project_id:
+                emit('node_trace_error', {'error': 'project_id is required'})
+                return
+            
+            # Get project-specific trace manager
+            project_context = project_service.get_project_execution_context(project_id)
+            if not project_context:
+                emit('node_trace_error', {'error': f'Project {project_id} not found'})
+                return
+            
+            trace_manager = project_context.trace_manager
+            
             # ENHANCED: Debug trace manager state
             debug_state = trace_manager.debug_trace_state()
             logger.info(f"🔍 TRACE DEBUG: Current state: {debug_state}")
@@ -592,12 +604,25 @@ def register_websocket_events(socketio, project_service, execution_service):
         try:
             node_id = data.get('node_id')
             stage_id = data.get('stage_id')
+            project_id = data.get('project_id')
             
             if not node_id or not stage_id:
                 emit('stage_details_error', {
                     'error': 'node_id and stage_id are required'
                 })
                 return
+            
+            if not project_id:
+                emit('stage_details_error', {'error': 'project_id is required'})
+                return
+            
+            # Get project-specific trace manager
+            project_context = project_service.get_project_execution_context(project_id)
+            if not project_context:
+                emit('stage_details_error', {'error': f'Project {project_id} not found'})
+                return
+            
+            trace_manager = project_context.trace_manager
             
             # Get trace for the node
             trace = trace_manager.get_trace_for_node(node_id)
@@ -647,14 +672,29 @@ def register_websocket_events(socketio, project_service, execution_service):
 
     @socketio.on('clear_traces')
     def handle_clear_traces(data):
-        """Handle request to clear all traces."""
-        logger.info(f"🔍 WebSocket request to clear traces")
+        """Handle request to clear traces for a project."""
+        logger.info(f"🔍 WebSocket request to clear traces: {data}")
         try:
+            project_id = data.get('project_id')
+            
+            if not project_id:
+                emit('clear_traces_error', {'error': 'project_id is required'})
+                return
+            
+            # Get project-specific trace manager
+            project_context = project_service.get_project_execution_context(project_id)
+            if not project_context:
+                emit('clear_traces_error', {'error': f'Project {project_id} not found'})
+                return
+            
+            trace_manager = project_context.trace_manager
             trace_manager.clear_traces()
+            
             emit('traces_cleared', {
-                'message': 'All traces cleared successfully'
+                'message': f'Traces cleared for project {project_id}',
+                'project_id': project_id
             })
-            logger.info("✅ All traces cleared")
+            logger.info(f"✅ Traces cleared for project {project_id}")
         except Exception as e:
             logger.error(f"Clear traces error: {e}")
             emit('clear_traces_error', {

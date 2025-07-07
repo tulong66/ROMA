@@ -13,16 +13,24 @@ from .models import NodeProcessingTrace, ProcessingStage
 class TraceManager:
     """Manages processing traces for nodes."""
     
-    def __init__(self, traces_dir: Optional[str] = None):
+    def __init__(self, project_id: str, traces_dir: Optional[str] = None):
+        self.project_id = project_id
         self._traces: Dict[str, NodeProcessingTrace] = {}
         self._node_to_trace: Dict[str, str] = {}  # node_id -> trace_id
         
-        # Set up traces directory
+        # Set up project-specific traces directory
         if traces_dir:
             self.traces_dir = Path(traces_dir)
         else:
-            self.traces_dir = Path("project_results") / "traces"
+            self.traces_dir = Path("project_results") / "traces" / project_id
         self.traces_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Optional callback for real-time updates
+        self._broadcast_callback = None
+    
+    def set_broadcast_callback(self, callback_fn):
+        """Set callback function for broadcasting real-time trace updates."""
+        self._broadcast_callback = callback_fn
     
     def create_trace(self, node_id: str, node_goal: str) -> NodeProcessingTrace:
         """Create a new trace for a node."""
@@ -310,5 +318,5 @@ class TraceManager:
             logger.debug(f"🔍 TRACE: No stages of types {stage_types} found to clear from node {node_id}")
 
 
-# Global trace manager instance
-trace_manager = TraceManager() 
+# TraceManager is now instantiated per-project instead of as a global singleton
+# This prevents race conditions when running multiple projects in parallel 

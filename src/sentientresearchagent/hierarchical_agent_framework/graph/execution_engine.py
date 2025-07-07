@@ -1,15 +1,14 @@
 from loguru import logger
-from sentientresearchagent.hierarchical_agent_framework.graph.task_graph import TaskGraph
-# NodeProcessor will be defined later, so we use a forward reference or Any for now
-# from sentientresearchagent.hierarchical_agent_framework.node.node_processor import NodeProcessor
-from typing import Any as NodeProcessorType # Placeholder for NodeProcessor
 from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode, TaskStatus, NodeType, TaskType
-from sentientresearchagent.hierarchical_agent_framework.graph.state_manager import StateManager
 from sentientresearchagent.hierarchical_agent_framework.context.knowledge_store import KnowledgeStore # For logging to KS
 from sentientresearchagent.hierarchical_agent_framework.utils.hitl_utils import request_human_review
 
-# Ensure NodeProcessor is imported for specific type hinting
-from sentientresearchagent.hierarchical_agent_framework.node.node_processor import NodeProcessor
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from sentientresearchagent.hierarchical_agent_framework.graph.task_graph import TaskGraph
+    from sentientresearchagent.hierarchical_agent_framework.graph.state_manager import StateManager
+    from sentientresearchagent.hierarchical_agent_framework.node.node_processor import NodeProcessor
+    from sentientresearchagent.hierarchical_agent_framework.node.hitl_coordinator import HITLCoordinator
 
 
 from agno.exceptions import StopAgentRun # Added import
@@ -20,8 +19,7 @@ import asyncio # Import asyncio
 # Import new ProjectInitializer
 from .project_initializer import ProjectInitializer
 
-# Import HITLCoordinator
-from sentientresearchagent.hierarchical_agent_framework.node.hitl_coordinator import HITLCoordinator
+# HITLCoordinator moved to TYPE_CHECKING to avoid circular import
 
 # Import CycleManager
 from .cycle_manager import CycleManager
@@ -37,12 +35,12 @@ class ExecutionEngine:
     """Orchestrates the overall execution flow of tasks in the graph."""
 
     def __init__(self, 
-                 task_graph: TaskGraph,
-                 state_manager: StateManager,
+                 task_graph: "TaskGraph",
+                 state_manager: "StateManager",
                  knowledge_store: KnowledgeStore,
-                 hitl_coordinator: HITLCoordinator,
+                 hitl_coordinator: "HITLCoordinator",
                  config: SentientConfig, # MODIFIED: Made SentientConfig non-optional
-                 node_processor: Optional[NodeProcessor] = None
+                 node_processor: Optional["NodeProcessor"] = None
                 ):
         self.task_graph = task_graph
         self.config: SentientConfig = config # Store config
@@ -54,10 +52,20 @@ class ExecutionEngine:
             logger.warning("ExecutionEngine creating its own NodeProcessor instance (SystemManager should ideally provide one).")
             # NodeProcessor will load blueprint based on self.config.active_profile_name
             # It needs NodeProcessorConfig, derived from the main SentientConfig.
+            from sentientresearchagent.hierarchical_agent_framework.node.node_processor import NodeProcessor
+            from sentientresearchagent.hierarchical_agent_framework.tracing.manager import TraceManager
+            from sentientresearchagent.hierarchical_agent_framework.agents.registry import AgentRegistry
+            
+            # Create temporary trace manager and agent registry for fallback NodeProcessor
+            temp_trace_manager = TraceManager(project_id="execution_engine_fallback")
+            temp_agent_registry = AgentRegistry()
+            
             node_proc_config = create_node_processor_config_from_main_config(self.config)
             self.node_processor = NodeProcessor(
                 task_graph=self.task_graph,
-                knowledge_store=knowledge_store, 
+                knowledge_store=knowledge_store,
+                agent_registry=temp_agent_registry,
+                trace_manager=temp_trace_manager,
                 config=self.config, 
                 node_processor_config=node_proc_config,
                 agent_blueprint=None # NodeProcessor will use active_profile_name from self.config
