@@ -207,6 +207,51 @@ agents:
       named_keys: ["default_aggregator"]
     enabled: true
 
+  - name: "SearchAggregator"
+    type: "aggregator"
+    adapter_class: "AggregatorAdapter"
+    description: "Specialized aggregator for combining search results with deduplication and relevance ranking"
+    model:
+      provider: "litellm"
+      model_id: "openrouter/google/gemini-2.5-flash"
+    prompt_source: "prompts.aggregator_prompts.SEARCH_AGGREGATOR_SYSTEM_MESSAGE"
+    registration:
+      action_keys:
+        - action_verb: "aggregate"
+          task_type: "SEARCH"
+      named_keys: ["SearchAggregator", "search_aggregator"]
+    enabled: true
+
+  - name: "ThinkAggregator"
+    type: "aggregator"
+    adapter_class: "AggregatorAdapter"
+    description: "Specialized aggregator for synthesizing analytical outputs and drawing logical conclusions"
+    model:
+      provider: "litellm"
+      model_id: "openrouter/google/gemini-2.5-flash"
+    prompt_source: "prompts.aggregator_prompts.THINK_AGGREGATOR_SYSTEM_MESSAGE"
+    registration:
+      action_keys:
+        - action_verb: "aggregate"
+          task_type: "THINK"
+      named_keys: ["ThinkAggregator", "think_aggregator"]
+    enabled: true
+
+  - name: "WriteAggregator"
+    type: "aggregator"
+    adapter_class: "AggregatorAdapter"
+    description: "Specialized aggregator for combining written content with focus on narrative flow and coherence"
+    model:
+      provider: "litellm"
+      model_id: "openrouter/google/gemini-2.5-flash"
+    prompt_source: "prompts.aggregator_prompts.WRITE_AGGREGATOR_SYSTEM_MESSAGE"
+    registration:
+      action_keys:
+        - action_verb: "aggregate"
+          task_type: "WRITE"
+      named_keys: ["WriteAggregator", "write_aggregator"]
+    enabled: true
+
   # =============================================================================
   # ATOMIZER AGENTS - Determine if tasks need further breakdown
   # =============================================================================

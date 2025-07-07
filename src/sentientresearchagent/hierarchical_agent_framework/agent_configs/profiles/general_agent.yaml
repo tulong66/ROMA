@@ -17,8 +17,14 @@ profile:
     THINK: "BasicReasoningExecutor"
     WRITE: "BasicReportWriter"
 
+  # Task-specific aggregators
+  aggregator_adapter_names:
+    SEARCH: "SearchAggregator"         # Specialized for combining search results
+    THINK: "ThinkAggregator"           # Focused on analytical synthesis  
+    WRITE: "WriteAggregator"           # Optimized for document composition
+
   atomizer_adapter_name: "default_atomizer"
-  aggregator_adapter_name: "default_aggregator"
+  aggregator_adapter_name: "default_aggregator"  # Fallback for backward compatibility
   plan_modifier_adapter_name: "PlanModifier"
 
   default_planner_adapter_name: "CoreResearchPlanner"

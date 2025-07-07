@@ -101,6 +101,16 @@ class ProfileLoader:
                     except KeyError:
                         logger.warning(f"Invalid task type '{task_type_str}' in executor_adapter_names for profile '{profile_name}'")
             
+            # Convert TaskType strings to enums for aggregator_adapter_names
+            aggregator_adapter_names = {}
+            if "aggregator_adapter_names" in profile_config:
+                for task_type_str, agent_name in profile_config.aggregator_adapter_names.items():
+                    try:
+                        task_type = TaskType[task_type_str.upper()]
+                        aggregator_adapter_names[task_type] = agent_name
+                    except KeyError:
+                        logger.warning(f"Invalid task type '{task_type_str}' in aggregator_adapter_names for profile '{profile_name}'")
+            
             # Create AgentBlueprint instance
             blueprint = AgentBlueprint(
                 name=profile_config.get("name", profile_name),
@@ -108,6 +118,7 @@ class ProfileLoader:
                 root_planner_adapter_name=profile_config.get("root_planner_adapter_name"),
                 planner_adapter_names=planner_adapter_names,
                 executor_adapter_names=executor_adapter_names,
+                aggregator_adapter_names=aggregator_adapter_names,
                 atomizer_adapter_name=profile_config.get("atomizer_adapter_name", "DefaultAtomizer"),
                 aggregator_adapter_name=profile_config.get("aggregator_adapter_name", "DefaultAggregator"),
                 plan_modifier_adapter_name=profile_config.get("plan_modifier_adapter_name", "PlanModifier"),
@@ -116,7 +127,7 @@ class ProfileLoader:
                 default_node_agent_name_prefix=profile_config.get("default_node_agent_name_prefix")
             )
             
-            logger.info(f"Successfully loaded profile '{profile_name}' with {len(planner_adapter_names)} planner mappings and {len(executor_adapter_names)} executor mappings")
+            logger.info(f"Successfully loaded profile '{profile_name}' with {len(planner_adapter_names)} planner mappings, {len(executor_adapter_names)} executor mappings, and {len(aggregator_adapter_names)} aggregator mappings")
             return blueprint
             
         except Exception as e:

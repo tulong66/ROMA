@@ -111,6 +111,42 @@ def get_executor_from_blueprint(blueprint: 'AgentBlueprint', task_type: TaskType
     return fallback_name
 
 
+def get_aggregator_from_blueprint(blueprint: 'AgentBlueprint', task_type: TaskType, fallback_name: Optional[str] = None) -> Optional[str]:
+    """
+    Get the appropriate aggregator name from blueprint based on task type.
+    
+    Args:
+        blueprint: The agent blueprint
+        task_type: The task type needing aggregation
+        fallback_name: Fallback agent name if blueprint doesn't specify
+        
+    Returns:
+        Agent name to use for aggregation, or None if no suitable aggregator found
+    """
+    if not blueprint:
+        return fallback_name
+    
+    # 1. Try task-specific aggregator
+    if hasattr(blueprint, 'aggregator_adapter_names') and task_type in blueprint.aggregator_adapter_names:
+        aggregator_name = blueprint.aggregator_adapter_names[task_type]
+        logger.debug(f"Blueprint specifies aggregator for {task_type}: {aggregator_name}")
+        return aggregator_name
+    
+    # 2. Try default single aggregator
+    if hasattr(blueprint, 'aggregator_adapter_name') and blueprint.aggregator_adapter_name:
+        aggregator_name = blueprint.aggregator_adapter_name
+        logger.debug(f"Blueprint specifies default aggregator: {aggregator_name}")
+        return aggregator_name
+    
+    # 3. Try prefix-based naming
+    if hasattr(blueprint, 'default_node_agent_name_prefix') and blueprint.default_node_agent_name_prefix:
+        aggregator_name = f"{blueprint.default_node_agent_name_prefix}Aggregator"
+        logger.debug(f"Blueprint suggests prefix-based aggregator: {aggregator_name}")
+        return aggregator_name
+    
+    return fallback_name
+
+
 class ReadyPlanHandler(INodeHandler):
     """Handles a READY node that needs to be PLANNED."""
     async def handle(self, node: TaskNode, context: ProcessorContext) -> None:
@@ -644,11 +680,12 @@ class AggregatingNodeHandler(INodeHandler):
                 
                 logger.info(f"  Total child content for aggregation: {total_child_content_size} chars from {len(child_results_for_aggregator)} children")
 
-            context_builder_agent_name = agent_name_at_entry
-            if context.current_agent_blueprint and context.current_agent_blueprint.aggregator_adapter_name:
-                context_builder_agent_name = context.current_agent_blueprint.aggregator_adapter_name
-            elif not context_builder_agent_name and context.current_agent_blueprint and context.current_agent_blueprint.default_node_agent_name_prefix:
-                context_builder_agent_name = f"{context.current_agent_blueprint.default_node_agent_name_prefix}Aggregator"
+            # ENHANCED: Use blueprint for context builder agent selection too
+            context_builder_agent_name = get_aggregator_from_blueprint(
+                context.current_agent_blueprint,
+                node.task_type,
+                agent_name_at_entry
+            )
 
             agent_task_input = AgentTaskInput(
                 current_task_id=node.task_id, current_goal=node.goal,
@@ -660,13 +697,12 @@ class AggregatingNodeHandler(INodeHandler):
             if not isinstance(node.node_type, NodeType): 
                 node.node_type = NodeType(str(node.node_type)) 
 
-            lookup_name_for_aggregator = agent_name_at_entry
-            if context.current_agent_blueprint and context.current_agent_blueprint.aggregator_adapter_name:
-                lookup_name_for_aggregator = context.current_agent_blueprint.aggregator_adapter_name
-                logger.debug(f"        AggregatingNodeHandler: Blueprint specifies aggregator: {lookup_name_for_aggregator}")
-            elif not lookup_name_for_aggregator and context.current_agent_blueprint and context.current_agent_blueprint.default_node_agent_name_prefix:
-                lookup_name_for_aggregator = f"{context.current_agent_blueprint.default_node_agent_name_prefix}Aggregator"
-                logger.debug(f"        AggregatingNodeHandler: Blueprint suggests prefix for aggregator: {lookup_name_for_aggregator}")
+            # ENHANCED: Use new blueprint system for aggregator selection based on task type
+            lookup_name_for_aggregator = get_aggregator_from_blueprint(
+                context.current_agent_blueprint,
+                node.task_type,
+                agent_name_at_entry
+            )
 
             node.agent_name = lookup_name_for_aggregator
             aggregator_adapter = context.agent_registry.get_agent_adapter(node, action_verb="aggregate")

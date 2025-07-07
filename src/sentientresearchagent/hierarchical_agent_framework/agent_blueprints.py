@@ -23,9 +23,12 @@ class AgentBlueprint(BaseModel):
     # Keep existing executor mapping
     executor_adapter_names: Dict[TaskType, str] = {}  # TaskType -> executor_name
     
+    # NEW: Task-specific aggregator mapping
+    aggregator_adapter_names: Dict[TaskType, str] = {}  # TaskType -> aggregator_name
+    
     # Keep existing single agents for other actions
     atomizer_adapter_name: Optional[str] = "DefaultAtomizer"
-    aggregator_adapter_name: Optional[str] = "DefaultAggregator"
+    aggregator_adapter_name: Optional[str] = "DefaultAggregator"  # Fallback for backward compatibility
     plan_modifier_adapter_name: Optional[str] = "PlanModifier"
     
     # Fallbacks for backward compatibility and robustness
@@ -59,9 +62,16 @@ DEFAULT_DEEP_RESEARCH_BLUEPRINT = AgentBlueprint(
         TaskType.WRITE: "BasicReportWriter",
     },
     
+    # Task-specific aggregators
+    aggregator_adapter_names={
+        TaskType.SEARCH: "SearchAggregator",
+        TaskType.THINK: "ThinkAggregator",
+        TaskType.WRITE: "WriteAggregator",
+    },
+    
     # Single agents for other actions
     atomizer_adapter_name="DefaultAtomizer",
-    aggregator_adapter_name="DefaultAggregator",
+    aggregator_adapter_name="DefaultAggregator",  # Fallback for backward compatibility
     plan_modifier_adapter_name="PlanModifier",
     
     # Fallbacks
@@ -90,9 +100,16 @@ DEFAULT_GENERAL_AGENT_BLUEPRINT = AgentBlueprint(
         TaskType.WRITE: "BasicReportWriter",
     },
     
+    # Task-specific aggregators
+    aggregator_adapter_names={
+        TaskType.SEARCH: "SearchAggregator",
+        TaskType.THINK: "ThinkAggregator",
+        TaskType.WRITE: "WriteAggregator",
+    },
+    
     # Single agents for other actions
     atomizer_adapter_name="DefaultAtomizer",
-    aggregator_adapter_name="DefaultAggregator",
+    aggregator_adapter_name="DefaultAggregator",  # Fallback for backward compatibility
     plan_modifier_adapter_name="PlanModifier",
     
     # Fallbacks
