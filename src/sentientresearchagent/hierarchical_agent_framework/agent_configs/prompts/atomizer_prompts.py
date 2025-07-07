@@ -74,65 +74,90 @@ Examples:
 
 ## Few-Shot Examples
 
-### Example 1: SEARCH Task - Atomic (Very Specific)
-**Input:**
-Current Task Goal: What is Microsoft's current stock price?
+## Example 1:
+Input:
+Current Task Goal: Write a short summary of the competitive advantages of Nvidia
+Context:
+--- Context from Task 'task_004' (Goal: Understand GPU market dynamics) ---
+Nvidia maintains a dominant position in GPU markets due to its CUDA software
+ecosystem, strong developer community, early investment in AI hardware, and strategic
+partnerships with cloud providers. Competitors include AMD and Intel, but neither has
+matched Nvidia’s AI performance or developer tools.
+--- End Context from Task 'task_004' ---
+Output:
+{{"is_atomic": false, "updated_goal": "Write a short summary of the competitive
+advantages of Nvidia"}}
+
+## Example 2
+Input:
+Current Task Goal: Calculate the average revenue growth rate of Microsoft Corp. from
+Q1 2021 to Q4 2023 using the quarterly revenue figures provided below. Format the
+output as a percentage rounded to two decimal places.
+Context:
+--- Context from Task 'task_005' (Goal: Analyze Microsoft Corp. revenue trends) ---
+Quarterly revenue for Microsoft Corp.:
+Q1 2021: $89.6B
+Q2 2021: $81.4B
+Q3 2021: $83.4B
+Q4 2021: $90.1B
+Q1 2022: $97.3B
+Q2 2022: $83.0B
+Q3 2022: $82.9B
+Q4 2022: $90.5B
+Q1 2023: $117.2B
+Q2 2023: $94.8B
+Q3 2023: $81.8B
+Q4 2023: $89.5B
+--- End Context from Task 'task_005' ---
+Output:
+{{"is_atomic": true, "updated_goal": "Calculate the average revenue growth rate of
+Microsoft Corp. from Q1 2021 to Q4 2023 using the provided quarterly figures. Format
+the output as a percentage rounded to two decimal places."}}
+
+## Example #3:
+Input:
+Current Task Goal: Design a response strategy for future pandemics
 Context:
 No relevant context was provided.
+Output:
+{{"is_atomic": false, "updated_goal": "Design a response strategy for future pandemics,
+specifying: (1) the target region or country, (2) the scope of the strategy (e.g., healthcare
+infrastructure, communication, containment), (3) the type of pathogen(s) or scenario
+being planned for (e.g., respiratory virus, vector-borne), and (4) the intended output
+format (e.g., policy outline, operational plan, high-level summary)."}}
 
-**Output:**
-{{"is_atomic": true, "updated_goal": "What is Microsoft's current stock price?"}}
-
-### Example 2: SEARCH Task - Non-Atomic (Previously Might Have Been Atomic)
-**Input:**
-Current Task Goal: Find the current CEO of Microsoft
+## Example 4:
+Input:
+Current Task Goal: Determine if the non-compete clause is enforceable
 Context:
-No relevant context was provided.
+--- Context from Task 'task_008' (Goal: Review employment agreement) ---
+Section 12 of the agreement includes a clause preventing the employee from working
+for competitors within 12 months after termination. No jurisdiction or industry context is
+given.
+--- End Context from Task 'task_008' ---
+Output:
+{{"is_atomic": false,"updated_goal": "Determine whether the non-compete clause in
+Section 12 of the provided employment agreement is enforceable under applicable law.
+To proceed, specify: (1) the governing jurisdiction (e.g., California, New York, EU), (2)
+the industry or role in question, (3) the specific language of the clause, and (4) whether
+any carve-outs or consideration clauses are included. Output should be a legal opinion
+referencing relevant case law or statutory guidance."}}
 
-**Output:**
-{{"is_atomic": false, "updated_goal": "Find the current CEO of Microsoft"}}
-
-### Example 3: SEARCH Task - Non-Atomic
-**Input:**
-Current Task Goal: Research the competitive landscape in cloud computing
+## Example 5:
+Input:
+Current Task Goal: Summarize the reading passage
 Context:
-Relevant Context:
---- Context from Task 'task_001' (Goal: Analyze enterprise software market trends) ---
-The enterprise software market has been shifting towards cloud-first solutions, with major players including Microsoft Azure, Amazon AWS, and Google Cloud Platform competing for market share.
---- End Context from Task 'task_001' ---
-
-**Output:**
-{{"is_atomic": false, "updated_goal": "Research the competitive landscape in cloud computing"}}
-
-### Example 4: WRITE Task - Non-Atomic (Previously Might Have Been Atomic)
-**Input:**
-Current Task Goal: Write about the company's performance
-Context:
-Relevant Context:
---- Context from Task 'task_002' (Goal: Find Apple Inc.'s Q3 2024 financial results) ---
-Apple Inc. reported Q3 2024 revenue of $85.8 billion, up 5% year-over-year. iPhone revenue was $39.3 billion, Services revenue reached $24.2 billion, and Mac revenue was $7.0 billion.
---- End Context from Task 'task_002' ---
-
-**Output:**
-{{"is_atomic": false, "updated_goal": "Write a comprehensive 3-4 paragraph analysis of Apple Inc.'s Q3 2024 financial performance, including revenue breakdown by product segment (iPhone, Services, Mac), year-over-year growth rates, and key performance indicators. Structure the analysis with an executive summary, detailed segment performance review, and concluding assessment of overall financial health."}}
-
-### Example 5: THINK Task - Non-Atomic
-**Input:**
-Current Task Goal: Develop a strategic recommendation for market entry
-Context:
-Relevant Context:
---- Context from Task 'task_003' (Goal: Analyze European EV market size) ---
-The European EV market reached 2.3 million units in 2023, representing 23% of total car sales. Key markets include Germany (524k units), UK (314k units), and France (298k units).
---- End Context from Task 'task_003' ---
-
-**Output:**
-{{"is_atomic": false, "updated_goal": "Develop a comprehensive strategic recommendation for entering the European electric vehicle market, including: (1) detailed market entry strategy with specific country prioritization based on market size, regulatory environment, and competitive landscape; (2) recommended business model (direct sales, partnerships, or joint ventures); (3) investment requirements and timeline for market entry; (4) risk assessment including regulatory, competitive, and operational risks; (5) success metrics and milestones for the first 3 years; (6) contingency plans for different market scenarios. Base recommendations on current European EV market data showing 2.3M units sold in 2023 across Germany (524k), UK (314k), and France (298k units)."}}
-
-## Output Format
-
-You must respond with valid JSON only. No additional text, explanations, or formatting.
-
-Response format:
-{{"is_atomic": true, "updated_goal": "your refined goal here"}}
+--- Context from Task 'task_010' ---
+"In ancient Mesopotamia, the emergence of city-states like Ur and Babylon marked the
+beginning of centralized governance, trade economies, and codified legal systems. The
+development of cuneiform script enabled record-keeping, while irrigation innovations
+supported agriculture. These advances laid the foundation for complex societies in the
+Fertile Crescent."
+--- End Context from Task 'task_010' ---
+Output:
+{{"is_atomic": true, "updated_goal": "Summarize the provided passage in exactly 3
+sentences. Emphasize the key developments mentioned (such as governance, trade,
+writing, and agriculture), and explain how they contributed to the formation of complex
+societies. Exclude examples and supporting details unless necessary for clarity."}}
 
 **Remember: When in doubt, DECOMPOSE. Favor breaking tasks into smaller, more focused components.**"""
