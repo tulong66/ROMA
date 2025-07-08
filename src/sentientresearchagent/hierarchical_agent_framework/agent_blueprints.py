@@ -26,6 +26,9 @@ class AgentBlueprint(BaseModel):
     # NEW: Task-specific aggregator mapping
     aggregator_adapter_names: Dict[TaskType, str] = {}  # TaskType -> aggregator_name
     
+    # NEW: Root-specific aggregator (overrides task-specific aggregators for root node)
+    root_aggregator_adapter_name: Optional[str] = None
+    
     # Keep existing single agents for other actions
     atomizer_adapter_name: Optional[str] = "DefaultAtomizer"
     aggregator_adapter_name: Optional[str] = "DefaultAggregator"  # Fallback for backward compatibility
@@ -47,6 +50,9 @@ DEFAULT_DEEP_RESEARCH_BLUEPRINT = AgentBlueprint(
     
     # Root-specific planner for initial task decomposition
     root_planner_adapter_name="DeepResearchPlanner",
+    
+    # Root-specific aggregator for final synthesis
+    root_aggregator_adapter_name="RootResearchAggregator",
     
     # Task-specific planners for sub-tasks
     planner_adapter_names={
@@ -85,6 +91,9 @@ DEFAULT_GENERAL_AGENT_BLUEPRINT = AgentBlueprint(
     description="A general agent for solving complex tasks",
     # Root-specific planner for initial task decomposition
     root_planner_adapter_name="GeneralTaskSolver",
+    
+    # Root-specific aggregator for final synthesis
+    root_aggregator_adapter_name="RootGeneralAggregator",
     
     # Task-specific planners for sub-tasks
     planner_adapter_names={

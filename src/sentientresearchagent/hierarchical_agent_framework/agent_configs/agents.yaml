@@ -12,7 +12,7 @@ agents:
     description: "Specialized planner for research-focused tasks"
     model:
       provider: "litellm"
-      model_id: "openrouter/google/gemini-2.5-pro" #"openrouter/anthropic/claude-sonnet-4"
+      model_id: "openai/o3-2025-04-16" #"openrouter/anthropic/claude-sonnet-4"
       # temperature: 0.7
     prompt_source: "prompts.planner_prompts.PLANNER_SYSTEM_MESSAGE"
     response_model: "PlanOutput"
@@ -29,7 +29,7 @@ agents:
     description: "Specialized planner optimized for search-focused research tasks with date awareness and parallel execution"
     model:
       provider: "litellm"
-      model_id: "openrouter/google/gemini-2.5-pro" #"openrouter/anthropic/claude-sonnet-4"
+      model_id: "openai/o3-2025-04-16" #"openrouter/anthropic/claude-sonnet-4"
       # temperature: 0.7
     prompt_source: "prompts.planner_prompts.ENHANCED_SEARCH_PLANNER_SYSTEM_MESSAGE"
     response_model: "PlanOutput"
@@ -46,7 +46,7 @@ agents:
     description: "Specialized planner optimized for search-focused research tasks with date awareness and parallel execution"
     model:
       provider: "litellm"
-      model_id: "openrouter/google/gemini-2.5-pro" #"openrouter/anthropic/claude-sonnet-4"
+      model_id: "openai/o3-2025-04-16" #"openrouter/anthropic/claude-sonnet-4"
       # temperature: 0.7
     prompt_source: "prompts.planner_prompts.ENHANCED_THINK_PLANNER_SYSTEM_MESSAGE"
     response_model: "PlanOutput"
@@ -63,7 +63,7 @@ agents:
     description: "Specialized planner optimized for search-focused research tasks with date awareness and parallel execution"
     model:
       provider: "litellm"
-      model_id: "openrouter/google/gemini-2.5-pro" #"openrouter/anthropic/claude-sonnet-4"
+      model_id: "openai/o3-2025-04-16" #"openrouter/anthropic/claude-sonnet-4"
       # temperature: 0.7
     prompt_source: "prompts.planner_prompts.ENHANCED_WRITE_PLANNER_SYSTEM_MESSAGE"
     response_model: "PlanOutput"
@@ -80,10 +80,8 @@ agents:
     description: "Master planner specialized in high-level research project decomposition and strategy"
     model:
       provider: "litellm"
-      model_id: "openrouter/google/gemini-2.5-pro" #"openrouter/anthropic/claude-sonnet-4"
+      model_id: "openai/o3-2025-04-16" #"openrouter/anthropic/claude-sonnet-4"
       # temperature: 0.7
-    agno_params:
-      reasoning: true
     prompt_source: "prompts.planner_prompts.DEEP_RESEARCH_PLANNER_SYSTEM_MESSAGE"
     response_model: "PlanOutput"
     registration:
@@ -99,7 +97,7 @@ agents:
     description: "Master planner specialized in high-level research project decomposition and strategy"
     model:
       provider: "litellm"
-      model_id: "openrouter/google/gemini-2.5-pro" #"openrouter/anthropic/claude-sonnet-4"
+      model_id: "openai/o3-2025-04-16" #"openrouter/anthropic/claude-sonnet-4"
       # temperature: 0.7
     prompt_source: "prompts.planner_prompts.GENERAL_TASK_SOLVER_SYSTEM_MESSAGE"
     response_model: "PlanOutput"
@@ -167,7 +165,7 @@ agents:
     adapter_class: "OpenAICustomSearchAdapter"
     description: "Direct API-based search using OpenAI's search capabilities"
     adapter_params:
-      model_id: "gpt-4.1"
+      model_id: "gpt-4.1" 
     registration:
       action_keys:
         - action_verb: "execute"
@@ -180,7 +178,7 @@ agents:
     adapter_class: "GeminiCustomSearchAdapter"
     description: "Direct API-based search using Google Gemini's search capabilities"
     adapter_params:
-      model_id: "gemini-2.5-flash"
+      model_id: "gemini-2.5-pro"
     registration:
       action_keys:
         - action_verb: "execute"
@@ -198,7 +196,7 @@ agents:
     description: "Synthesizes results from multiple child tasks"
     model:
       provider: "litellm"
-      model_id: "openrouter/google/gemini-2.5-flash"
+      model_id: "openrouter/google/gemini-2.5-pro"
     prompt_source: "prompts.aggregator_prompts.DEFAULT_AGGREGATOR_SYSTEM_MESSAGE"
     registration:
       action_keys:
@@ -213,7 +211,7 @@ agents:
     description: "Specialized aggregator for combining search results with deduplication and relevance ranking"
     model:
       provider: "litellm"
-      model_id: "openrouter/google/gemini-2.5-flash"
+      model_id: "openrouter/google/gemini-2.5-pro"
     prompt_source: "prompts.aggregator_prompts.SEARCH_AGGREGATOR_SYSTEM_MESSAGE"
     registration:
       action_keys:
@@ -228,7 +226,7 @@ agents:
     description: "Specialized aggregator for synthesizing analytical outputs and drawing logical conclusions"
     model:
       provider: "litellm"
-      model_id: "openrouter/google/gemini-2.5-flash"
+      model_id: "openrouter/google/gemini-2.5-pro"
     prompt_source: "prompts.aggregator_prompts.THINK_AGGREGATOR_SYSTEM_MESSAGE"
     registration:
       action_keys:
@@ -243,13 +241,49 @@ agents:
     description: "Specialized aggregator for combining written content with focus on narrative flow and coherence"
     model:
       provider: "litellm"
-      model_id: "openrouter/google/gemini-2.5-flash"
+      model_id: "openrouter/google/gemini-2.5-pro"
     prompt_source: "prompts.aggregator_prompts.WRITE_AGGREGATOR_SYSTEM_MESSAGE"
     registration:
       action_keys:
         - action_verb: "aggregate"
           task_type: "WRITE"
       named_keys: ["WriteAggregator", "write_aggregator"]
+    enabled: true
+
+  - name: "RootResearchAggregator"
+    type: "aggregator"
+    adapter_class: "AggregatorAdapter"
+    description: "Master aggregator for root-level research tasks with executive synthesis and strategic recommendations"
+    model:
+      provider: "litellm"
+      model_id: "openrouter/google/gemini-2.5-pro"
+    prompt_source: "prompts.aggregator_prompts.ROOT_RESEARCH_AGGREGATOR_SYSTEM_MESSAGE"
+    registration:
+      named_keys: ["RootResearchAggregator", "root_research_aggregator"]
+    enabled: true
+
+  - name: "RootAnalysisAggregator"
+    type: "aggregator"
+    adapter_class: "AggregatorAdapter"
+    description: "Master aggregator for root-level analysis tasks with decisive conclusions and strategic recommendations"
+    model:
+      provider: "litellm"
+      model_id: "openrouter/google/gemini-2.5-pro"
+    prompt_source: "prompts.aggregator_prompts.ROOT_ANALYSIS_AGGREGATOR_SYSTEM_MESSAGE"
+    registration:
+      named_keys: ["RootAnalysisAggregator", "root_analysis_aggregator"]
+    enabled: true
+
+  - name: "RootGeneralAggregator"
+    type: "aggregator"
+    adapter_class: "AggregatorAdapter"
+    description: "Master aggregator for root-level general tasks with comprehensive synthesis and actionable insights"
+    model:
+      provider: "litellm"
+      model_id: "openrouter/google/gemini-2.5-pro"
+    prompt_source: "prompts.aggregator_prompts.ROOT_GENERAL_AGGREGATOR_SYSTEM_MESSAGE"
+    registration:
+      named_keys: ["RootGeneralAggregator", "root_general_aggregator"]
     enabled: true
 
   # =============================================================================
@@ -262,7 +296,7 @@ agents:
     description: "Determines if tasks are atomic or need further planning"
     model:
       provider: "litellm"
-      model_id: "openrouter/google/gemini-2.5-flash-lite-preview-06-17"
+      model_id: "openrouter/google/gemini-2.5-flash"
     prompt_source: "prompts.atomizer_prompts.ATOMIZER_SYSTEM_MESSAGE"
     response_model: "AtomizerOutput"
     registration:
@@ -282,7 +316,7 @@ agents:
     description: "Modifies existing plans based on user feedback"
     model:
       provider: "litellm"
-      model_id: "openrouter/google/gemini-2.5-pro" #"openrouter/anthropic/claude-sonnet-4"
+      model_id: "openai/o3-2025-04-16" #"openrouter/anthropic/claude-sonnet-4"
     # agno_params:
     # temperature: 0.7
     prompt_source: "prompts.plan_modifier_prompts.PLAN_MODIFIER_SYSTEM_PROMPT"

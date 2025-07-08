@@ -116,6 +116,7 @@ class ProfileLoader:
                 name=profile_config.get("name", profile_name),
                 description=profile_config.get("description", f"Agent profile: {profile_name}"),
                 root_planner_adapter_name=profile_config.get("root_planner_adapter_name"),
+                root_aggregator_adapter_name=profile_config.get("root_aggregator_adapter_name"),  # FIXED: Added missing field
                 planner_adapter_names=planner_adapter_names,
                 executor_adapter_names=executor_adapter_names,
                 aggregator_adapter_names=aggregator_adapter_names,
@@ -127,6 +128,12 @@ class ProfileLoader:
                 default_node_agent_name_prefix=profile_config.get("default_node_agent_name_prefix")
             )
             
+            # Log root-specific configurations if present
+            if blueprint.root_planner_adapter_name:
+                logger.info(f"  - Root planner: {blueprint.root_planner_adapter_name}")
+            if blueprint.root_aggregator_adapter_name:
+                logger.info(f"  - Root aggregator: {blueprint.root_aggregator_adapter_name}")
+                
             logger.info(f"Successfully loaded profile '{profile_name}' with {len(planner_adapter_names)} planner mappings, {len(executor_adapter_names)} executor mappings, and {len(aggregator_adapter_names)} aggregator mappings")
             return blueprint
             

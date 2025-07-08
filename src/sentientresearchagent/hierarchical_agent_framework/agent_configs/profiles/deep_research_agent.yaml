@@ -7,6 +7,9 @@ profile:
 
   # Root-specific planner for initial decomposition
   root_planner_adapter_name: "DeepResearchPlanner"
+  
+  # Root-specific aggregator for final synthesis
+  root_aggregator_adapter_name: "RootResearchAggregator"
 
   # Task-specific planners for sub-tasks
   planner_adapter_names:

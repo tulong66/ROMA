@@ -77,7 +77,7 @@ class AgentRegistry:
         task_type_enum = self._resolve_task_type(node)
 
         # Special handling for verbs that don't use task_type
-        if action_verb.lower() in ["aggregate", "atomize", "modify_plan"]:
+        if action_verb.lower() in ["atomize", "modify_plan"]:
             task_type_enum = None
 
         key = (action_verb.lower(), task_type_enum)

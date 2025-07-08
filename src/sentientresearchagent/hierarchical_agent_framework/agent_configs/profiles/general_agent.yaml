@@ -6,6 +6,9 @@ profile:
   description: "Specialized agent for data analysis, statistical research, and insight generation"
 
   root_planner_adapter_name: "GeneralTaskSolver"
+  
+  # Root-specific aggregator for final synthesis
+  root_aggregator_adapter_name: "RootGeneralAggregator"
 
   planner_adapter_names:
     SEARCH: "EnhancedSearchPlanner"

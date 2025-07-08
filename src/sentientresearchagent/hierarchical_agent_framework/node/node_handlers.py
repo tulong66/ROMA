@@ -111,14 +111,15 @@ def get_executor_from_blueprint(blueprint: 'AgentBlueprint', task_type: TaskType
     return fallback_name
 
 
-def get_aggregator_from_blueprint(blueprint: 'AgentBlueprint', task_type: TaskType, fallback_name: Optional[str] = None) -> Optional[str]:
+def get_aggregator_from_blueprint(blueprint: 'AgentBlueprint', task_type: TaskType, fallback_name: Optional[str] = None, node: Optional['TaskNode'] = None) -> Optional[str]:
     """
-    Get the appropriate aggregator name from blueprint based on task type.
+    Get the appropriate aggregator name from blueprint based on task type and node context.
     
     Args:
         blueprint: The agent blueprint
         task_type: The task type needing aggregation
         fallback_name: Fallback agent name if blueprint doesn't specify
+        node: The task node being aggregated (used to detect root nodes)
         
     Returns:
         Agent name to use for aggregation, or None if no suitable aggregator found
@@ -126,19 +127,42 @@ def get_aggregator_from_blueprint(blueprint: 'AgentBlueprint', task_type: TaskTy
     if not blueprint:
         return fallback_name
     
-    # 1. Try task-specific aggregator
+    # 1. Check if this is a root node and blueprint has root-specific aggregator
+    if node:
+        is_root_node = (
+            node.task_id == "root" or 
+            getattr(node, 'layer', 0) == 0 or
+            getattr(node, 'parent_node_id', None) is None
+        )
+        
+        logger.debug(f"🔍 AGGREGATOR SELECTION DEBUG for node {node.task_id}:")
+        logger.debug(f"  - task_id: {node.task_id}")
+        logger.debug(f"  - layer: {getattr(node, 'layer', 'N/A')}")
+        logger.debug(f"  - parent_node_id: {getattr(node, 'parent_node_id', 'N/A')}")
+        logger.debug(f"  - is_root_node: {is_root_node}")
+        logger.debug(f"  - task_type: {task_type}")
+        logger.debug(f"  - blueprint has root_aggregator_adapter_name: {hasattr(blueprint, 'root_aggregator_adapter_name')}")
+        if hasattr(blueprint, 'root_aggregator_adapter_name'):
+            logger.debug(f"  - root_aggregator_adapter_name value: {blueprint.root_aggregator_adapter_name}")
+        
+        if is_root_node and hasattr(blueprint, 'root_aggregator_adapter_name') and blueprint.root_aggregator_adapter_name:
+            aggregator_name = blueprint.root_aggregator_adapter_name
+            logger.info(f"🎯 Blueprint specifies ROOT aggregator for root node {node.task_id}: {aggregator_name}")
+            return aggregator_name
+    
+    # 2. Try task-specific aggregator
     if hasattr(blueprint, 'aggregator_adapter_names') and task_type in blueprint.aggregator_adapter_names:
         aggregator_name = blueprint.aggregator_adapter_names[task_type]
         logger.debug(f"Blueprint specifies aggregator for {task_type}: {aggregator_name}")
         return aggregator_name
     
-    # 2. Try default single aggregator
+    # 3. Try default single aggregator
     if hasattr(blueprint, 'aggregator_adapter_name') and blueprint.aggregator_adapter_name:
         aggregator_name = blueprint.aggregator_adapter_name
         logger.debug(f"Blueprint specifies default aggregator: {aggregator_name}")
         return aggregator_name
     
-    # 3. Try prefix-based naming
+    # 4. Try prefix-based naming
     if hasattr(blueprint, 'default_node_agent_name_prefix') and blueprint.default_node_agent_name_prefix:
         aggregator_name = f"{blueprint.default_node_agent_name_prefix}Aggregator"
         logger.debug(f"Blueprint suggests prefix-based aggregator: {aggregator_name}")
@@ -636,6 +660,17 @@ class AggregatingNodeHandler(INodeHandler):
         blueprint_name_log = context.current_agent_blueprint.name if context.current_agent_blueprint else "N/A"
         logger.info(f"  AggregatingNodeHandler: Handling AGGREGATING node {node.task_id} (Blueprint: {blueprint_name_log}, Goal: '{node.goal[:30]}...', Original Agent Name at Entry: {agent_name_at_entry})")
         
+        # DEBUG: Log blueprint details
+        if context.current_agent_blueprint:
+            logger.debug(f"🔍 BLUEPRINT DEBUG for aggregation:")
+            logger.debug(f"  - Blueprint name: {context.current_agent_blueprint.name}")
+            logger.debug(f"  - Has root_aggregator_adapter_name: {hasattr(context.current_agent_blueprint, 'root_aggregator_adapter_name')}")
+            if hasattr(context.current_agent_blueprint, 'root_aggregator_adapter_name'):
+                logger.debug(f"  - root_aggregator_adapter_name: {context.current_agent_blueprint.root_aggregator_adapter_name}")
+            logger.debug(f"  - Has aggregator_adapter_names: {hasattr(context.current_agent_blueprint, 'aggregator_adapter_names')}")
+            if hasattr(context.current_agent_blueprint, 'aggregator_adapter_names'):
+                logger.debug(f"  - aggregator_adapter_names: {context.current_agent_blueprint.aggregator_adapter_names}")
+        
         try:
             # CRITICAL FIX: Start tracing for aggregation stage
             stage = context.trace_manager.start_stage(
@@ -684,7 +719,8 @@ class AggregatingNodeHandler(INodeHandler):
             context_builder_agent_name = get_aggregator_from_blueprint(
                 context.current_agent_blueprint,
                 node.task_type,
-                agent_name_at_entry
+                agent_name_at_entry,
+                node
             )
 
             agent_task_input = AgentTaskInput(
@@ -701,7 +737,8 @@ class AggregatingNodeHandler(INodeHandler):
             lookup_name_for_aggregator = get_aggregator_from_blueprint(
                 context.current_agent_blueprint,
                 node.task_type,
-                agent_name_at_entry
+                agent_name_at_entry,
+                node
             )
 
             node.agent_name = lookup_name_for_aggregator
