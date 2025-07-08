@@ -36,9 +36,10 @@ class SubNodeCreator:
 
             try:
                 task_type_enum = TaskType[sub_task_def.task_type.upper()]
-                node_type_enum = NodeType[sub_task_def.node_type.upper()]
+                # Use default node_type if not provided by planner (since planners no longer output node_type)
+                node_type_enum = NodeType[sub_task_def.node_type.upper()] if sub_task_def.node_type else NodeType.PLAN
             except KeyError as e:
-                error_msg = f"Invalid task_type or node_type string ('{sub_task_def.task_type}'/'{sub_task_def.node_type}') in plan for parent {parent_node.task_id}: {e}"
+                error_msg = f"Invalid task_type or node_type string ('{sub_task_def.task_type}'/'{getattr(sub_task_def, 'node_type', 'PLAN')}') in plan for parent {parent_node.task_id}: {e}"
                 logger.error(f"    SubNodeCreator Error: {error_msg}")
                 continue # Skip this sub-task if types are invalid
 

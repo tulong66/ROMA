@@ -8,7 +8,7 @@ class SubTask(BaseModel):
     # Assuming TaskType and NodeType enums will be defined in a shared types module or node.task_node
     # For now, using strings and will be validated/converted by adapter or node_processor
     task_type: str = Field(..., description="Type of task (e.g., 'WRITE', 'THINK', 'SEARCH').")
-    node_type: str = Field(..., description="Node type ('EXECUTE' for atomic, 'PLAN' for complex).")
+    node_type: str = Field(default="PLAN", description="Node type ('EXECUTE' for atomic, 'PLAN' for complex). Defaults to 'PLAN' since atomizer will make final decision.")
     # You could add estimated_effort, dependencies_within_plan etc. later
     depends_on_indices: Optional[List[int]] = Field(default_factory=list, description="List of 0-based indices of other sub-tasks in *this current plan* that this sub-task depends on. If empty, it only depends on the parent plan completing.")
 
