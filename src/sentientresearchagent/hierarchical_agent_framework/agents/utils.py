@@ -3,8 +3,8 @@ from loguru import logger
 # Import the agent instance
 from .definitions.utility_agents import context_summarizer_agno_agent
 
-MAX_SUMMARY_LENGTH_FALLBACK_CHARS = 4200  # ~600 words * 7 chars/word average
-TARGET_WORD_COUNT_FOR_CTX_SUMMARIES = 600  # Middle of your 500-700 range
+MAX_SUMMARY_LENGTH_FALLBACK_CHARS = 28000  # ~4000 words * 7 chars/word average
+TARGET_WORD_COUNT_FOR_CTX_SUMMARIES = 4000  # Only summarize if content exceeds 4k words
 
 def get_context_summary(content: Any, target_word_count: int = TARGET_WORD_COUNT_FOR_CTX_SUMMARIES) -> str:
     if not content:

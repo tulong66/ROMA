@@ -63,6 +63,10 @@ class SubNodeCreator:
         for i, sub_node in enumerate(created_sub_nodes):
             sub_task_def = plan_output.sub_tasks[i] # Get the corresponding sub_task_def
             if hasattr(sub_task_def, 'depends_on_indices') and sub_task_def.depends_on_indices:
+                # CRITICAL FIX: Store depends_on_indices in the TaskNode's aux_data
+                sub_node.aux_data['depends_on_indices'] = sub_task_def.depends_on_indices
+                logger.info(f"      SubNodeCreator: Stored depends_on_indices {sub_task_def.depends_on_indices} in aux_data for node {sub_node.task_id}")
+                
                 for dep_index in sub_task_def.depends_on_indices:
                     if 0 <= dep_index < len(created_sub_nodes) and dep_index != i: # Ensure valid index and not self-dependent
                         dependency_node = created_sub_nodes[dep_index]
@@ -70,6 +74,15 @@ class SubNodeCreator:
                         logger.info(f"      SubNodeCreator: Added dependency edge: {dependency_node.task_id} -> {sub_node.task_id} in graph {sub_graph_id}")
                     else:
                         logger.warning(f"    SubNodeCreator: Invalid dependency index {dep_index} for sub-task {sub_node.task_id} (index {i}). Skipping this dependency.")
+            else:
+                # CRITICAL FIX: Store empty depends_on_indices for nodes with no dependencies
+                sub_node.aux_data['depends_on_indices'] = []
+                logger.debug(f"      SubNodeCreator: No dependencies for node {sub_node.task_id}, stored empty depends_on_indices")
+            
+            # CRITICAL FIX: Update knowledge store to ensure dependency information is immediately available
+            self.knowledge_store.add_or_update_record_from_node(sub_node)
+            logger.debug(f"      SubNodeCreator: Updated knowledge store with dependency info for node {sub_node.task_id}")
+            
             # If depends_on_indices is empty or not present, the node has no explicit dependencies on its siblings in this plan.
             # It will become READY once its parent (the PLAN node) is PLAN_DONE.
 

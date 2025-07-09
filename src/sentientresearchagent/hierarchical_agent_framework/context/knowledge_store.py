@@ -31,6 +31,9 @@ class TaskRecord(BaseModel):
     child_task_ids_generated: List[str] = Field(default_factory=list)
     layer: Optional[int] = None
     error_message: Optional[str] = None
+    
+    # CRITICAL FIX: Store aux_data for dependency information and other metadata
+    aux_data: Dict[str, Any] = Field(default_factory=dict)
 
     class Config:
         use_enum_values = True # Keep this for serialization consistency
@@ -63,7 +66,8 @@ class KnowledgeStore(BaseModel):
             parent_task_id=node.parent_node_id,
             child_task_ids_generated=node.planned_sub_task_ids or [],
             layer=node.layer,
-            error_message=node.error
+            error_message=node.error,
+            aux_data=node.aux_data or {}  # CRITICAL FIX: Preserve aux_data including depends_on_indices
         )
         self.records[record.task_id] = record
         logger.info(f"KnowledgeStore: Added/Updated record for {node.task_id}")

@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from .inode_handler import INodeHandler, ProcessorContext
 from ..context.enhanced_context_builder import resolve_context_for_agent_with_parents
 from ..context.smart_context_utils import get_smart_child_context
+from ..agents.utils import get_context_summary, TARGET_WORD_COUNT_FOR_CTX_SUMMARIES
 # TraceManager is now accessed via ProcessorContext instead of global singleton
 
 
@@ -346,7 +347,20 @@ class ReadyPlanHandler(INodeHandler):
             # CRITICAL FIX: Store full result in aux_data for consistency
             node.aux_data['full_result'] = plan_output
             
-            node.output_summary = f"Planned with {len(plan_output.sub_tasks)} sub-tasks."
+            # Generate meaningful summary instead of generic one
+            try:
+                if plan_output and hasattr(plan_output, 'sub_tasks') and plan_output.sub_tasks:
+                    # Create a summary that includes the actual sub-task goals
+                    subtask_goals = [subtask.goal for subtask in plan_output.sub_tasks[:3]]  # Take first 3 goals
+                    goals_preview = '; '.join(subtask_goals)
+                    if len(plan_output.sub_tasks) > 3:
+                        goals_preview += f" (and {len(plan_output.sub_tasks) - 3} more tasks)"
+                    node.output_summary = f"Planned {len(plan_output.sub_tasks)} sub-tasks: {goals_preview}"
+                else:
+                    node.output_summary = f"Generated plan with {len(plan_output.sub_tasks)} sub-tasks for goal: {node.goal[:100]}..."
+            except Exception as e:
+                logger.warning(f"Error generating meaningful plan summary for {node.task_id}: {e}")
+                node.output_summary = f"Generated plan with {len(plan_output.sub_tasks)} sub-tasks for goal: {node.goal[:100]}..."
             node.update_status(TaskStatus.PLAN_DONE)
             
             logger.success(f"✅ ReadyPlanHandler: Node {node.task_id} planning complete. Status: {node.status.name}")
@@ -497,7 +511,14 @@ class ReadyExecuteHandler(INodeHandler):
                 # ENHANCED: Extract meaningful output based on result type
                 if hasattr(execution_result, 'output_text_with_citations'):
                     # CustomSearcherOutput - extract the actual search results
-                    output_summary = execution_result.output_text_with_citations[:500] + "..." if len(execution_result.output_text_with_citations) > 500 else execution_result.output_text_with_citations
+                    try:
+                        output_summary = get_context_summary(
+                            execution_result.output_text_with_citations, 
+                            target_word_count=TARGET_WORD_COUNT_FOR_CTX_SUMMARIES
+                        )
+                    except Exception as e:
+                        logger.warning(f"Error generating summary for search results in {node.task_id}: {e}")
+                        output_summary = execution_result.output_text_with_citations[:500] + "..." if len(execution_result.output_text_with_citations) > 500 else execution_result.output_text_with_citations
                     node.output_summary = f"Search Results: {output_summary}"
                     
                     # Update trace with meaningful output
@@ -511,7 +532,14 @@ class ReadyExecuteHandler(INodeHandler):
                 elif hasattr(execution_result, 'model_dump'):
                     # Structured output - extract key information
                     dumped = execution_result.model_dump()
-                    output_summary = f"Structured output: {str(dumped)[:200]}..."
+                    try:
+                        output_summary = get_context_summary(
+                            dumped, 
+                            target_word_count=TARGET_WORD_COUNT_FOR_CTX_SUMMARIES
+                        )
+                    except Exception as e:
+                        logger.warning(f"Error generating summary for structured output in {node.task_id}: {e}")
+                        output_summary = f"Structured output: {str(dumped)[:200]}..."
                     node.output_summary = output_summary
                     
                     # Update trace with structured output
@@ -522,7 +550,14 @@ class ReadyExecuteHandler(INodeHandler):
                     )
                     
                 elif isinstance(execution_result, str):
-                    output_summary = execution_result[:250] + "..." if len(execution_result) > 250 else execution_result
+                    try:
+                        output_summary = get_context_summary(
+                            execution_result, 
+                            target_word_count=TARGET_WORD_COUNT_FOR_CTX_SUMMARIES
+                        )
+                    except Exception as e:
+                        logger.warning(f"Error generating summary for string output in {node.task_id}: {e}")
+                        output_summary = execution_result[:250] + "..." if len(execution_result) > 250 else execution_result
                     node.output_summary = output_summary
                     
                     # Update trace with string output
@@ -723,11 +758,62 @@ class AggregatingNodeHandler(INodeHandler):
                 node
             )
 
-            agent_task_input = AgentTaskInput(
-                current_task_id=node.task_id, current_goal=node.goal,
-                current_task_type=TaskType.AGGREGATE.value, relevant_context_items=child_results_for_aggregator, 
+            # ENHANCED: Use the enhanced context builder to get horizontal dependency context
+            agent_task_input = resolve_context_for_agent_with_parents(
+                current_task_id=node.task_id,
+                current_goal=node.goal,
+                current_task_type=TaskType.AGGREGATE.value,
+                agent_name=context_builder_agent_name,
+                knowledge_store=context.knowledge_store,
                 overall_project_goal=context.task_graph.overall_project_goal
             )
+            
+            # CRITICAL: Combine child results with horizontal context
+            # The enhanced context builder gives us horizontal context (from prerequisite siblings)
+            # We need to add the child results to the existing context items
+            if child_results_for_aggregator:
+                if agent_task_input.relevant_context_items:
+                    # Add child results to existing context items
+                    agent_task_input.relevant_context_items.extend(child_results_for_aggregator)
+                else:
+                    # No existing context, just use child results
+                    agent_task_input.relevant_context_items = child_results_for_aggregator
+                
+                # Update the formatted context to include both types
+                formatted_context_parts = []
+                
+                # Add parent hierarchy context first (highest priority)
+                if agent_task_input.parent_hierarchy_context:
+                    formatted_context_parts.append(agent_task_input.parent_hierarchy_context.formatted_context)
+                
+                # Add horizontal context from prerequisites
+                horizontal_context_items = [item for item in agent_task_input.relevant_context_items if item not in child_results_for_aggregator]
+                if horizontal_context_items:
+                    formatted_context_parts.append("\n=== PREREQUISITE CONTEXT ===")
+                    for item in horizontal_context_items:
+                        formatted_context_parts.extend([
+                            f"\nSource: {item.source_task_goal}",
+                            f"Type: {item.content_type_description}",
+                            f"Content: {str(item.content)[:500]}{'...' if len(str(item.content)) > 500 else ''}",
+                            "---"
+                        ])
+                
+                # Add child results context
+                if child_results_for_aggregator:
+                    formatted_context_parts.append("\n=== CHILD RESULTS ===")
+                    for item in child_results_for_aggregator:
+                        formatted_context_parts.extend([
+                            f"\nSource: {item.source_task_goal}",
+                            f"Type: {item.content_type_description}",
+                            f"Content: {str(item.content)[:500]}{'...' if len(str(item.content)) > 500 else ''}",
+                            "---"
+                        ])
+                
+                # Update the formatted context
+                agent_task_input.formatted_full_context = "\n".join(formatted_context_parts) if formatted_context_parts else None
+                
+                logger.info(f"  AggregatingNodeHandler: Combined context - {len(horizontal_context_items)} horizontal + {len(child_results_for_aggregator)} child results")
+            
             node.input_payload_dict = agent_task_input.model_dump()
 
             if not isinstance(node.node_type, NodeType): 
@@ -773,8 +859,22 @@ class AggregatingNodeHandler(INodeHandler):
             node.result = aggregated_result
             node.aux_data['full_result'] = aggregated_result
             
+            # Generate meaningful summary for aggregated results
+            try:
+                if aggregated_result:
+                    meaningful_summary = get_context_summary(
+                        aggregated_result, 
+                        target_word_count=TARGET_WORD_COUNT_FOR_CTX_SUMMARIES
+                    )
+                    logger.info(f"    AggregatingNodeHandler: Generated meaningful summary for {node.task_id} (len: {len(meaningful_summary)})")
+                else:
+                    meaningful_summary = "Aggregation completed with no output"
+            except Exception as e:
+                logger.warning(f"    AggregatingNodeHandler: Error generating summary for {node.task_id}: {e}")
+                meaningful_summary = f"Aggregation completed. Output type: {type(aggregated_result).__name__}"
+            
             node.output_type_description = "aggregated_text_result"
-            node.update_status(TaskStatus.DONE, result=aggregated_result)
+            node.update_status(TaskStatus.DONE, result=aggregated_result, result_summary=meaningful_summary)
             logger.success(f"    AggregatingNodeHandler: Node {node.task_id} aggregation complete. Status: {node.status.name}.")
             
             # Stage completion is handled by BaseAdapter's process method
