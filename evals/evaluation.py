@@ -177,6 +177,12 @@ def evaluation_worker(task_queue: multiprocessing.Queue, result_queue: multiproc
             print(f"🚀 [{process_name}] Creating project for query #{idx+1}: '{query}'")
             start_time = time.time()
             
+            # Add delay to avoid rate limiting
+            if worker_config.get('request_delay', 0) > 0:
+                delay = worker_config['request_delay']
+                print(f"⏱️ [{process_name}] Waiting {delay}s before request (rate limiting)")
+                time.sleep(delay)
+            
             # Create the project with configuration
             project_response = client.create_configured_project(
                 goal=query,
@@ -321,9 +327,15 @@ def main():
     parser.add_argument("--execution-timeout", type=int, default=1800, 
                        help="Timeout for each execution in seconds")
     
+    # Rate limiting settings
+    parser.add_argument("--request-delay", type=float, default=5.0, 
+                       help="Delay between requests in seconds (to avoid rate limiting)")
+    parser.add_argument("--worker-startup-delay", type=float, default=2.0, 
+                       help="Delay between worker startup in seconds")
+    
     # Multiprocessing settings
-    parser.add_argument("--num-processes", type=int, default=multiprocessing.cpu_count(), 
-                       help="Number of parallel processes")
+    parser.add_argument("--num-processes", type=int, default=min(2, multiprocessing.cpu_count()), 
+                       help="Number of parallel processes (default: 2 to avoid rate limiting)")
     
     args = parser.parse_args()
     
@@ -361,6 +373,7 @@ def main():
         'enable_websocket': args.enable_websocket,
         'max_steps': args.max_steps,
         'execution_timeout': args.execution_timeout,
+        'request_delay': args.request_delay,
         'agent_config': {
             'llm': {
                 'provider': 'openai',
@@ -370,9 +383,10 @@ def main():
             'execution': {
                 'enable_hitl': args.enable_hitl,
                 'hitl_root_plan_only': True,
-                'max_concurrent_nodes': args.max_concurrent_tasks,
+                'max_concurrent_nodes': min(2, args.max_concurrent_tasks),  # Limit concurrent nodes for rate limiting
                 'max_recursion_depth': args.max_planning_depth,
                 'max_execution_steps': args.max_steps,
+                'rate_limit_rpm': 20,  # Conservative rate limit for evaluations
                 'hitl_timeout_seconds': 300,
                 'hitl_after_plan_generation': False,
                 'hitl_after_modified_plan': False,
@@ -400,7 +414,7 @@ def main():
     for _ in range(args.num_processes):
         task_queue.put(None)
     
-    # Start worker processes
+    # Start worker processes with staggered startup
     processes = []
     print(f"🏁 Starting {args.num_processes} worker processes for {len(queries)} queries...")
     for i in range(args.num_processes):
@@ -411,6 +425,11 @@ def main():
         )
         processes.append(process)
         process.start()
+        
+        # Add delay between worker startup to avoid initial rate limiting burst
+        if i < args.num_processes - 1 and args.worker_startup_delay > 0:
+            print(f"⏱️ Waiting {args.worker_startup_delay}s before starting next worker...")
+            time.sleep(args.worker_startup_delay)
     
     # Collect results
     results = []

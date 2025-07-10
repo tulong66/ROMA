@@ -18,13 +18,17 @@ cache:
 
 # Execution Framework
 execution:
-  max_concurrent_nodes: 3  # Conservative for complex agents
+  max_concurrent_nodes: 2  # Reduced to minimize rate limiting
   max_execution_steps: 500  # More steps for deep reasoning
+  rate_limit_rpm: 30  # Reduced from 60 to avoid Gemini rate limits
   enable_hitl: true
   hitl_timeout_seconds: 600.0  # 10 minutes for human review
   
   # CHANGED: Default to root plan only - only review the initial high-level plan
   hitl_root_plan_only: true  # Set to true to only review root node's plan
+  
+  # NEW: Force root nodes to always plan (skip atomizer) - prevents atomic classification of complex queries
+  force_root_node_planning: true  # Set to false to allow atomizer to decide for root nodes
   
   # These are ignored when hitl_root_plan_only is true
   hitl_after_plan_generation: true
@@ -43,5 +47,8 @@ logging:
 
 # Environment
 environment: "research"
+
+# Default Agent Profile
+default_profile: "general_agent"
 
 # NO AGENT CONFIGURATION HERE - Your agents are already perfectly configured!

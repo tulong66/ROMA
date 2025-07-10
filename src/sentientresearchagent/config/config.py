@@ -83,6 +83,9 @@ class ExecutionConfig(BaseModel):
     # CHANGED: Default to root plan only - review only the initial high-level plan
     hitl_root_plan_only: bool = True  # Only review root node's initial plan
     
+    # NEW: Force root nodes to always plan (skip atomizer)
+    force_root_node_planning: bool = True  # Ensures complex top-level questions get decomposed
+    
     # Specific HITL Checkpoints (when enable_hitl is True and hitl_root_plan_only is False)
     hitl_after_plan_generation: bool = True   # Review plans after generation
     hitl_after_modified_plan: bool = True     # Review modified plans

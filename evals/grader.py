@@ -1,17 +1,20 @@
 import os
-import base64
-import hashlib
 import pandas as pd
-import time
-import sys
 import re
-
+import argparse
 from openai import OpenAI
+from dotenv import load_dotenv
 
-GRADER_TEMPLATE = """
+load_dotenv()
+
+SYSTEM_PROMPT = "You are a strict, high-precision evaluation assistant. Your job is to assess the correctness of answers by comparing model-generated responses against authoritative correct answers. You must focus only on whether the final answer matches, without solving the problem or adding any commentary. Be objective, literal, and rule-following."
+
+def create_prompt(problem: str, response: str, answer: str) -> str:
+    """Creates the prompt for the grading model."""
+    return f"""
 Judge whether the following [response] to [question] is correct or not based on the precise and unambiguous [correct_answer] below.
 
-[question]: {question}
+[question]: {problem}
 
 [response]: {response}
 
@@ -19,135 +22,118 @@ Your judgement must be in the format and criteria specified below:
 
 extracted_final_answer: The final exact answer extracted from the [response]. Put the extracted answer as 'None' if there is no exact, final answer to extract from the response.
 
-[correct_answer]: {correct_answer}
+[correct_answer]: {answer}
 
 reasoning: Explain why the extracted_final_answer is correct or incorrect based on [correct_answer], focusing only on if there are meaningful differences between [correct_answer] and the extracted_final_answer. Do not comment on any background to the problem, do not attempt to solve the problem, do not argue for any answer different than [correct_answer], focus only on whether the answers match.
 
 correct: Answer 'yes' if extracted_final_answer matches the [correct_answer] given above, or is within a small margin of error for numerical problems. Answer 'no' otherwise, i.e. if there if there is any inconsistency, ambiguity, non-equivalency, or if the extracted answer is incorrect.
 """.strip()
 
-CHOICE_STRINGS = ["yes", "no"]
+def parse_args():
+    """Parses command-line arguments."""
+    parser = argparse.ArgumentParser(description="Grade model responses against correct answers.")
+    parser.add_argument("--input-file", required=True, help="Path to the input CSV file.")
+    parser.add_argument("--output-file", help="Path to the output CSV file. If not provided, it defaults to '{input_file_name}_graded.csv' in the same directory.")
+    parser.add_argument("--model", default="accounts/fireworks/models/deepseek-r1-0528", help="Model to use for evaluation.")
+    parser.add_argument("--batch-size", type=int, default=30, help="Batch size for saving intermediate results.")
+    parser.add_argument("--api-base-url", default="https://api.fireworks.ai/inference/v1", help="Base URL for the API.")
+    parser.add_argument("--start-index", type=int, default=0, help="Start index for processing rows from the input file.")
+    parser.add_argument("--end-index", type=int, default=None, help="End index for processing rows from the input file.")
+    return parser.parse_args()
 
+def main():
+    """Main function to run the grading process."""
+    args = parse_args()
 
-#MODEL_GPT_4O = "openai/gpt-4o"
-#MODEL_DEEPSEEK_R1 = "deepseek/deepseek-reasoner"
-#name = "CodeActSolver"
+    api_key = os.environ.get("FIREWORKS_AI_API_KEY")
+    if not api_key:
+        print("Error: Environment variable FIREWORKS_AI_API_KEY not set.")
+        return
 
+    client = OpenAI(api_key=api_key, base_url=args.api_base_url)
 
+    if not os.path.exists(args.input_file):
+        print(f"Error: Input file not found at {args.input_file}")
+        return
 
-client = OpenAI(api_key= os.environ.get("FIREWORKS_AI_API_KEY", None), base_url="https://api.fireworks.ai/inference/v1")
-
-#print(os.environ.get("FIREWORKS_AI_API_KEY", None))
-
-BATCH_SIZE = 30
-batch_count = 1  # start from 1 for agent_comparisons30.csv
-inputs = []  # list to store inputs
-results = []
-#N = 1  # for example, pick 15 entries
-
-curr_work_id = 1
-existing_filename = f"seal_0_final_pro_30_example_longer_results.csv"
-processed_problems = set()
-
-#batches = [0,315,630,945,1266]
-#start_idx = batches[curr_work_id - 1]
-#end_idx = batches[curr_work_id]
-#start_idx = 0
-#end_idx = 50
-if os.path.exists(existing_filename):
     try:
-        existing_df = pd.read_csv(existing_filename)
-        #sliced_df = existing_df.iloc[start_idx:end_idx]
-        print(existing_df)
-        #print(sliced_df)
-        for _, row in existing_df.iterrows():
-            inputs.append(row.to_dict())  # Add to the inputs list
+        df = pd.read_csv(args.input_file)
+        inputs = df.to_dict('records')
     except Exception as e:
-        print(f"Error loading existing CSV: {e}")
+        print(f"Error loading CSV file: {e}")
+        return
 
-#print(inputs[0])
+    inputs = inputs[args.start_index:args.end_index]
+    
+    print(f"Processing {len(inputs)} records.")
+    print(f"Using model: {args.model}")
 
-MODEL_EVAL = "accounts/fireworks/models/deepseek-r1-0528"
-print(f"CURR WORK ID: {curr_work_id}")
-print("\n\n\n")
-print(MODEL_EVAL)
-# Step 2: Filter sampled_df
-#sampled_df = df.sample(n=N)[['problem', 'answer', 'canary']]
-print(len(inputs))
-'''for idx, row in sampled_df.iterrows():
-    problem = decrypt(row.get("problem", ""), row.get("canary", ""))
-    answer = decrypt(row.get("answer", ""), row.get("canary", ""))
-    #problem = row['problem']
-    #answer = row['answer']
-    print(f"problem: {problem}")
-    print(f"answer: {answer}")'''
+    results = []
+    correct_count = 0
+    
+    if args.output_file:
+        output_file = args.output_file
+    else:
+        input_dir = os.path.dirname(args.input_file) or '.'
+        base_name = os.path.splitext(os.path.basename(args.input_file))[0]
+        output_file = os.path.join(input_dir, f"{base_name}_graded.csv")
+    
+    output_dir = os.path.dirname(output_file)
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
 
-count = 0
-correct_count = 0
-print("----------------- START OF AGENT EXECUTION -----------------")
-for row in inputs:
-    count += 1
-    try:
-        problem = row["question"].split("Your response should be in the following format:")[0]
-        prompt = f"""
-    Judge whether the following [response] to [question] is correct or not based on the precise and unambiguous [correct_answer] below.
+    output_prefix = os.path.splitext(output_file)[0]
+    batch_count = 0
 
-    [question]: {problem}
+    for i, row in enumerate(inputs):
+        try:
+            problem = row["question"].split("Your response should be in the following format:")[0].strip()
+            prompt = create_prompt(problem, row["result"], row["answer"])
 
-    [response]: {row["result"]}
+            response = client.chat.completions.create(
+                model=args.model,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt},
+                ],
+                stream=False
+            )
+            model_ans = response.choices[0].message.content
+            match = re.search(r"correct:\s*(yes|no)", model_ans, re.IGNORECASE)
+            
+            is_correct = None
+            is_correct_str = 'N/A'
+            if match:
+                is_correct_str = match.group(1).lower()
+                is_correct = 1 if is_correct_str == "yes" else 0
+                if is_correct == 1:
+                    correct_count += 1
+            
+            print(f"Processed record {i+1}/{len(inputs)} -> Correct: {is_correct_str}")
 
-    Your judgement must be in the format and criteria specified below:
+            results.append({
+                'problem': problem,
+                'agent_answer': row["result"],
+                'full_answer': model_ans,
+                'correct_answer': row["answer"],
+                'is_correct': is_correct
+            })
 
-    extracted_final_answer: The final exact answer extracted from the [response]. Put the extracted answer as 'None' if there is no exact, final answer to extract from the response.
+            if (i + 1) % args.batch_size == 0 and results:
+                batch_count += 1
+                batch_filename = f'{output_prefix}_batch_{batch_count}.csv'
+                pd.DataFrame(results).to_csv(batch_filename, index=False)
+                print(f"Saved batch to {batch_filename}")
 
-    [correct_answer]: {row["answer"]}
+        except Exception as e:
+            print(f"Error processing record at index {i} (input file row {args.start_index + i}): {e}")
+            continue
 
-    reasoning: Explain why the extracted_final_answer is correct or incorrect based on [correct_answer], focusing only on if there are meaningful differences between [correct_answer] and the extracted_final_answer. Do not comment on any background to the problem, do not attempt to solve the problem, do not argue for any answer different than [correct_answer], focus only on whether the answers match.
+    pd.DataFrame(results).to_csv(output_file, index=False)
+    print(f"\nSaved final results to {output_file}")
 
-    correct: Answer 'yes' if extracted_final_answer matches the [correct_answer] given above, or is within a small margin of error for numerical problems. Answer 'no' otherwise, i.e. if there if there is any inconsistency, ambiguity, non-equivalency, or if the extracted answer is incorrect.
-    """.strip()
-        response = client.chat.completions.create(
-            model=MODEL_EVAL,
-            messages=[
-                {"role": "system", "content": "You are a strict, high-precision evaluation assistant. Your job is to assess the correctness of answers by comparing model-generated responses against authoritative correct answers. You must focus only on whether the final answer matches, without solving the problem or adding any commentary. Be objective, literal, and rule-following."},
-                {"role": "user", "content": prompt},
-            ],
-            stream=False
-        )
-        model_ans = response.choices[0].message.content
-        match = re.search(r"correct:\s*(yes|no)", model_ans, re.IGNORECASE)
-        if match:
-            is_correct_str = match.group(1).lower()  # "yes" or "no"
-            is_correct = 1 if is_correct_str == "yes" else 0
-            correct_count += is_correct
-        else:
-            is_correct = None  # or handle missing value
-        print(f"PROMPT: {prompt}")
-        print(f"FINAL ANSWER: {model_ans}")
-        print(f"IS CORRECT: {is_correct}")
-        print("\n\n\n")
+    if results:
+        print(f"TOTAL CORRECT COUNT: {correct_count}/{len(results)} ({correct_count/len(results):.2%})")
 
-        results.append({
-            'problem': problem,
-            'agent_answer': row["result"],
-            'full_answer': model_ans,
-            'correct_answer': row["answer"],
-            'is_correct': is_correct
-        })
-        if len(results) % BATCH_SIZE == 0:
-                filename = f'evals/test_results/final_results_search_pro_seal_0_no_reasoning_longer_context_temp_{curr_work_id}_{len(results)}.csv'
-                results_df = pd.DataFrame(results)
-                results_df.to_csv(filename, index=False)
-                print(f"Saved batch to {filename}")
-
-                batch_count += 1  # optional if you want to track further
-        #time.sleep(3)
-    except Exception as e:
-        print(f"Error at index {count}: {e}")
-        continue
-
-
-print(count)
-results_df = pd.DataFrame(results)
-results_df.to_csv(f'final_results_pro_seal_0_30_{curr_work_id}.csv', index=False)
-print(f"TOTAL CORRECT COUNT: {correct_count}/{len(results)}")
+if __name__ == "__main__":
+    main()

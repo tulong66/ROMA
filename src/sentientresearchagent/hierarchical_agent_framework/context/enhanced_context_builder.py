@@ -45,7 +45,7 @@ def resolve_context_for_agent_with_parents(
             formatted_context_parts.extend([
                 f"\nSource: {item.source_task_goal}",
                 f"Type: {item.content_type_description}",
-                f"Content: {str(item.content)[:500]}{'...' if len(str(item.content)) > 500 else ''}",
+                f"Content: {str(item.content)}",
                 "---"
             ])
     

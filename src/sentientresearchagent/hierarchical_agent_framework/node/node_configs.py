@@ -16,3 +16,6 @@ class NodeProcessorConfig(BaseModel):
 
     # CHANGED: Default to root plan only mode
     hitl_root_plan_only: bool = True
+    
+    # NEW: Force root nodes to always plan (skip atomizer)
+    force_root_node_planning: bool = True

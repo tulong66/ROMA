@@ -206,7 +206,7 @@ const ProjectSidebar: React.FC = () => {
         
         // Finally fall back to output_summary (truncated version)
         { field: 'output_summary', data: rootNode.output_summary, type: 'text' as const }
-      ]
+      ] as Array<{ field: string; data: any; type: 'markdown' | 'unknown' | 'text' }>
 
       let content = ''
       let filename = 'project-result.md'
@@ -220,7 +220,7 @@ const ProjectSidebar: React.FC = () => {
             String(candidate.data).trim().length > 0) {
           
           let candidateContent: string
-          let candidateType = candidate.type
+          let candidateType: 'markdown' | 'unknown' | 'text' | 'json' = candidate.type
 
           if (typeof candidate.data === 'string') {
             candidateContent = candidate.data
@@ -516,7 +516,9 @@ const ProjectSidebar: React.FC = () => {
     return text.substring(0, maxLength) + '...'
   }
 
-  const recentProjects = getRecentProjects()
+  const allProjects = projects
+    .filter(p => p.id !== currentProjectId)
+    .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
   const currentProject = getCurrentProject()
   const rootNodeCompleted = isRootNodeCompleted()
   const hasNodes = Object.keys(nodes).length > 0
@@ -653,13 +655,13 @@ const ProjectSidebar: React.FC = () => {
           )}
 
           {/* Projects List */}
-          <div className="flex-1 overflow-hidden">
+          <div className="flex-1 overflow-hidden flex flex-col">
             <div className="px-4 pb-2">
-              <div className="text-xs font-medium text-muted-foreground">RECENT PROJECTS</div>
+              <div className="text-xs font-medium text-muted-foreground">ALL PROJECTS ({allProjects.length})</div>
             </div>
-            <ScrollArea className="flex-1 px-4">
+            <ScrollArea className="flex-1 px-4 h-0">
               <div className="space-y-2">
-                {recentProjects.map((project) => (
+                {allProjects.map((project) => (
                   <div
                     key={project.id}
                     className={cn(

@@ -2,6 +2,8 @@ import os
 import requests
 import json
 import types
+import asyncio
+import time
 from dotenv import load_dotenv
 from typing import Dict, Optional, List, TYPE_CHECKING
 from loguru import logger
@@ -99,15 +101,34 @@ class OpenAICustomSearchAdapter(BaseAdapter):
                  logger.error(f"  {self.adapter_name}: Invalid OpenAI client. Expected AsyncOpenAI with responses.create. Got: {type(self.client)}")
                  raise TypeError("Invalid OpenAI client setup for async operation.")
 
+            # Streamlined system message for direct answer extraction
+            enhanced_query = f"""Answer this query directly with specific facts/numbers. If not found, state "Not found". No analysis.
+
+QUERY: {query}
+
+ANSWER:"""
+            
             api_response = await self.client.responses.create(
                 model=self.model_id,
                 tools=[{"type": "web_search_preview"}],
-                input=query
+                input=enhanced_query
             )
 
             # 1. Prioritize getting api_response.output_text
             if hasattr(api_response, 'output_text') and api_response.output_text:
-                output_text_with_citations = api_response.output_text
+                raw_output = api_response.output_text
+                
+                # Post-process to extract just the answer if it contains our prompt
+                if "ANSWER:" in raw_output:
+                    # Extract everything after "ANSWER:"
+                    answer_parts = raw_output.split("ANSWER:", 1)
+                    if len(answer_parts) > 1:
+                        output_text_with_citations = answer_parts[1].strip()
+                    else:
+                        output_text_with_citations = raw_output
+                else:
+                    output_text_with_citations = raw_output
+                    
                 logger.success(f"    {self.adapter_name}: Retrieved 'output_text' (length: {len(output_text_with_citations)}).")
             else:
                 logger.error(f"    {self.adapter_name}: 'output_text' not found or empty in API response. Main output will be error message.")
@@ -211,7 +232,7 @@ class GeminiCustomSearchAdapter(BaseAdapter):
     It does not use an underlying AgnoAgent.
     """
     adapter_name: str = "GeminiCustomSearchAdapter" 
-    model_id: str = "gemini-2.5-flash" # As per your example, can be configured
+    model_id: str = "gemini-2.5-pro" # As per your example, can be configured
 
     def __init__(self, gemini_client = None, model_id: str = "gemini-2.5-flash"):
         super().__init__(self.adapter_name)
@@ -230,8 +251,13 @@ class GeminiCustomSearchAdapter(BaseAdapter):
         if not api_key:
             raise ValueError("GOOGLE_API_KEY or GEMINI_API_KEY environment variable is required for GeminiCustomSearchAdapter")
         
-        # Create client with explicit API key
-        self.client = gemini_client or genai.Client(api_key=api_key)
+        # Create client with explicit API key - ensure we're creating a fresh client to avoid event loop issues
+        try:
+            self.client = gemini_client or genai.Client(api_key=api_key)
+        except Exception as e:
+            logger.error(f"Error creating Gemini client: {e}")
+            raise
+        
         self.model_id = model_id
         logger.info(f"Initialized {self.agent_name} with model: {self.model_id} (API key: {api_key[:10]}...{api_key[-4:]})")
 
@@ -262,47 +288,128 @@ class GeminiCustomSearchAdapter(BaseAdapter):
         parsed_annotations: List[AnnotationURLCitationModel] = []
 
         try:
+            # Streamlined system message for direct answer extraction
+            enhanced_query = f"""Answer this query directly with specific facts/numbers. If not found, state "Not found". No analysis.
+
+QUERY: {query}
+
+ANSWER:"""
+            
             # Call Gemini API with Google Search tool using ASYNC API
-            api_response = await self.client.aio.models.generate_content(
-                model=self.model_id,
-                contents=query,
-                config={"tools": [{"google_search": {}}]},
-            )
+            # Add better error handling for event loop issues and rate limiting
+            max_retries = 3
+            base_delay = 5.0
+            
+            for attempt in range(max_retries):
+                try:
+                    api_response = await self.client.aio.models.generate_content(
+                        model=self.model_id,
+                        contents=enhanced_query,
+                        config={"tools": [{"google_search": {}}]},
+                    )
+                    break  # Success, exit retry loop
+                
+                except RuntimeError as e:
+                    if "event loop" in str(e).lower():
+                        # Event loop issue - try recreating the client
+                        logger.warning(f"Event loop issue detected, recreating client: {e}")
+                        api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+                        self.client = genai.Client(api_key=api_key)
+                        # Retry with new client
+                        continue
+                    else:
+                        raise
+                
+                except Exception as e:
+                    error_str = str(e).lower()
+                    
+                    # Handle rate limiting errors
+                    if any(keyword in error_str for keyword in ['rate limit', '429', 'quota', 'throttle', 'exceeded']):
+                        if attempt < max_retries - 1:
+                            # Exponential backoff for rate limiting
+                            delay = base_delay * (2 ** attempt) + (attempt * 10)  # Extra delay for rate limits
+                            logger.warning(f"Rate limit hit (attempt {attempt + 1}/{max_retries}), retrying in {delay:.1f}s: {e}")
+                            await asyncio.sleep(delay)
+                            continue
+                        else:
+                            logger.error(f"Rate limit exceeded after {max_retries} attempts: {e}")
+                            raise
+                    
+                    # Handle other API errors with shorter retry
+                    elif any(keyword in error_str for keyword in ['timeout', 'connection', 'network', 'internal error']):
+                        if attempt < max_retries - 1:
+                            delay = base_delay * (2 ** attempt)
+                            logger.warning(f"API error (attempt {attempt + 1}/{max_retries}), retrying in {delay:.1f}s: {e}")
+                            await asyncio.sleep(delay)
+                            continue
+                        else:
+                            logger.error(f"API error after {max_retries} attempts: {e}")
+                            raise
+                    
+                    # For other errors, don't retry
+                    else:
+                        raise
+
+            # Check if api_response is None or has unexpected structure
+            if api_response is None:
+                logger.error(f"    {self.adapter_name}: API response is None")
+                raise ValueError("API response is None")
 
             # 1. Get the main response text
             if hasattr(api_response, 'text') and api_response.text:
-                output_text_with_citations = api_response.text
-                parsed_text_content = api_response.text  # Same content for both fields
+                raw_output = api_response.text
+                
+                # Post-process to extract just the answer if it contains our prompt
+                if "ANSWER:" in raw_output:
+                    # Extract everything after "ANSWER:"
+                    answer_parts = raw_output.split("ANSWER:", 1)
+                    if len(answer_parts) > 1:
+                        output_text_with_citations = answer_parts[1].strip()
+                    else:
+                        output_text_with_citations = raw_output
+                else:
+                    output_text_with_citations = raw_output
+                
+                parsed_text_content = output_text_with_citations  # Same content for both fields
                 logger.success(f"    {self.adapter_name}: Retrieved response text (length: {len(output_text_with_citations)}).")
             else:
                 logger.error(f"    {self.adapter_name}: 'text' not found or empty in API response. Main output will be error message.")
+                logger.debug(f"    {self.adapter_name}: API response attributes: {dir(api_response) if api_response else 'None'}")
                 # Keep the default error message for output_text_with_citations
 
             # 2. Parse grounding metadata for citations
             raw_annotations_data = []
+            # Add more robust null checking to prevent NoneType iteration errors
             if (hasattr(api_response, 'candidates') and 
-                api_response.candidates and 
+                api_response.candidates is not None and 
+                isinstance(api_response.candidates, (list, tuple)) and
                 len(api_response.candidates) > 0 and
                 hasattr(api_response.candidates[0], 'grounding_metadata') and
-                hasattr(api_response.candidates[0].grounding_metadata, 'grounding_chunks')):
+                api_response.candidates[0].grounding_metadata is not None and
+                hasattr(api_response.candidates[0].grounding_metadata, 'grounding_chunks') and
+                api_response.candidates[0].grounding_metadata.grounding_chunks is not None):
                 
                 grounding_chunks = api_response.candidates[0].grounding_metadata.grounding_chunks
                 
-                for i, chunk in enumerate(grounding_chunks):
-                    if hasattr(chunk, 'web') and chunk.web:
-                        web_info = chunk.web
-                        ann_dict = {
-                            'title': getattr(web_info, 'title', f"Source {i+1}"),
-                            'url': getattr(web_info, 'uri', None),
-                            'start_index': 0,  # Gemini doesn't provide exact indices, so we'll use defaults
-                            'end_index': len(output_text_with_citations) if output_text_with_citations else 0,
-                            'type': 'url_citation'
-                        }
-                        
-                        if ann_dict['url']:
-                            raw_annotations_data.append(ann_dict)
-                        else:
-                            logger.warning(f"    {self.adapter_name}: Skipping grounding chunk without URL: {chunk}")
+                # Additional safety check for grounding_chunks
+                if isinstance(grounding_chunks, (list, tuple)):
+                    for i, chunk in enumerate(grounding_chunks):
+                        if hasattr(chunk, 'web') and chunk.web:
+                            web_info = chunk.web
+                            ann_dict = {
+                                'title': getattr(web_info, 'title', f"Source {i+1}"),
+                                'url': getattr(web_info, 'uri', None),
+                                'start_index': 0,  # Gemini doesn't provide exact indices, so we'll use defaults
+                                'end_index': len(output_text_with_citations) if output_text_with_citations else 0,
+                                'type': 'url_citation'
+                            }
+                            
+                            if ann_dict['url']:
+                                raw_annotations_data.append(ann_dict)
+                            else:
+                                logger.warning(f"    {self.adapter_name}: Skipping grounding chunk without URL: {chunk}")
+                else:
+                    logger.warning(f"    {self.adapter_name}: grounding_chunks is not iterable: {type(grounding_chunks)}")
                 
                 if raw_annotations_data:
                     logger.success(f"    {self.adapter_name}: Retrieved {len(raw_annotations_data)} grounding citations.")

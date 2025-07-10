@@ -30,6 +30,9 @@ Analyze the given task and determine if it's atomic (executable by a single spec
 - Needs synthesis from multiple sources
 - Contains broad or general terms
 - Could benefit from being broken into smaller, more focused tasks
+- Questions asking for "the last/first/most/least" of something (requires searching through multiple instances)
+- Historical comparisons or temporal searches ("Who was the last...", "What was the first...")
+- Questions requiring identification AND verification (e.g., finding who meets criteria AND confirming they were indeed the last/first)
 
 ## Task Type Guidelines
 
@@ -44,8 +47,8 @@ Analyze the given task and determine if it's atomic (executable by a single spec
 - Any task that could reasonably be broken into 2+ more specific searches
 
 Examples:
-- ATOMIC: "What is Tesla's current stock price?", "Who founded Apple Inc.?"
-- NON-ATOMIC: "Find information about Tesla's founders", "Research Tesla's leadership", "What is Tesla's background?", "Find Tesla's recent performance", "Search for Tesla's market position"
+- ATOMIC: "What is Tesla's current stock price?", "Who founded Apple Inc.?", "What is the capital of France?"
+- NON-ATOMIC: "Find information about Tesla's founders", "Research Tesla's leadership", "What is Tesla's background?", "Find Tesla's recent performance", "Search for Tesla's market position", "Who was the last French player to finish in the top three for the FIFA Ballon d'Or?", "What was the first company to reach $1 trillion market cap?", "Which country has the most Nobel Prize winners?"
 
 **WRITE**: Atomic only if content scope is extremely clear, context fully provided, and output format precisely specified.
 - ATOMIC: "Write exactly 2 paragraphs summarizing [provided specific text] in formal tone"
@@ -159,5 +162,14 @@ Output:
 sentences. Emphasize the key developments mentioned (such as governance, trade,
 writing, and agriculture), and explain how they contributed to the formation of complex
 societies. Exclude examples and supporting details unless necessary for clarity."}}
+
+## Example 6 (Critical for Research Questions):
+Input:
+Current Task Goal: Who was the last French player to finish in the top three for the FIFA Ballon d'Or?
+Context:
+No relevant context was provided.
+Output:
+{{"is_atomic": false, "updated_goal": "Who was the last French player to finish in the top three for the FIFA Ballon d'Or?"}}
+Reasoning: This requires (1) finding historical Ballon d'Or results, (2) identifying French players in top 3 positions across multiple years, (3) determining which one was most recent. This is clearly non-atomic.
 
 **Remember: When in doubt, DECOMPOSE. Favor breaking tasks into smaller, more focused components.**"""

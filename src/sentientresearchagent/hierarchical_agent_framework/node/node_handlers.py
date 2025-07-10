@@ -518,7 +518,7 @@ class ReadyExecuteHandler(INodeHandler):
                         )
                     except Exception as e:
                         logger.warning(f"Error generating summary for search results in {node.task_id}: {e}")
-                        output_summary = execution_result.output_text_with_citations[:500] + "..." if len(execution_result.output_text_with_citations) > 500 else execution_result.output_text_with_citations
+                        output_summary = execution_result.output_text_with_citations
                     node.output_summary = f"Search Results: {output_summary}"
                     
                     # Update trace with meaningful output
@@ -653,18 +653,32 @@ class ReadyNodeHandler(INodeHandler):
             await self.ready_execute_handler.handle(node, context)
             return
 
-        # At this point: node.layer < max_planning_layer
-        # Run atomizer to determine if the node should be PLAN or EXECUTE
-        logger.info(f"    ReadyNodeHandler: Node {node.task_id} (Layer {node.layer}) proceeding to atomization (layer < {max_planning_layer}).")
+        # Check if this is a root node and force_root_node_planning is enabled
+        is_root_node = (
+            node.task_id == "root" or 
+            getattr(node, 'layer', 0) == 0 or
+            getattr(node, 'parent_node_id', None) is None
+        )
         
         atomizer_decision_type: Optional[NodeType] = None
         try:
-            atomizer_decision_type = await context.node_atomizer.atomize_node(node, context)
-            
-            if atomizer_decision_type is None:
-                raise ValueError("Atomizer returned None NodeType, which is unexpected.")
-            
-            logger.info(f"    ReadyNodeHandler: Atomizer for node {node.task_id} determined NodeType: {atomizer_decision_type}")
+            if is_root_node and getattr(context.config, 'force_root_node_planning', True):
+                logger.info(
+                    f"    ReadyNodeHandler: Node {node.task_id} is a root node with force_root_node_planning=True. "
+                    f"Skipping atomization and forcing PLAN type to ensure proper decomposition."
+                )
+                atomizer_decision_type = NodeType.PLAN
+            else:
+                # At this point: node.layer < max_planning_layer
+                # Run atomizer to determine if the node should be PLAN or EXECUTE
+                logger.info(f"    ReadyNodeHandler: Node {node.task_id} (Layer {node.layer}) proceeding to atomization (layer < {max_planning_layer}).")
+                
+                atomizer_decision_type = await context.node_atomizer.atomize_node(node, context)
+                
+                if atomizer_decision_type is None:
+                    raise ValueError("Atomizer returned None NodeType, which is unexpected.")
+                
+                logger.info(f"    ReadyNodeHandler: Atomizer for node {node.task_id} determined NodeType: {atomizer_decision_type}")
 
         except Exception as e:
             logger.exception(f"    ReadyNodeHandler: Error during atomization for node {node.task_id}. Marking FAILED.")
@@ -794,7 +808,7 @@ class AggregatingNodeHandler(INodeHandler):
                         formatted_context_parts.extend([
                             f"\nSource: {item.source_task_goal}",
                             f"Type: {item.content_type_description}",
-                            f"Content: {str(item.content)[:500]}{'...' if len(str(item.content)) > 500 else ''}",
+                            f"Content: {str(item.content)}",
                             "---"
                         ])
                 
@@ -805,7 +819,7 @@ class AggregatingNodeHandler(INodeHandler):
                         formatted_context_parts.extend([
                             f"\nSource: {item.source_task_goal}",
                             f"Type: {item.content_type_description}",
-                            f"Content: {str(item.content)[:500]}{'...' if len(str(item.content)) > 500 else ''}",
+                            f"Content: {str(item.content)}",
                             "---"
                         ])
                 
