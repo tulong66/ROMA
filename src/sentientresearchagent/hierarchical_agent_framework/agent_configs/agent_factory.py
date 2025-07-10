@@ -21,9 +21,20 @@ try:
     from agno.models.litellm import LiteLLM
     from agno.models.openai import OpenAIChat
     from agno.tools.duckduckgo import DuckDuckGoTools
+    from agno.tools.python import PythonTools
+    from agno.tools.reasoning import ReasoningTools
 except ImportError as e:
     logger.error(f"Agno dependencies not available: {e}")
     raise
+
+# Try to import WikipediaTools, but don't fail if wikipedia package is missing
+try:
+    from agno.tools.wikipedia import WikipediaTools
+    WIKIPEDIA_AVAILABLE = True
+except ImportError:
+    logger.warning("WikipediaTools not available (missing wikipedia package)")
+    WikipediaTools = None
+    WIKIPEDIA_AVAILABLE = False
 
 from ..agents.adapters import (
     PlannerAdapter, ExecutorAdapter, AtomizerAdapter, 
@@ -183,8 +194,13 @@ class AgentFactory:
         # Enhanced tools mapping
         self._tools = {
             "DuckDuckGoTools": DuckDuckGoTools,
-            # Add more tools as they become available
+            "PythonTools": PythonTools,
+            "ReasoningTools": ReasoningTools,
         }
+        
+        # Add WikipediaTools if available
+        if WIKIPEDIA_AVAILABLE and WikipediaTools:
+            self._tools["WikipediaTools"] = WikipediaTools
         
         # Model providers mapping
         self._model_providers = {
@@ -317,6 +333,16 @@ class AgentFactory:
             List of tool instances
         """
         tools = []
+        
+        # Import web_search function if needed
+        web_search = None
+        if "web_search" in tool_names:
+            try:
+                from ..tools.web_search_tool import web_search, clean_tools
+                logger.debug("Imported web_search function")
+            except ImportError as e:
+                logger.error(f"Failed to import web_search: {e}")
+        
         for tool_name in tool_names:
             if tool_name in self._tools:
                 try:
@@ -327,8 +353,18 @@ class AgentFactory:
                 except Exception as e:
                     logger.error(f"Failed to create tool {tool_name}: {e}")
                     # Continue with other tools
+            elif tool_name == "web_search" and web_search is not None:
+                # Add the web_search function directly
+                tools.append(web_search)
+                logger.debug("Added web_search function as tool")
             else:
                 logger.warning(f"Unknown tool: {tool_name}")
+        
+        # Clean tools to remove problematic attributes
+        if 'clean_tools' in locals():
+            tools = clean_tools(tools)
+            logger.debug("Cleaned tools to remove problematic attributes")
+        
         return tools
     
     def create_agno_agent(self, agent_config: DictConfig) -> Optional[AgnoAgent]:

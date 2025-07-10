@@ -23,6 +23,12 @@ except ImportError:
     logger.warning("Warning: google-genai module not found. GeminiCustomSearchAdapter will not be usable.")
     genai = None
 
+try:
+    import wikipediaapi
+except ImportError:
+    logger.warning("Warning: wikipediaapi module not found. Wikipedia enhancement will not be available.")
+    wikipediaapi = None
+
 from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models import (
     CustomSearcherOutput,
     AnnotationURLCitationModel,
@@ -37,6 +43,59 @@ if TYPE_CHECKING:
 
 load_dotenv()
 
+# Helper function to extract Wikipedia content
+async def fetch_wikipedia_content(url: str) -> Optional[str]:
+    """Fetch content from a Wikipedia URL using wikipediaapi."""
+    if wikipediaapi is None:
+        return None
+    
+    try:
+        # Extract page title from URL
+        # Handle different Wikipedia URL formats
+        import re
+        patterns = [
+            r'wikipedia\.org/wiki/([^#?]+)',  # Standard wiki URL
+            r'wikipedia\.org/.*[?&]title=([^&#]+)',  # URL with title parameter
+        ]
+        
+        page_title = None
+        for pattern in patterns:
+            match = re.search(pattern, url)
+            if match:
+                page_title = match.group(1).replace('_', ' ')
+                break
+        
+        if not page_title:
+            return None
+        
+        # Create Wikipedia API client
+        wiki_wiki = wikipediaapi.Wikipedia(
+            language='en',
+            extract_format=wikipediaapi.ExtractFormat.WIKI,
+            user_agent='SentientResearchAgent/1.0 (https://github.com/salzubi401/SentientResearchAgent)'
+        )
+        
+        page = wiki_wiki.page(page_title)
+        if page.exists():
+            # Return summary + first section for manageable content
+            content = f"Wikipedia: {page.title}\n\n{page.summary}\n\n"
+            
+            # Add section content if available
+            sections = page.sections
+            if sections:
+                # Get first few sections (avoid overwhelming the context)
+                for i, section in enumerate(sections[:3]):
+                    if section.text:
+                        content += f"\n## {section.title}\n{section.text}\n"
+            
+            return content
+        else:
+            return None
+            
+    except Exception as e:
+        logger.warning(f"Error fetching Wikipedia content from {url}: {e}")
+        return None
+
 # --- OpenAI Custom Searcher with Annotations (Adapter Version) ---
 class OpenAICustomSearchAdapter(BaseAdapter):
     """
@@ -45,9 +104,9 @@ class OpenAICustomSearchAdapter(BaseAdapter):
     It does not use an underlying AgnoAgent.
     """
     adapter_name: str = "OpenAICustomSearchAdapter" 
-    model_id: str = "gpt-4.1" # As per your example, can be configured
+    model_id: str = "gpt-4o" # Updated to use gpt-4o for better search results
 
-    def __init__(self, openai_client = None, model_id: str = "gpt-4.1"):
+    def __init__(self, openai_client = None, model_id: str = "gpt-4o"):
         super().__init__(self.adapter_name)
         if AsyncOpenAI is None:
             raise ImportError("AsyncOpenAI client from openai library is not available. Please install or update 'openai'.")
@@ -101,12 +160,38 @@ class OpenAICustomSearchAdapter(BaseAdapter):
                  logger.error(f"  {self.adapter_name}: Invalid OpenAI client. Expected AsyncOpenAI with responses.create. Got: {type(self.client)}")
                  raise TypeError("Invalid OpenAI client setup for async operation.")
 
-            # Streamlined system message for direct answer extraction
-            enhanced_query = f"""Answer this query directly with specific facts/numbers. If not found, state "Not found". No analysis.
+            # Expert searcher prompt for comprehensive data retrieval
+            enhanced_query = f"""You are an expert data searcher with 20+ years of experience in searching and retrieving information from reliable sources with a keen eye for relevant data.
+
+Your task is to RETRIEVE and FETCH all necessary data to answer the following query. Focus on data retrieval, not reasoning or analysis.
+
+Guidelines:
+1. COMPREHENSIVE DATA RETRIEVAL:
+   - If it's a table, retrieve the ENTIRE table (even if it has 50, 100, or more rows)
+   - If it's a list, include ALL items in the list
+   - If it's statistics or rankings, include ALL available data points
+   - For articles/paragraphs, include ALL relevant sections and mentions
+   - Present data in its complete form - do not truncate or summarize
+
+2. SOURCE RELIABILITY PRIORITY:
+   - Wikipedia is the MOST PREFERRED source when available
+   - Other reputable sources in order of preference:
+     • Official government databases and statistics
+     • Academic institutions and research papers
+     • Established news organizations (BBC, Reuters, AP, etc.)
+     • Industry-standard databases and professional organizations
+   - Always cite your sources
+
+3. DATA PRESENTATION:
+   - Present data EXACTLY as found in the source
+   - Maintain original formatting (tables, lists, etc.)
+   - Include all columns, rows, and data points
+   - Do NOT analyze, interpret, or reason about the data
+   - Do NOT summarize or condense - present everything
 
 QUERY: {query}
 
-ANSWER:"""
+RETRIEVED DATA:"""
             
             api_response = await self.client.responses.create(
                 model=self.model_id,
@@ -118,12 +203,12 @@ ANSWER:"""
             if hasattr(api_response, 'output_text') and api_response.output_text:
                 raw_output = api_response.output_text
                 
-                # Post-process to extract just the answer if it contains our prompt
-                if "ANSWER:" in raw_output:
-                    # Extract everything after "ANSWER:"
-                    answer_parts = raw_output.split("ANSWER:", 1)
-                    if len(answer_parts) > 1:
-                        output_text_with_citations = answer_parts[1].strip()
+                # Post-process to extract just the retrieved data if it contains our prompt
+                if "RETRIEVED DATA:" in raw_output:
+                    # Extract everything after "RETRIEVED DATA:"
+                    data_parts = raw_output.split("RETRIEVED DATA:", 1)
+                    if len(data_parts) > 1:
+                        output_text_with_citations = data_parts[1].strip()
                     else:
                         output_text_with_citations = raw_output
                 else:
@@ -180,10 +265,14 @@ ANSWER:"""
                 except Exception as e_pydantic:
                     logger.warning(f"    {self.adapter_name}: Error parsing an annotation dict: {ann_data}, Error: {e_pydantic}")
 
+            # Wikipedia API fetching disabled for now
+            # Simply return the output without Wikipedia enhancement
+            
             # Return a simple dictionary with a consistent key schema
             clean_output = {
                 "query_used": query,
-                "output_text": output_text_with_citations
+                "output_text": output_text_with_citations,
+                "citations": [ann.dict() for ann in parsed_annotations]  # Include citations for transparency
             }
 
             main_output_preview = clean_output["output_text"][:150] + "..." if len(clean_output["output_text"]) > 150 else clean_output["output_text"]
@@ -202,7 +291,7 @@ ANSWER:"""
             trace_manager.complete_stage(
                 node_id=node.task_id,
                 stage_name="execution",
-                output_data=clean_output["output_text"]
+                output_data=clean_output
             )
             
             return clean_output
@@ -232,7 +321,7 @@ class GeminiCustomSearchAdapter(BaseAdapter):
     It does not use an underlying AgnoAgent.
     """
     adapter_name: str = "GeminiCustomSearchAdapter" 
-    model_id: str = "gemini-2.5-pro" # As per your example, can be configured
+    model_id: str = "gemini-2.5-flash" # As per your example, can be configured
 
     def __init__(self, gemini_client = None, model_id: str = "gemini-2.5-flash"):
         super().__init__(self.adapter_name)
@@ -288,12 +377,38 @@ class GeminiCustomSearchAdapter(BaseAdapter):
         parsed_annotations: List[AnnotationURLCitationModel] = []
 
         try:
-            # Streamlined system message for direct answer extraction
-            enhanced_query = f"""Answer this query directly with specific facts/numbers. If not found, state "Not found". No analysis.
+            # Expert searcher prompt for comprehensive data retrieval
+            enhanced_query = f"""You are an expert data searcher with 20+ years of experience in searching and retrieving information from reliable sources with a keen eye for relevant data.
+
+Your task is to RETRIEVE and FETCH all necessary data to answer the following query. Focus on data retrieval, not reasoning or analysis.
+
+Guidelines:
+1. COMPREHENSIVE DATA RETRIEVAL:
+   - If it's a table, retrieve the ENTIRE table (even if it has 50, 100, or more rows)
+   - If it's a list, include ALL items in the list
+   - If it's statistics or rankings, include ALL available data points
+   - For articles/paragraphs, include ALL relevant sections and mentions
+   - Present data in its complete form - do not truncate or summarize
+
+2. SOURCE RELIABILITY PRIORITY:
+   - Wikipedia is the MOST PREFERRED source when available
+   - Other reputable sources in order of preference:
+     • Official government databases and statistics
+     • Academic institutions and research papers
+     • Established news organizations (BBC, Reuters, AP, etc.)
+     • Industry-standard databases and professional organizations
+   - Always cite your sources
+
+3. DATA PRESENTATION:
+   - Present data EXACTLY as found in the source
+   - Maintain original formatting (tables, lists, etc.)
+   - Include all columns, rows, and data points
+   - Do NOT analyze, interpret, or reason about the data
+   - Do NOT summarize or condense - present everything
 
 QUERY: {query}
 
-ANSWER:"""
+RETRIEVED DATA:"""
             
             # Call Gemini API with Google Search tool using ASYNC API
             # Add better error handling for event loop issues and rate limiting
@@ -359,12 +474,12 @@ ANSWER:"""
             if hasattr(api_response, 'text') and api_response.text:
                 raw_output = api_response.text
                 
-                # Post-process to extract just the answer if it contains our prompt
-                if "ANSWER:" in raw_output:
-                    # Extract everything after "ANSWER:"
-                    answer_parts = raw_output.split("ANSWER:", 1)
-                    if len(answer_parts) > 1:
-                        output_text_with_citations = answer_parts[1].strip()
+                # Post-process to extract just the retrieved data if it contains our prompt
+                if "RETRIEVED DATA:" in raw_output:
+                    # Extract everything after "RETRIEVED DATA:"
+                    data_parts = raw_output.split("RETRIEVED DATA:", 1)
+                    if len(data_parts) > 1:
+                        output_text_with_citations = data_parts[1].strip()
                     else:
                         output_text_with_citations = raw_output
                 else:
@@ -423,10 +538,29 @@ ANSWER:"""
                 except Exception as e_pydantic:
                     logger.warning(f"    {self.adapter_name}: Error parsing an annotation dict: {ann_data}, Error: {e_pydantic}")
 
+            # Check for Wikipedia URLs in citations and enhance output
+            wikipedia_contents = []
+            if parsed_annotations:
+                for ann in parsed_annotations:
+                    if ann.url and 'wikipedia.org' in ann.url.lower():
+                        logger.info(f"    {self.adapter_name}: Found Wikipedia citation: {ann.url}")
+                        wiki_content = await fetch_wikipedia_content(ann.url)
+                        if wiki_content:
+                            wikipedia_contents.append(wiki_content)
+                            logger.success(f"    {self.adapter_name}: Successfully fetched Wikipedia content for: {ann.title or ann.url}")
+            
+            # Enhance output with Wikipedia content if available
+            enhanced_output_text = output_text_with_citations
+            if wikipedia_contents:
+                enhanced_output_text += "\n\n--- Additional Wikipedia Content ---\n\n"
+                enhanced_output_text += "\n\n".join(wikipedia_contents)
+                logger.info(f"    {self.adapter_name}: Enhanced output with {len(wikipedia_contents)} Wikipedia article(s)")
+            
             # Return a simple dictionary with a consistent key schema
             clean_output = {
                 "query_used": query,
-                "output_text": output_text_with_citations
+                "output_text": enhanced_output_text,
+                "citations": [ann.dict() for ann in parsed_annotations]  # Include citations for transparency
             }
             
             main_output_preview = clean_output["output_text"][:150] + "..." if len(clean_output["output_text"]) > 150 else clean_output["output_text"]

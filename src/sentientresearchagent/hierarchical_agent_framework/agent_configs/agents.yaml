@@ -130,7 +130,7 @@ agents:
       model_id: "gpt-4.1"
     prompt_source: "prompts.executor_prompts.SEARCH_EXECUTOR_SYSTEM_MESSAGE"
     response_model: "WebSearchResultsOutput"
-    tools: ["DuckDuckGoTools"]
+    tools: ["DuckDuckGoTools", "WikipediaTools", "web_search"]
     registration:
       named_keys: ["SearchExecutor", "default_search_executor"]
     enabled: true
@@ -141,10 +141,11 @@ agents:
     description: "Performs Analysis and Synthesis of information"
     model:
       provider: "litellm"
-      model_id: "openrouter/google/gemini-2.5-pro"
+      model_id: "openai/o3-2025-04-16"  # Changed to OpenAI for better tool support
     agno_params:
       reasoning: true
     prompt_source: "prompts.executor_prompts.REASONING_EXECUTOR_SYSTEM_MESSAGE"
+    tools: ["PythonTools", "ReasoningTools"]
     registration:
       action_keys:
         - action_verb: "execute"
@@ -169,6 +170,24 @@ agents:
       named_keys: ["BasicReportWriter"]
     enabled: true
 
+  - name: "SmartWebSearcher"
+    type: "executor"
+    adapter_class: "ExecutorAdapter"
+    description: "Intelligent searcher that combines AI-powered search with Wikipedia"
+    model:
+      provider: "litellm"
+      model_id: "openai/o3-2025-04-16"  # Using OpenAI for reliable tool support
+    agno_params:
+      reasoning: true
+    prompt_source: "prompts.executor_prompts.SMART_WEB_SEARCHER_SYSTEM_MESSAGE"
+    tools: ["web_search", "WikipediaTools"]
+    registration:
+      action_keys:
+        - action_verb: "execute"
+          task_type: "SEARCH"
+      named_keys: ["SmartWebSearcher"]
+    enabled: false
+
   # =============================================================================
   # CUSTOM SEARCH AGENTS - Direct API-based search without LLM overhead
   # =============================================================================
@@ -178,7 +197,7 @@ agents:
     adapter_class: "OpenAICustomSearchAdapter"
     description: "Direct API-based search using OpenAI's search capabilities"
     adapter_params:
-      model_id: "gpt-4.1" 
+      model_id: "gpt-4o" 
     registration:
       action_keys:
         - action_verb: "execute"
@@ -191,7 +210,7 @@ agents:
     adapter_class: "GeminiCustomSearchAdapter"
     description: "Direct API-based search using Google Gemini's search capabilities"
     adapter_params:
-      model_id: "gemini-2.5-pro"
+      model_id: "gemini-2.5-flash"
     registration:
       action_keys:
         - action_verb: "execute"

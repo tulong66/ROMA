@@ -631,7 +631,7 @@ const ProjectSidebar: React.FC = () => {
           {currentProject && (
             <div className="px-4 pb-4">
               <div className="text-xs font-medium text-muted-foreground mb-2">CURRENT PROJECT</div>
-              <div className="bg-muted/50 rounded-lg p-3 border-l-4 border-blue-500">
+              <div className="bg-muted/50 rounded-lg p-3 border-l-4 border-blue-500 group relative">
                 <div className="flex items-start justify-between">
                   <div className="flex-1 min-w-0">
                     <h3 className="font-medium text-sm truncate">{currentProject.title}</h3>
@@ -649,7 +649,39 @@ const ProjectSidebar: React.FC = () => {
                       )}
                     </div>
                   </div>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <div className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded cursor-pointer">
+                        <MoreVertical className="h-4 w-4" />
+                      </div>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" side="top" className="w-48">
+                      <DropdownMenuItem onClick={() => handleDeleteProject(currentProject.id)}>
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Delete Project
+                      </DropdownMenuItem>
+                      {hasProjectCompletedResults(currentProject) && (
+                        <DropdownMenuItem onClick={() => downloadProjectResults(currentProject.id)}>
+                          <Download className="mr-2 h-4 w-4" />
+                          Download Report
+                        </DropdownMenuItem>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
+                
+                {/* Small download button positioned at bottom right */}
+                {hasProjectCompletedResults(currentProject) && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="absolute bottom-2 right-2 h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={(e) => downloadProjectResults(currentProject.id, e)}
+                    title="Download results"
+                  >
+                    <Download className="h-3 w-3" />
+                  </Button>
+                )}
               </div>
             </div>
           )}
