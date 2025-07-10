@@ -96,6 +96,13 @@ Each additional sub-task introduces critical, non-redundant value
 
 **Sub-task Design Principles:**
 
+- **ATOMIC TASKS**: Each subtask should accomplish ONE clear purpose in the pipeline
+  - GOOD: "Find statistics on global smartphone adoption rates for 2024"
+  - BAD: "Find smartphone adoption rates and analyze their impact on digital literacy"
+- **Pipeline Thinking**: Structure tasks as single-step operations that build on each other:
+  - Step 1: Gather data (SEARCH)
+  - Step 2: Process/analyze data (THINK)
+  - Step 3: Create output (WRITE)
 - **Maximize parallel execution**: Design tasks to be independent and executable simultaneously whenever possible.
 - **Self-contained goals**: Each sub-task should be understandable and executable without requiring context from other sibling tasks.
 - **Minimize interdependencies**: Avoid creating artificial dependencies between tasks that could run independently.
@@ -627,14 +634,22 @@ Task Types (fixed):
 
 Planning Principles:  
 1. Complete Coverage: All key components of the goal must be addressed.  
-2. **Parallel Execution Priority**: Default to independent tasks that can run simultaneously; use sequential dependencies only when logically required.
-3. Logical Sequencing: When dependencies are necessary, tasks should build on each other progressively.  
-4. Strategic Depth: Subtasks should perform meaningful work; avoid trivial decomposition.  
-5. Structured Reasoning: Include THINK steps to analyze, decide, or connect inputs.  
-6. Concrete Outputs: Ensure at least one WRITE step exists unless the goal is purely analytic.
+2. **SEARCH IS FUNDAMENTAL**: Nearly every task requires gathering external information - include at least one SEARCH subtask unless the goal explicitly states all information is already provided.
+3. **Parallel Execution Priority**: Default to independent tasks that can run simultaneously; use sequential dependencies only when logically required.
+4. Logical Sequencing: When dependencies are necessary, tasks should build on each other progressively.  
+5. Strategic Depth: Subtasks should perform meaningful work; avoid trivial decomposition.  
+6. Structured Reasoning: Include THINK steps to analyze, decide, or connect inputs.  
+7. Concrete Outputs: Ensure at least one WRITE step exists unless the goal is purely analytic.
 
 Sub-Task Creation Guidelines:  
 - Create 3 to 6 subtasks that reflect the major phases of solving the current_task_goal.  
+- **ATOMIC TASK PRINCIPLE**: Each subtask should accomplish ONE clear, single-purpose step
+  - GOOD: "Search for the most viewed YouTube videos globally"
+  - BAD: "Search for the most viewed YouTube videos and determine how many have over 3.9B views"
+- **Pipeline Approach**: Structure tasks as discrete steps in a logical flow:
+  1. Gather specific information (SEARCH)
+  2. Process/analyze that information (THINK)
+  3. Generate required output (WRITE)
 - **Maximize parallel execution**: Design tasks to be independent whenever possible with empty `depends_on_indices: []`.
 - Each subtask must represent a distinct and valuable step toward resolution.  
 - Subtasks should be complementary and collectively sufficient.  
@@ -1158,14 +1173,22 @@ When decomposing research goals, consider the full research lifecycle:
 
 **Planning Principles:**
 1. **Comprehensive Coverage**: Ensure all aspects of the research question are addressed
-2. **Parallel Research Efficiency**: Design independent research streams that can execute simultaneously whenever possible
-3. **Logical Sequencing**: Build knowledge progressively from foundational to specific only when dependencies are genuinely required
-4. **Strategic Depth**: Balance breadth of coverage with depth of investigation
-5. **Methodological Rigor**: Include proper analysis and validation steps
-6. **Clear Deliverables**: Plan for actionable outputs and synthesis
+2. **SEARCH IS ESSENTIAL**: Nearly every research task requires gathering external information - include at least one SEARCH subtask unless you have explicit evidence that all required information is already available
+3. **Parallel Research Efficiency**: Design independent research streams that can execute simultaneously whenever possible
+4. **Logical Sequencing**: Build knowledge progressively from foundational to specific only when dependencies are genuinely required
+5. **Strategic Depth**: Balance breadth of coverage with depth of investigation
+6. **Methodological Rigor**: Include proper analysis and validation steps
+7. **Clear Deliverables**: Plan for actionable outputs and synthesis
 
 **Sub-Task Creation Guidelines:**
 - Create **3 to 6 strategic sub-tasks** that represent major research phases
+- **ATOMIC TASK PRINCIPLE**: Each subtask should accomplish ONE clear step in the research pipeline
+  - GOOD: "Search for YouTube videos with highest view counts"
+  - BAD: "Search for YouTube videos with highest view counts and count how many have over 3.9B views"
+- **Pipeline Approach**: Structure tasks as a sequence of single-purpose steps:
+  1. Gather specific data (SEARCH)
+  2. Process/analyze that data (THINK)
+  3. Generate output based on analysis (WRITE)
 - **Maximize parallel research**: Design independent research streams with `depends_on_indices: []` whenever possible
 - Each sub-task should be substantial enough to warrant specialized planning
 - Ensure sub-tasks are complementary and build toward the overall objective

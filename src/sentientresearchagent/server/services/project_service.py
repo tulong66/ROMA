@@ -307,14 +307,20 @@ class ProjectService:
                     data['all_nodes'][node_id] = temp_serializer._serialize_node(node)
                 except Exception as e:
                     logger.warning(f"Failed to manually serialize node {node_id}: {e}")
-                    # Create minimal node representation
+                    # Create minimal node representation with safe attribute access
                     data['all_nodes'][node_id] = {
                         'task_id': node_id,
                         'goal': getattr(node, 'goal', 'Unknown goal'),
                         'status': str(getattr(node, 'status', 'UNKNOWN')),
                         'layer': getattr(node, 'layer', 0),
                         'full_result': getattr(node, 'result', None),
-                        'error': str(e)
+                        'error': str(e),
+                        'agent_name': getattr(node, 'agent_name', None),
+                        'parent_node_id': getattr(node, 'parent_node_id', None),
+                        'task_type': str(getattr(node, 'task_type', None)) if hasattr(node, 'task_type') and node.task_type else None,
+                        'node_type': str(getattr(node, 'node_type', None)) if hasattr(node, 'node_type') and node.node_type else None,
+                        'output_summary': getattr(node, 'output_summary', None),
+                        'aux_data': getattr(node, 'aux_data', {})
                     }
         
         # Manually serialize graphs
@@ -765,10 +771,12 @@ class ProjectService:
     def _create_project_update_callback(self, project_id: str) -> Callable:
         """Create a callback function that syncs project updates to display."""
         def update_callback():
-            # Only sync if this is the current project
+            # Only broadcast if this is the current project
             current_project = self.project_manager.get_current_project()
             if current_project and current_project.id == project_id:
-                self.sync_project_to_display(project_id)
+                # Trigger broadcast for current project
+                if self.broadcast_callback:
+                    self.broadcast_callback()
             # If not current project, just save the state without syncing to display
             else:
                 try:

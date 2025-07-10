@@ -330,8 +330,6 @@ def main():
     # Rate limiting settings
     parser.add_argument("--request-delay", type=float, default=5.0, 
                        help="Delay between requests in seconds (to avoid rate limiting)")
-    parser.add_argument("--worker-startup-delay", type=float, default=2.0, 
-                       help="Delay between worker startup in seconds")
     
     # Multiprocessing settings
     parser.add_argument("--num-processes", type=int, default=min(2, multiprocessing.cpu_count()), 
@@ -425,11 +423,6 @@ def main():
         )
         processes.append(process)
         process.start()
-        
-        # Add delay between worker startup to avoid initial rate limiting burst
-        if i < args.num_processes - 1 and args.worker_startup_delay > 0:
-            print(f"⏱️ Waiting {args.worker_startup_delay}s before starting next worker...")
-            time.sleep(args.worker_startup_delay)
     
     # Collect results
     results = []

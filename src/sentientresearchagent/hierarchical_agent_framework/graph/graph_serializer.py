@@ -32,7 +32,7 @@ class GraphSerializer:
                             })
         
         input_payload_summary_str = "N/A"
-        if node_obj.input_payload_dict:
+        if node_obj.input_payload_dict and isinstance(node_obj.input_payload_dict, dict):
             keys = list(node_obj.input_payload_dict.keys())
             input_payload_summary_str = f"Input payload with keys: {', '.join(keys)}"
 

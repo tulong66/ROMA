@@ -415,7 +415,9 @@ class ExecutionService:
                 self.project_service.project_manager.update_project(project_id, status='running')
                 
                 if should_display:
-                    self.project_service.sync_project_to_display(project_id)
+                    # Trigger broadcast update for current project
+                    if self.project_service.broadcast_callback:
+                        self.project_service.broadcast_callback()
                 
                 logger.info("⚡ Resuming execution...")
                 await realtime_engine.run_cycle(max_steps=max_steps)
@@ -459,7 +461,9 @@ class ExecutionService:
             # Final sync only if current project
             if (self.project_service.project_manager.get_current_project() and 
                 self.project_service.project_manager.get_current_project().id == project_id):
-                self.project_service.sync_project_to_display(project_id)
+                # Trigger broadcast update for current project
+                if self.project_service.broadcast_callback:
+                    self.project_service.broadcast_callback()
             
             logger.info(f"✅ Project {project_id} completed and saved")
             
@@ -471,7 +475,9 @@ class ExecutionService:
             try:
                 if (self.project_service.project_manager.get_current_project() and 
                     self.project_service.project_manager.get_current_project().id == project_id):
-                    self.project_service.sync_project_to_display(project_id)
+                    # Trigger broadcast update for current project
+                    if self.project_service.broadcast_callback:
+                        self.project_service.broadcast_callback()
             except:
                 logger.error("Failed to broadcast error state")
     

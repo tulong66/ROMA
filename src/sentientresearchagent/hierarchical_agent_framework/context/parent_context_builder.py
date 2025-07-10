@@ -46,12 +46,12 @@ class ParentContextBuilder:
                     goal=parent_record.goal,
                     layer=parent_record.layer or 0,
                     task_type=parent_record.task_type,
-                    result_summary=parent_record.output_summary,
-                    key_insights=self._extract_key_insights(parent_record),
-                    constraints_identified=self._extract_constraints(parent_record),
-                    requirements_specified=self._extract_requirements(parent_record),
-                    planning_reasoning=self._extract_planning_reasoning(parent_record),
-                    coordination_notes=self._extract_coordination_notes(parent_record),
+                    result_summary=None,  # Don't pass parent outputs to children
+                    key_insights=None,  # Don't extract insights from parent outputs
+                    constraints_identified=None,  # Don't extract constraints from parent outputs
+                    requirements_specified=None,  # Don't extract requirements from parent outputs
+                    planning_reasoning=None,  # Don't pass planning reasoning
+                    coordination_notes=None,  # Don't pass coordination notes
                     timestamp_completed=parent_record.timestamp_completed.isoformat() if parent_record.timestamp_completed else None
                 )
                 parent_nodes.append(parent_node)
@@ -250,8 +250,7 @@ class ParentContextBuilder:
             return "medium"
         elif len(parent_nodes) >= 2 and any(p.task_type == "PLAN" for p in parent_nodes[:2]):
             return "high"
-        elif any(p.constraints_identified or p.requirements_specified for p in parent_nodes[:2]):
-            return "high"
+        # Removed check for constraints/requirements since we're not passing them anymore
         else:
             return "medium"
     

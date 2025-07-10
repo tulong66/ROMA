@@ -15,6 +15,7 @@ from .inode_handler import INodeHandler, ProcessorContext
 from ..context.enhanced_context_builder import resolve_context_for_agent_with_parents
 from ..context.smart_context_utils import get_smart_child_context
 from ..agents.utils import get_context_summary, TARGET_WORD_COUNT_FOR_CTX_SUMMARIES
+from .dependency_utils import DependencyChainTracker
 # TraceManager is now accessed via ProcessorContext instead of global singleton
 
 
@@ -734,33 +735,45 @@ class AggregatingNodeHandler(INodeHandler):
             
             if node.sub_graph_id:
                 child_nodes = context.task_graph.get_nodes_in_graph(node.sub_graph_id)
-                total_child_content_size = 0
                 
+                # Filter out children with DONE or FAILED status
+                completed_children = []
                 for child_node in child_nodes:
                     child_status = child_node.status if isinstance(child_node.status, TaskStatus) else TaskStatus(str(child_node.status))
-                    
                     if child_status in [TaskStatus.DONE, TaskStatus.FAILED]:
-                        child_content = child_node.result if child_status == TaskStatus.DONE else child_node.error
-                        
-                        # 🔥 NEW: Use smart context sizing
-                        processed_content, processing_method = get_smart_child_context(
-                            content=child_content,
-                            child_task_goal=child_node.goal,
-                            child_task_type=child_node.task_type or "UNKNOWN"
-                        )
-                        
-                        total_child_content_size += len(processed_content)
-                        
-                        # Enhanced ContextItem with processing metadata
-                        context_item = ContextItem(
-                            source_task_id=child_node.task_id, 
-                            source_task_goal=child_node.goal,
-                            content=processed_content,
-                            content_type_description=f"child_{child_status.value.lower()}_output_{processing_method}"
-                        )
-                        child_results_for_aggregator.append(context_item)
-                        
-                        logger.info(f"    Child {child_node.task_id}: {processing_method} ({len(processed_content)} chars)")
+                        completed_children.append(child_node)
+                
+                # 🔥 NEW: Filter out redundant child results based on dependency chains
+                dependency_tracker = DependencyChainTracker(context.task_graph)
+                non_redundant_children = dependency_tracker.filter_redundant_child_results(node, completed_children)
+                
+                logger.info(f"  Dependency filtering: {len(completed_children)} completed children -> {len(non_redundant_children)} non-redundant")
+                
+                total_child_content_size = 0
+                
+                for child_node in non_redundant_children:
+                    child_status = child_node.status if isinstance(child_node.status, TaskStatus) else TaskStatus(str(child_node.status))
+                    child_content = child_node.result if child_status == TaskStatus.DONE else child_node.error
+                    
+                    # 🔥 Use smart context sizing
+                    processed_content, processing_method = get_smart_child_context(
+                        content=child_content,
+                        child_task_goal=child_node.goal,
+                        child_task_type=child_node.task_type or "UNKNOWN"
+                    )
+                    
+                    total_child_content_size += len(processed_content)
+                    
+                    # Enhanced ContextItem with processing metadata
+                    context_item = ContextItem(
+                        source_task_id=child_node.task_id, 
+                        source_task_goal=child_node.goal,
+                        content=processed_content,
+                        content_type_description=f"child_{child_status.value.lower()}_output_{processing_method}"
+                    )
+                    child_results_for_aggregator.append(context_item)
+                    
+                    logger.info(f"    Child {child_node.task_id}: {processing_method} ({len(processed_content)} chars)")
                 
                 logger.info(f"  Total child content for aggregation: {total_child_content_size} chars from {len(child_results_for_aggregator)} children")
 
