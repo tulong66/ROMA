@@ -299,7 +299,8 @@ class ProjectExecutionContext:
             trace_manager=self.trace_manager,
             config=self.config,
             node_processor_config=self.node_processor_config,
-            agent_blueprint=self.agent_blueprint
+            agent_blueprint=self.agent_blueprint,
+            update_callback=self.update_callback
         )
         
         # Create execution engine

@@ -68,11 +68,20 @@ class StateManager:
             return False
 
         if not self._check_parent_conditions_for_ready(node):
+            logger.debug(f"Node {node.task_id} cannot become READY: Parent conditions not met")
+            if node.parent_node_id:
+                parent = self.task_graph.get_node(node.parent_node_id)
+                if parent:
+                    logger.debug(f"  Parent {parent.task_id} status: {parent.status}")
             return False
 
         container_graph_id = self._find_container_graph_id_for_node(node)
         if not container_graph_id:
             logger.warning(f"Node {node.task_id} cannot become READY: Cannot determine its container graph.")
+            if node.parent_node_id:
+                parent = self.task_graph.get_node(node.parent_node_id)
+                if parent:
+                    logger.debug(f"  Parent {parent.task_id} sub_graph_id: {parent.sub_graph_id}")
             return False
 
         return self._check_predecessor_conditions_for_ready(node, container_graph_id)

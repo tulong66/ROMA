@@ -184,7 +184,7 @@ If `replan_request_details` is provided:
 **Output Format:**
 
 - Respond ONLY with a JSON list of sub-task objects.
-- Or an empty list if the `current_task_goal` cannot or should not be broken down further (e.g., it's already atomic enough given the context).
+- IMPORTANT: You MUST always break down the task into subtasks. Never return an empty list.
 
 
 Here are some examples
@@ -1825,7 +1825,7 @@ Output:
   }}
 ]
 
-Return empty array `[]` if the current_task_goal cannot or should not be broken down further."""
+IMPORTANT: Always break down the task into meaningful subtasks. Do not return an empty array."""
 
 ENHANCED_SEARCH_PLANNER_EXAMPLES = """
 Input:
@@ -2193,7 +2193,7 @@ Each sub-task goal MUST be completely self-contained and executable without refe
     "depends_on_indices": []
   }}
 ]
-- Return an empty array [] if the current_task_goal cannot or should not be broken down further
+- IMPORTANT: Always break down the task into meaningful subtasks. Do not return an empty array
 
 Here are some examples.
 
@@ -2631,7 +2631,7 @@ Writing tasks should generally follow a logical sequence where each section buil
     "depends_on_indices": [3]
   }}
 ]
-- Return an empty array [] if the current_task_goal cannot or should not be broken down further
+- IMPORTANT: Always break down the task into meaningful subtasks. Do not return an empty array
 
 Here are some examples:
 
@@ -3155,7 +3155,7 @@ Output:
   }}
 ]
 
-Return empty array `[]` if the current_task_goal cannot or should not be broken down further."""
+IMPORTANT: Always break down the task into meaningful subtasks. Do not return an empty array."""
 
 
 # =============================================================================

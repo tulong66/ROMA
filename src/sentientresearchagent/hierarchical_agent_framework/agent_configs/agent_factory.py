@@ -322,12 +322,13 @@ class AgentFactory:
                     f"Original error: {e}"
                 ) from e
     
-    def create_tools(self, tool_names: List[str]) -> List[Any]:
+    def create_tools(self, tool_configs: List[Union[str, Dict[str, Any]]]) -> List[Any]:
         """
-        Create tool instances from tool names.
+        Create tool instances from tool configurations.
         
         Args:
-            tool_names: List of tool names to instantiate
+            tool_configs: List of tool names (strings) or tool configurations (dicts)
+                         Dict format: {"name": "ToolName", "params": {...}}
             
         Returns:
             List of tool instances
@@ -336,20 +337,50 @@ class AgentFactory:
         
         # Import web_search function if needed
         web_search = None
-        if "web_search" in tool_names:
-            try:
-                from ..tools.web_search_tool import web_search, clean_tools
-                logger.debug("Imported web_search function")
-            except ImportError as e:
-                logger.error(f"Failed to import web_search: {e}")
+        clean_tools_func = None
+        # Check if web_search is needed
+        for config in tool_configs:
+            tool_name = config if isinstance(config, str) else config.get("name", "")
+            if tool_name == "web_search":
+                try:
+                    from ..tools.web_search_tool import web_search, clean_tools
+                    clean_tools_func = clean_tools
+                    logger.debug("Imported web_search function")
+                except ImportError as e:
+                    logger.error(f"Failed to import web_search: {e}")
+                break
         
-        for tool_name in tool_names:
+        for config in tool_configs:
+            # Handle both string (legacy) and dict (new) formats
+            if isinstance(config, str):
+                tool_name = config
+                tool_params = {}
+            elif isinstance(config, dict):
+                tool_name = config.get("name", "")
+                tool_params = config.get("params", {})
+            else:
+                logger.warning(f"Invalid tool configuration type: {type(config)}")
+                continue
+            
             if tool_name in self._tools:
                 try:
                     tool_class = self._tools[tool_name]
-                    tool_instance = tool_class()
+                    
+                    # Special handling for PythonTools to set save_and_run parameter
+                    if tool_name == "PythonTools" and "save_and_run" not in tool_params:
+                        # Default to False for save_and_run to avoid automatic execution
+                        tool_params["save_and_run"] = False
+                        logger.debug(f"Setting save_and_run=False for PythonTools (default)")
+                    
+                    # Create tool instance with parameters
+                    if tool_params:
+                        tool_instance = tool_class(**tool_params)
+                        logger.debug(f"Created tool: {tool_name} with params: {tool_params}")
+                    else:
+                        tool_instance = tool_class()
+                        logger.debug(f"Created tool: {tool_name}")
+                    
                     tools.append(tool_instance)
-                    logger.debug(f"Created tool: {tool_name}")
                 except Exception as e:
                     logger.error(f"Failed to create tool {tool_name}: {e}")
                     # Continue with other tools
@@ -361,8 +392,8 @@ class AgentFactory:
                 logger.warning(f"Unknown tool: {tool_name}")
         
         # Clean tools to remove problematic attributes
-        if 'clean_tools' in locals():
-            tools = clean_tools(tools)
+        if clean_tools_func:
+            tools = clean_tools_func(tools)
             logger.debug("Cleaned tools to remove problematic attributes")
         
         return tools

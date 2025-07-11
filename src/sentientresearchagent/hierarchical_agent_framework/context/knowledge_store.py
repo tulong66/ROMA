@@ -32,6 +32,9 @@ class TaskRecord(BaseModel):
     layer: Optional[int] = None
     error_message: Optional[str] = None
     
+    # For PLAN nodes, to link to the graph of their sub-tasks
+    sub_graph_id: Optional[str] = None
+    
     # CRITICAL FIX: Store aux_data for dependency information and other metadata
     aux_data: Dict[str, Any] = Field(default_factory=dict)
 
@@ -67,6 +70,7 @@ class KnowledgeStore(BaseModel):
             child_task_ids_generated=node.planned_sub_task_ids or [],
             layer=node.layer,
             error_message=node.error,
+            sub_graph_id=node.sub_graph_id,  # CRITICAL FIX: Include sub_graph_id for PLAN nodes
             aux_data=node.aux_data or {}  # CRITICAL FIX: Preserve aux_data including depends_on_indices
         )
         self.records[record.task_id] = record

@@ -373,6 +373,7 @@ def main():
         'execution_timeout': args.execution_timeout,
         'request_delay': args.request_delay,
         'agent_config': {
+            'active_profile_name': args.profile_name,  # Pass the profile name
             'llm': {
                 'provider': 'openai',
                 'model': 'gpt-4o',

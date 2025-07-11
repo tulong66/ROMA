@@ -30,7 +30,7 @@ profile:
   aggregator_adapter_name: "default_aggregator"  # Fallback for backward compatibility
   plan_modifier_adapter_name: "PlanModifier"
 
-  default_planner_adapter_name: "CoreResearchPlanner"
+  default_planner_adapter_name: "GeneralTaskSolver"
   default_executor_adapter_name: "BasicReasoningExecutor"
   default_node_agent_name_prefix: "DataAnalysis"
 

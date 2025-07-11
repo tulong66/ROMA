@@ -308,6 +308,9 @@ def create_project_routes(app, project_service, execution_service):
 
 def _create_project_config(config_data):
     """Create project configuration from request data."""
+    # Extract profile name if provided
+    active_profile_name = config_data.get('active_profile_name', 'general_agent')
+    
     # Create LLM config
     llm_data = config_data.get('llm', {})
     llm_config = LLMConfig(
@@ -347,7 +350,8 @@ def _create_project_config(config_data):
     return SentientConfig(
         llm=llm_config,
         execution=execution_config,
-        cache=cache_config
+        cache=cache_config,
+        active_profile_name=active_profile_name
     )
 
 

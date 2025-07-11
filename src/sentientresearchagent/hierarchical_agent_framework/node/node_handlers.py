@@ -364,6 +364,14 @@ class ReadyPlanHandler(INodeHandler):
                 node.output_summary = f"Generated plan with {len(plan_output.sub_tasks)} sub-tasks for goal: {node.goal[:100]}..."
             node.update_status(TaskStatus.PLAN_DONE)
             
+            # Trigger update callback after planning completes
+            if context.update_callback:
+                try:
+                    context.update_callback()
+                    logger.debug(f"ReadyPlanHandler: Update callback triggered after planning for {node.task_id}")
+                except Exception as e:
+                    logger.warning(f"ReadyPlanHandler: Update callback failed: {e}")
+            
             logger.success(f"✅ ReadyPlanHandler: Node {node.task_id} planning complete. Status: {node.status.name}")
             
             # Complete tracing stage successfully
@@ -586,6 +594,14 @@ class ReadyExecuteHandler(INodeHandler):
                 
                 node.update_status(TaskStatus.DONE)
                 logger.success(f"ReadyExecuteHandler: Node {node.task_id} execution complete. Status: {node.status.name}.")
+                
+                # Trigger update callback after status change
+                if context.update_callback:
+                    try:
+                        context.update_callback()
+                        logger.debug(f"ReadyExecuteHandler: Update callback triggered for {node.task_id}")
+                    except Exception as e:
+                        logger.warning(f"ReadyExecuteHandler: Update callback failed: {e}")
                 
                 # Stage completion is handled by BaseAdapter, but we enhance it here
             else:
@@ -903,6 +919,14 @@ class AggregatingNodeHandler(INodeHandler):
             node.output_type_description = "aggregated_text_result"
             node.update_status(TaskStatus.DONE, result=aggregated_result, result_summary=meaningful_summary)
             logger.success(f"    AggregatingNodeHandler: Node {node.task_id} aggregation complete. Status: {node.status.name}.")
+            
+            # Trigger update callback after status change
+            if context.update_callback:
+                try:
+                    context.update_callback()
+                    logger.debug(f"AggregatingNodeHandler: Update callback triggered for {node.task_id}")
+                except Exception as e:
+                    logger.warning(f"AggregatingNodeHandler: Update callback failed: {e}")
             
             # Stage completion is handled by BaseAdapter's process method
             

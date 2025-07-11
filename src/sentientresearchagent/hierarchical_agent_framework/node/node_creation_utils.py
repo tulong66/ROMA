@@ -25,6 +25,9 @@ class SubNodeCreator:
             parent_node.sub_graph_id = f"subgraph_{parent_node.task_id}"
             self.task_graph.add_graph(parent_node.sub_graph_id)
             logger.info(f"    SubNodeCreator: Created new subgraph '{parent_node.sub_graph_id}' for parent '{parent_node.task_id}'")
+            # CRITICAL: Update parent node in knowledge store after setting sub_graph_id
+            self.knowledge_store.add_or_update_record_from_node(parent_node)
+            logger.debug(f"    SubNodeCreator: Updated parent node in knowledge store with sub_graph_id")
         
         sub_graph_id = parent_node.sub_graph_id
         parent_node.planned_sub_task_ids.clear()
@@ -87,3 +90,9 @@ class SubNodeCreator:
             # It will become READY once its parent (the PLAN node) is PLAN_DONE.
 
         logger.info(f"    SubNodeCreator: Created {len(created_sub_nodes)} sub-nodes for parent {parent_node.task_id} with specified dependencies.")
+        
+        # CRITICAL: Update parent node in knowledge store after modifying planned_sub_task_ids
+        self.knowledge_store.add_or_update_record_from_node(parent_node)
+        logger.debug(f"    SubNodeCreator: Updated parent node in knowledge store with planned_sub_task_ids")
+        
+        return created_sub_nodes

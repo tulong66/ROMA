@@ -488,14 +488,14 @@ Ensure your output is a valid JSON conforming to the PlanOutput schema, containi
                     else:
                         actual_content_data = content_attr
                         
-                    # Store raw response for tracing - NO TRUNCATION for aggregation
+                    # Store raw response for tracing - NO TRUNCATION for aggregation or execution
                     stage_name = self._get_stage_name(node)
-                    if stage_name == 'aggregation':
-                        # For aggregation, store the COMPLETE response - this is the final output users need to see
+                    if stage_name in ['aggregation', 'execution']:
+                        # For aggregation and execution, store the COMPLETE response - this is what users need to see
                         raw_response = str(actual_content_data)
-                        logger.info(f"🔍 AGGREGATION: Storing FULL response ({len(raw_response)} characters) for tracing")
+                        logger.info(f"🔍 {stage_name.upper()}: Storing FULL response ({len(raw_response)} characters) for tracing")
                     else:
-                        # For other stages, limit to prevent memory issues
+                        # For other stages (planning, atomization), limit to prevent memory issues
                         full_response = str(actual_content_data)
                         if len(full_response) > 5000:  # Increased from 2000 to 5000 for better debugging
                             raw_response = full_response[:5000] + f"... [Response truncated from {len(full_response)} characters for memory efficiency]"
@@ -546,17 +546,17 @@ Ensure your output is a valid JSON conforming to the PlanOutput schema, containi
             node.aux_data["execution_details"]["processing_completed"] = datetime.now().isoformat()
             node.aux_data["execution_details"]["success"] = True
             
-            # CRITICAL FIX: Complete tracing stage with rich output data - NO TRUNCATION for aggregation
+            # CRITICAL FIX: Complete tracing stage with rich output data - NO TRUNCATION for aggregation or execution
             stage_name = self._get_stage_name(node)
-            if stage_name == 'aggregation':
-                # For aggregation, store the COMPLETE result - this is what users are paying for
+            if stage_name in ['aggregation', 'execution']:
+                # For aggregation and execution, store the COMPLETE result - this is what users need
                 output_data = str(result) if result else "No output"
-                logger.info(f"🔍 AGGREGATION: Storing COMPLETE output data ({len(output_data)} characters) for tracing")
+                logger.info(f"🔍 {stage_name.upper()}: Storing COMPLETE output data ({len(output_data)} characters) for tracing")
             else:
-                # For other stages, use reasonable summary
+                # For other stages (planning, atomization), use reasonable summary
                 if result:
                     full_output = str(result)
-                    if len(full_output) > 2000:  # Reasonable limit for non-aggregation stages
+                    if len(full_output) > 2000:  # Reasonable limit for non-execution stages
                         output_data = full_output[:2000] + f"... [Output truncated from {len(full_output)} characters]"
                     else:
                         output_data = full_output

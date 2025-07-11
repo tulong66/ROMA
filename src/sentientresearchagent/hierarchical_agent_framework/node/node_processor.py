@@ -48,7 +48,8 @@ class ProcessorContext:
                  sub_node_creator: SubNodeCreator,
                  node_atomizer: NodeAtomizer,
                  trace_manager: TraceManager,
-                 current_agent_blueprint: Optional[AgentBlueprint] = None):
+                 current_agent_blueprint: Optional[AgentBlueprint] = None,
+                 update_callback: Optional[callable] = None):
         self.task_graph = task_graph
         self.knowledge_store = knowledge_store
         self.agent_registry = agent_registry
@@ -58,6 +59,7 @@ class ProcessorContext:
         self.node_atomizer = node_atomizer
         self.trace_manager = trace_manager
         self.current_agent_blueprint = current_agent_blueprint
+        self.update_callback = update_callback
 
 
 class NodeProcessor:
@@ -74,11 +76,13 @@ class NodeProcessor:
                  config: Optional[SentientConfig] = None,
                  node_processor_config: Optional[NodeProcessorConfig] = None,
                  agent_blueprint_name: Optional[str] = None,
-                 agent_blueprint: Optional[AgentBlueprint] = None):
+                 agent_blueprint: Optional[AgentBlueprint] = None,
+                 update_callback: Optional[callable] = None):
         logger.info("NodeProcessor initialized.")
         
         self.config = config or SentientConfig()
         self.node_processor_config = node_processor_config if node_processor_config else NodeProcessorConfig()
+        self.update_callback = update_callback
         
         self.task_graph = task_graph
         self.knowledge_store = knowledge_store
@@ -115,7 +119,8 @@ class NodeProcessor:
             sub_node_creator=self.sub_node_creator,
             node_atomizer=self.node_atomizer,
             trace_manager=self.trace_manager,
-            current_agent_blueprint=active_blueprint
+            current_agent_blueprint=active_blueprint,
+            update_callback=self.update_callback
         )
 
         # Instantiate handlers
