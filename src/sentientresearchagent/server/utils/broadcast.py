@@ -78,7 +78,21 @@ class BroadcastManager:
                 logger.debug("📡 Broadcasting empty state (no current project)")
             
             # CRITICAL FIX: Emit with project context
+            emit_time = datetime.now()
             self.socketio.emit('task_graph_update', data)
+            
+            # Log broadcast event with timing and node details
+            logger.info(f"📡 BROADCAST EVENT [{emit_time.strftime('%H:%M:%S.%f')[:-3]}] "
+                       f"Project: {current_project.id if current_project else 'None'} | "
+                       f"Nodes: {node_count} | Event: task_graph_update")
+            
+            # Log node state distribution for debugging
+            if data.get('all_nodes'):
+                status_counts = {}
+                for node in data['all_nodes'].values():
+                    status = node.get('status', 'UNKNOWN')
+                    status_counts[status] = status_counts.get(status, 0) + 1
+                logger.debug(f"📡 BROADCAST NODE STATUS DISTRIBUTION: {status_counts}")
             
             # CRITICAL FIX: Auto-save state for persistence
             if current_project:

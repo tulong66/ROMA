@@ -153,15 +153,23 @@ class RealtimeExecutionWrapper:
         Args:
             execution_task: The main execution task to monitor
         """
+        # Use a shorter interval for more responsive updates
+        update_interval = 0.5  # Update every 0.5 seconds instead of 2 seconds
+        last_update_time = 0
+        
         while not execution_task.done():
-            await asyncio.sleep(2)  # Update every 2 seconds
+            await asyncio.sleep(update_interval)
             if not execution_task.done():
+                current_time = time.time()
                 # Only update display if we're the current project
                 if self._check_if_current():
                     self.update_callback()
+                    last_update_time = current_time
                 else:
-                    # Still save state for background projects
-                    self._save_background_state()
+                    # Still save state for background projects, but less frequently
+                    if current_time - last_update_time > 5.0:  # Save every 5 seconds for background
+                        self._save_background_state()
+                        last_update_time = current_time
     
     def _save_background_state(self):
         """Save state for background projects without updating display."""

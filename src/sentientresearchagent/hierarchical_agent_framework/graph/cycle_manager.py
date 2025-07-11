@@ -1,6 +1,6 @@
 from loguru import logger
 import asyncio
-from typing import Any as NodeProcessorType # For NodeProcessor type hint
+from typing import Any as NodeProcessorType, Optional, Callable # For NodeProcessor type hint
 
 from sentientresearchagent.hierarchical_agent_framework.graph.task_graph import TaskGraph
 from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode, TaskStatus, NodeType, TaskType # NodeType, TaskType might not be directly used here
@@ -20,7 +20,8 @@ class CycleManager:
         task_graph: TaskGraph,
         state_manager: StateManager,
         node_processor: NodeProcessorType, # Actual NodeProcessor instance
-        knowledge_store: KnowledgeStore
+        knowledge_store: KnowledgeStore,
+        update_callback: Optional[Callable] = None  # Add update callback for broadcasts
     ) -> bool:
         """
         Executes one step of the processing cycle.
@@ -44,6 +45,13 @@ class CycleManager:
                     knowledge_store.add_or_update_record_from_node(node)
                     processed_in_step = True
                     logger.info(f"  CycleManager Transition: Node {node.task_id} PENDING -> READY (Goal: '{node.goal[:30]}...')")
+                    # Trigger update callback for immediate broadcast
+                    if update_callback:
+                        try:
+                            update_callback()
+                            logger.debug(f"  CycleManager: Update callback triggered after PENDING -> READY transition for {node.task_id}")
+                        except Exception as e:
+                            logger.warning(f"  CycleManager: Update callback failed: {e}")
 
         # --- 2. Process AGGREGATING nodes (serially, one at a time) ---
         # Re-fetch nodes as statuses might have changed
@@ -88,6 +96,13 @@ class CycleManager:
                     knowledge_store.add_or_update_record_from_node(node)
                     processed_in_step = True
                     made_plan_done_transition = True
+                    # Trigger update callback for immediate broadcast
+                    if update_callback:
+                        try:
+                            update_callback()
+                            logger.debug(f"  CycleManager: Update callback triggered after PLAN_DONE -> DONE transition for {node.task_id}")
+                        except Exception as e:
+                            logger.warning(f"  CycleManager: Update callback failed: {e}")
                 # Also check if this was originally an EXECUTE node that somehow got planned
                 elif hasattr(node, 'aux_data') and node.aux_data.get('was_executed_as_atomic'):
                     logger.warning(f"  CycleManager: Node {node.task_id} was already executed as atomic but reached PLAN_DONE. Transitioning directly to DONE.")
@@ -95,6 +110,13 @@ class CycleManager:
                     knowledge_store.add_or_update_record_from_node(node)
                     processed_in_step = True
                     made_plan_done_transition = True
+                    # Trigger update callback for immediate broadcast
+                    if update_callback:
+                        try:
+                            update_callback()
+                            logger.debug(f"  CycleManager: Update callback triggered after PLAN_DONE -> DONE transition for {node.task_id}")
+                        except Exception as e:
+                            logger.warning(f"  CycleManager: Update callback failed: {e}")
                 elif state_manager.can_aggregate(node):
                     children_failed = False
                     if node.sub_graph_id:
@@ -106,10 +128,24 @@ class CycleManager:
                         node.update_status(TaskStatus.NEEDS_REPLAN)
                         knowledge_store.add_or_update_record_from_node(node)
                         logger.info(f"  CycleManager Transition: Node {node.task_id} PLAN_DONE -> NEEDS_REPLAN (due to failed children, Goal: '{node.goal[:30]}...')")
+                        # Trigger update callback for immediate broadcast
+                        if update_callback:
+                            try:
+                                update_callback()
+                                logger.debug(f"  CycleManager: Update callback triggered after PLAN_DONE -> NEEDS_REPLAN transition for {node.task_id}")
+                            except Exception as e:
+                                logger.warning(f"  CycleManager: Update callback failed: {e}")
                     else:
                         node.update_status(TaskStatus.AGGREGATING)
                         knowledge_store.add_or_update_record_from_node(node)
                         logger.info(f"  CycleManager Transition: Node {node.task_id} PLAN_DONE -> AGGREGATING (Goal: '{node.goal[:30]}...')")
+                        # Trigger update callback for immediate broadcast
+                        if update_callback:
+                            try:
+                                update_callback()
+                                logger.debug(f"  CycleManager: Update callback triggered after PLAN_DONE -> AGGREGATING transition for {node.task_id}")
+                            except Exception as e:
+                                logger.warning(f"  CycleManager: Update callback failed: {e}")
                     processed_in_step = True
                     made_plan_done_transition = True
                 else:

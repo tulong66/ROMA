@@ -193,11 +193,17 @@ class ExecutionEngine:
             logger.info(f"\n--- Execution Step {step + 1} of {max_steps} ---")
             
             # Delegate step execution to CycleManager
+            # Pass the update callback from node processor if available
+            update_callback = None
+            if hasattr(self.node_processor, 'update_callback') and self.node_processor.update_callback:
+                update_callback = self.node_processor.update_callback
+            
             processed_in_step = await self.cycle_manager.execute_step(
                 task_graph=self.task_graph,
                 state_manager=self.state_manager,
                 node_processor=self.node_processor, # type: ignore
-                knowledge_store=self.knowledge_store
+                knowledge_store=self.knowledge_store,
+                update_callback=update_callback
             )
             
             # --- Check for completion or deadlock for this step ---
