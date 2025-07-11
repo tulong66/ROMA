@@ -191,7 +191,8 @@ class SentientServer:
                 debug=debug, 
                 host=host, 
                 port=port, 
-                use_reloader=False
+                use_reloader=False,
+                allow_unsafe_werkzeug=True
             )
         except Exception as e:
             logger.error(f"❌ Server startup error: {e}")

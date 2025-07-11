@@ -22,7 +22,7 @@ interface ProjectResults {
 }
 
 class ProjectService {
-  private baseUrl = 'http://localhost:5000/api'
+  private baseUrl = '/api'
 
   // FIXED: Helper method to safely get store instances using our existing debug setup
   private getStores() {

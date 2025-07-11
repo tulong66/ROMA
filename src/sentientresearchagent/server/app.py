@@ -48,10 +48,24 @@ def create_app(main_config: Optional[SentientConfig] = None) -> Flask:
     # Example: If CORS origins were part of WebServerConfig:
     # cors_origins = main_config.web_server.cors_origins if main_config and main_config.web_server else ["http://localhost:3000", "http://127.0.0.1:3000"]
     # For now, keeping CORS static as it was.
-    CORS(app, origins=[
+    # Configure CORS for development - allow ngrok domains
+    import os
+    cors_origins = [
         "http://localhost:3000", 
         "http://127.0.0.1:3000"
+    ]
+    
+    # Add ngrok domain if NGROK_URL environment variable is set
+    ngrok_url = os.getenv("NGROK_URL")
+    if ngrok_url:
+        cors_origins.append(ngrok_url)
+    
+    # For development, also allow common ngrok patterns
+    cors_origins.extend([
+        "https://215f9d3b4eda.ngrok-free.app",  # Current ngrok URL
     ])
+    
+    CORS(app, origins=cors_origins)
     
     return app
 
