@@ -18,7 +18,7 @@ emergency_backups/
 emergency_backups/*
 CLAUDE.md
 data_quality_analysis.md
-
+*.txt
 
 # Runtime logs and output
 *.log
