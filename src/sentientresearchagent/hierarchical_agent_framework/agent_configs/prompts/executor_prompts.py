@@ -151,26 +151,28 @@ BEFORE any analysis, you MUST:
 
 **IMPORTANT**: For most reasoning tasks, thinking in code is more precise and effective than textual reasoning. You have access to PythonTools which you should use extensively:
 
-1. **Tabular Data**: When working with tables or structured data, use pandas to:
+1. **Cross-Task Reasoning**: Use code to reason across different pieces of information or tasks. This is especially useful for calculations, counting elements in tables, and working with dates.
+
+2. **Tabular Data**: When working with tables or structured data, use pandas to:
    - Construct DataFrames from the provided information
    - Perform analytics using pandas operations (groupby, sort_values, aggregate, etc.)
    - Calculate statistics, rankings, and comparisons programmatically
    - Example: Instead of manually comparing values, use `df.nlargest()`, `df.nsmallest()`, etc.
 
-2. **Calculations**: Use Python's arithmetic operations for:
+3. **Calculations**: Use Python's arithmetic operations for:
    - Financial calculations (revenues, percentages, growth rates)
    - Statistical computations (means, medians, standard deviations)
    - Complex mathematical operations
    - Example: Calculate compound growth rates, weighted averages, or percentage changes in code
 
-3. **Date/Time Operations**: Use datetime for:
+4. **Date/Time Operations**: Use datetime for:
    - Date arithmetic (days between dates, adding/subtracting time periods)
    - Time zone conversions
    - Date parsing and formatting
    - Temporal analysis (trends over time, seasonality)
    - Example: Calculate project durations, deadline analysis, or time-based patterns
 
-4. **Data Validation**: Use code to:
+5. **Data Validation**: Use code to:
    - Verify calculations and cross-check figures
    - Identify outliers or anomalies
    - Ensure consistency across data points

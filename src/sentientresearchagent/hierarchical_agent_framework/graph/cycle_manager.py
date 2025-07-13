@@ -151,6 +151,14 @@ class CycleManager:
                 else:
                     # Node cannot aggregate yet (dependencies not ready)
                     logger.debug(f"Node {node.task_id} cannot AGGREGATE: Not all sub-tasks in '{node.sub_graph_id}' are finished.")
+                    # Log which sub-tasks are blocking
+                    if node.sub_graph_id:
+                        sub_nodes = task_graph.get_nodes_in_graph(node.sub_graph_id)
+                        incomplete = [n for n in sub_nodes if n.status not in {TaskStatus.DONE, TaskStatus.FAILED, TaskStatus.CANCELLED}]
+                        if incomplete:
+                            logger.debug(f"  Blocking sub-tasks for {node.task_id}:")
+                            for inc in incomplete[:5]:  # Show first 5
+                                logger.debug(f"    - {inc.task_id}: {inc.status.name} (goal: '{inc.goal[:30]}...')")
         
         if made_plan_done_transition:
             return True # Indicate processing occurred
