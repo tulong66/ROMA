@@ -15,6 +15,8 @@ from agno.exceptions import StopAgentRun # Added import
 from typing import Optional, Callable
 import pprint # For logging results
 import asyncio # Import asyncio
+import time  # For timeout tracking
+from sentientresearchagent.exceptions import TaskTimeoutError, AgentExecutionError  # For error handling
 
 # Import new ProjectInitializer
 from .project_initializer import ProjectInitializer
@@ -171,26 +173,51 @@ class ExecutionEngine:
         # await self.hitl_coordinator.review_initial_project_goal(...)
         
         logger.info("ExecutionEngine: Project initialized. Proceeding directly to execution cycle.")
-        return await self.run_cycle(max_steps)
+        # Use timeout from config
+        node_timeout = self.config.execution.node_execution_timeout_seconds
+        return await self.run_cycle(max_steps, node_timeout_seconds=node_timeout)
 
-    async def run_cycle(self, max_steps: Optional[int] = None):
-        """Runs the execution loop for a specified number of steps or until completion/deadlock."""
+    async def run_cycle(self, max_steps: Optional[int] = None, node_timeout_seconds: float = 600.0):
+        """
+        Runs the execution loop for a specified number of steps or until completion/deadlock.
+        
+        Args:
+            max_steps: Maximum number of execution steps
+            node_timeout_seconds: Maximum time in seconds for overall execution (default: 600 = 10 minutes)
+        """
         # Use config default if max_steps not provided
         max_steps = max_steps or self.config.execution.max_execution_steps
         
-        logger.info(f"\n--- Starting Execution Cycle (max_steps: {max_steps}) ---")
+        # Track start time for timeout
+        start_time = time.time()
+        
+        logger.info(f"\n--- Starting Execution Cycle (max_steps: {max_steps}, timeout: {node_timeout_seconds}s) ---")
         
         root_node_initial_check = self.task_graph.get_node("root")
         if not self.task_graph.root_graph_id or not root_node_initial_check:
             logger.error("ExecutionEngine: Project not initialized properly or root node missing before cycle start.")
-            return None
+            return {"error": "Project initialization failed - root node missing"}
         if root_node_initial_check.status in [TaskStatus.CANCELLED, TaskStatus.FAILED]:
             logger.warning(f"ExecutionEngine: Root node is already {root_node_initial_check.status.name}. Cycle may not run effectively.")
             self._log_final_statuses()
+            # Return error if root node failed
+            if root_node_initial_check.status == TaskStatus.FAILED:
+                return {"error": f"Root node failed: {root_node_initial_check.error or 'Unknown error'}"}
             return root_node_initial_check.result
 
         for step in range(max_steps):
-            logger.info(f"\n--- Execution Step {step + 1} of {max_steps} ---")
+            # Check for timeout
+            elapsed_time = time.time() - start_time
+            if elapsed_time > node_timeout_seconds:
+                logger.error(f"\n--- Execution Timeout: Exceeded {node_timeout_seconds}s timeout after {elapsed_time:.2f}s ---")
+                # Mark root node as failed with timeout error
+                root_node = self.task_graph.get_node("root")
+                if root_node:
+                    root_node.update_status(TaskStatus.FAILED, error_msg=f"Execution timeout after {elapsed_time:.2f}s")
+                self._log_final_statuses()
+                return {"error": f"Execution timeout: Exceeded {node_timeout_seconds}s limit"}
+            
+            logger.info(f"\n--- Execution Step {step + 1} of {max_steps} (elapsed: {elapsed_time:.2f}s) ---")
             
             # Delegate step execution to CycleManager
             # Pass the update callback from node processor if available
@@ -198,17 +225,40 @@ class ExecutionEngine:
             if hasattr(self.node_processor, 'update_callback') and self.node_processor.update_callback:
                 update_callback = self.node_processor.update_callback
             
-            processed_in_step = await self.cycle_manager.execute_step(
-                task_graph=self.task_graph,
-                state_manager=self.state_manager,
-                node_processor=self.node_processor, # type: ignore
-                knowledge_store=self.knowledge_store,
-                update_callback=update_callback
-            )
+            try:
+                processed_in_step = await self.cycle_manager.execute_step(
+                    task_graph=self.task_graph,
+                    state_manager=self.state_manager,
+                    node_processor=self.node_processor, # type: ignore
+                    knowledge_store=self.knowledge_store,
+                    update_callback=update_callback
+                )
+            except Exception as e:
+                logger.error(f"\n--- Execution Error: {str(e)} ---")
+                # Mark root node as failed with error
+                root_node = self.task_graph.get_node("root")
+                if root_node:
+                    root_node.update_status(TaskStatus.FAILED, error_msg=f"Execution error: {str(e)}")
+                self._log_final_statuses()
+                return {"error": f"Execution failed: {str(e)}"}
             
             # --- Check for completion or deadlock for this step ---
             active_statuses = {TaskStatus.PENDING, TaskStatus.READY, TaskStatus.RUNNING, TaskStatus.PLAN_DONE, TaskStatus.AGGREGATING, TaskStatus.NEEDS_REPLAN}
             all_nodes_after_step = self.task_graph.get_all_nodes() 
+
+            # Check for critical failures (e.g., all nodes failed)
+            failed_nodes = [n for n in all_nodes_after_step if n.status == TaskStatus.FAILED]
+            if failed_nodes:
+                # Check if any critical nodes failed (e.g., root or key execution nodes)
+                critical_failures = [n for n in failed_nodes if n.layer == 0 or "execution" in n.task_id.lower()]
+                if critical_failures:
+                    logger.error(f"\n--- Execution Failed: Critical node failures detected ---")
+                    for node in critical_failures:
+                        logger.error(f"    - Failed: {node.task_id}, Error: {node.error}")
+                    self._log_final_statuses()
+                    # Return the most relevant error
+                    primary_error = critical_failures[0].error or "Critical node failure"
+                    return {"error": f"Execution failed: {primary_error}"}
 
             if not any(n.status in active_statuses for n in all_nodes_after_step):
                 logger.success("\n--- Execution Finished: No active nodes left. ---")
@@ -219,17 +269,28 @@ class ExecutionEngine:
                 for n_active in all_nodes_after_step:
                     if n_active.status in active_statuses:
                         logger.error(f"    - Active: {n_active.task_id}, Status: {n_active.status.name}, Goal: '{n_active.goal[:50]}...'")
-                break 
+                self._log_final_statuses()
+                return {"error": "Execution deadlock: No progress possible"}
         
         if step == max_steps - 1: # type: ignore # Check if loop completed due to max_steps
              # Check active nodes one last time if loop finished due to max_steps
             if any(n.status in active_statuses for n in self.task_graph.get_all_nodes()): # type: ignore
                  logger.warning("\n--- Execution Finished: Reached max steps with active nodes remaining. ---")
+                 return {"error": f"Execution incomplete: Reached max steps ({max_steps}) with active nodes remaining"}
 
         self._log_final_statuses()
         
         root_node_final = self.task_graph.get_node("root")
-        return root_node_final.result if root_node_final else None
+        
+        # Check if root node failed
+        if root_node_final and root_node_final.status == TaskStatus.FAILED:
+            return {"error": f"Task failed: {root_node_final.error or 'Unknown error'}"}
+        
+        # Return result or error message
+        if root_node_final and root_node_final.result:
+            return root_node_final.result
+        else:
+            return {"error": "No result generated"}
 
     def _log_final_statuses(self):
         logger.info("\n--- Final Node Statuses & Results ---")

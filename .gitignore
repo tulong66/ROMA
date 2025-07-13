@@ -8,7 +8,7 @@ __pycache__/
 
 .claude
 *.csv
-
+old_projects/
 # Agent runtime data and cache
 .agent_cache/
 .agent_projects/
