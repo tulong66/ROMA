@@ -29,6 +29,18 @@ except ImportError:
     logger.warning("Warning: wikipediaapi module not found. Wikipedia enhancement will not be available.")
     wikipediaapi = None
 
+try:
+    from exa_py import Exa
+except ImportError:
+    logger.warning("Warning: exa_py module not found. ExaCustomSearchAdapter will not be usable.")
+    Exa = None
+
+try:
+    from litellm import acompletion
+except ImportError:
+    logger.warning("Warning: litellm module not found. ExaCustomSearchAdapter will not be usable.")
+    acompletion = None
+
 from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models import (
     CustomSearcherOutput,
     AnnotationURLCitationModel,

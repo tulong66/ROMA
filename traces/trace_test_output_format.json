@@ -1,0 +1,57 @@
+{
+  "node_id": "test_output_format",
+  "node_goal": "Node test_output_format",
+  "trace_id": "3d4968cb-6e92-43a8-aa32-60bf171f6735",
+  "created_at": "2025-07-13T14:00:36.858074",
+  "stages": [
+    {
+      "stage_name": "execution",
+      "stage_id": "fd89ffac-2796-430e-b026-52e3f11d5fc1",
+      "started_at": "2025-07-13T14:00:36.858094",
+      "completed_at": "2025-07-13T14:01:09.859680",
+      "status": "completed",
+      "agent_name": "ExaCustomSearchAdapter",
+      "adapter_name": "ExaCustomSearchAdapter",
+      "model_info": {
+        "model": "gpt-4o",
+        "provider": "litellm"
+      },
+      "system_prompt": null,
+      "user_input": "Wikipedia article about Python programming language",
+      "llm_response": "The Python programming language is a high-level, general-purpose language known for its emphasis on code readability and its use of significant indentation. It supports multiple programming paradigms, including object-oriented, procedural, functional, and structured programming. Python is dynamically typed and garbage-collected, and it is often described as a \"batteries included\" language due to its comprehensive standard library.\n\n**Key Features and Design Philosophy:**\n- **Paradigms:** Multi-paradigm: object-oriented, procedural, functional, structured, reflective.\n- **Typing Discipline:** Duck typing, dynamic typing, strong typing, with optional type annotations.\n- **Operating System Compatibility:** Cross-platform.\n- **License:** Python Software Foundation License.\n- **Filename Extensions:** .py, .pyw, .pyz, .pyi, .pyc, .pyd.\n- **Major Implementations:** CPython, PyPy, MicroPython, CircuitPython, IronPython, Jython, Stackless Python.\n- **Dialects:** Cython, RPython, Starlark.\n- **Influences:** Influenced by ABC, Ada, ALGOL 68, APL, C, C++, CLU, Dylan, Haskell, Icon, Lisp, Modula-3, Perl, Standard ML.\n- **Influenced Languages:** Apache Groovy, Boo, Cobra, CoffeeScript, D, F#, GDScript, Go, JavaScript, Julia, Mojo, Nim, Ring, Ruby, Swift, V.\n\n**Development and History:**\n- **Designer:** Guido van Rossum.\n- **Developer:** Python Software Foundation.\n- **First Appeared:** February 20, 1991.\n- **Stable Release:** 3.13.5 as of June 11, 2025.\n- **Website:** [python.org](https://www.python.org/).\n\n**Syntax and Semantics:**\n- Python uses indentation to define blocks of code, following the off-side rule.\n- It has 35 keywords, including `and`, `as`, `assert`, `async`, `await`, `break`, `class`, `continue`, `def`, `del`, `elif`, `else`, `except`, `False`, `finally`, `for`, `from`, `global`, `if`, `import`, `in`, `is`, `lambda`, `None`, `nonlocal`, `not`, `or`, `pass`, `raise`, `return`, `True`, `try`, `while`, `with`, `yield`.\n- Python also has 3 soft keywords: `_`, `case`, `match`.\n- Python supports first-class functions, list comprehensions, and generator expressions.\n- It includes built-in data types such as lists, tuples, sets, dictionaries, and supports complex numbers and arbitrary-precision arithmetic.\n\n**Development Environments:**\n- Python includes a REPL and is bundled with IDLE, an IDE for beginners.\n- Other IDEs include PyCharm, IntelliJ Idea, Visual Studio Code, and web-based IDEs like Jupyter Notebooks and PythonAnywhere.\n\n**Community and Usage:**\n- Python is widely used in machine learning, web development, scientific computing, and more.\n- It is supported by a large community and has a vast repository of third-party packages available on the Python Package Index (PyPI).\n\n**Language Development:**\n- Python's development is guided by the Python Enhancement Proposal (PEP) process.\n- The language is developed through a collaborative process involving the Python community and a steering council.\n\n**Popularity and Adoption:**\n- Python consistently ranks as one of the most popular programming languages.\n- It is used by major organizations like Google, NASA, Facebook, and many others.\n\n**Notable Features and Changes in Recent Versions:**\n- Python 3.10 introduced the `|` union type operator and structural pattern matching.\n- Python 3.11 expanded exception handling functionality and improved execution speed.\n- Python 3.12 added the `type` keyword and improved error messages.\n- Python 3.13 introduced an experimental JIT compiler and a free-threaded build mode.\n\n**Influence and Legacy:**\n- Python's design and philosophy have influenced many other programming languages, including Boo, Cobra, CoffeeScript, ECMAScript, GDScript, Go, Groovy, Julia, Mojo, Nim, Ruby, and Swift.\n\nThis comprehensive overview of Python programming language is based on the most reliable sources, primarily Wikipedia, and includes all relevant data from the provided sources.",
+      "input_context": null,
+      "processing_parameters": null,
+      "output_data": {
+        "query_used": "Wikipedia article about Python programming language",
+        "output_text": "The Python programming language is a high-level, general-purpose language known for its emphasis on code readability and its use of significant indentation. It supports multiple programming paradigms, including object-oriented, procedural, functional, and structured programming. Python is dynamically typed and garbage-collected, and it is often described as a \"batteries included\" language due to its comprehensive standard library.\n\n**Key Features and Design Philosophy:**\n- **Paradigms:** Multi-paradigm: object-oriented, procedural, functional, structured, reflective.\n- **Typing Discipline:** Duck typing, dynamic typing, strong typing, with optional type annotations.\n- **Operating System Compatibility:** Cross-platform.\n- **License:** Python Software Foundation License.\n- **Filename Extensions:** .py, .pyw, .pyz, .pyi, .pyc, .pyd.\n- **Major Implementations:** CPython, PyPy, MicroPython, CircuitPython, IronPython, Jython, Stackless Python.\n- **Dialects:** Cython, RPython, Starlark.\n- **Influences:** Influenced by ABC, Ada, ALGOL 68, APL, C, C++, CLU, Dylan, Haskell, Icon, Lisp, Modula-3, Perl, Standard ML.\n- **Influenced Languages:** Apache Groovy, Boo, Cobra, CoffeeScript, D, F#, GDScript, Go, JavaScript, Julia, Mojo, Nim, Ring, Ruby, Swift, V.\n\n**Development and History:**\n- **Designer:** Guido van Rossum.\n- **Developer:** Python Software Foundation.\n- **First Appeared:** February 20, 1991.\n- **Stable Release:** 3.13.5 as of June 11, 2025.\n- **Website:** [python.org](https://www.python.org/).\n\n**Syntax and Semantics:**\n- Python uses indentation to define blocks of code, following the off-side rule.\n- It has 35 keywords, including `and`, `as`, `assert`, `async`, `await`, `break`, `class`, `continue`, `def`, `del`, `elif`, `else`, `except`, `False`, `finally`, `for`, `from`, `global`, `if`, `import`, `in`, `is`, `lambda`, `None`, `nonlocal`, `not`, `or`, `pass`, `raise`, `return`, `True`, `try`, `while`, `with`, `yield`.\n- Python also has 3 soft keywords: `_`, `case`, `match`.\n- Python supports first-class functions, list comprehensions, and generator expressions.\n- It includes built-in data types such as lists, tuples, sets, dictionaries, and supports complex numbers and arbitrary-precision arithmetic.\n\n**Development Environments:**\n- Python includes a REPL and is bundled with IDLE, an IDE for beginners.\n- Other IDEs include PyCharm, IntelliJ Idea, Visual Studio Code, and web-based IDEs like Jupyter Notebooks and PythonAnywhere.\n\n**Community and Usage:**\n- Python is widely used in machine learning, web development, scientific computing, and more.\n- It is supported by a large community and has a vast repository of third-party packages available on the Python Package Index (PyPI).\n\n**Language Development:**\n- Python's development is guided by the Python Enhancement Proposal (PEP) process.\n- The language is developed through a collaborative process involving the Python community and a steering council.\n\n**Popularity and Adoption:**\n- Python consistently ranks as one of the most popular programming languages.\n- It is used by major organizations like Google, NASA, Facebook, and many others.\n\n**Notable Features and Changes in Recent Versions:**\n- Python 3.10 introduced the `|` union type operator and structural pattern matching.\n- Python 3.11 expanded exception handling functionality and improved execution speed.\n- Python 3.12 added the `type` keyword and improved error messages.\n- Python 3.13 introduced an experimental JIT compiler and a free-threaded build mode.\n\n**Influence and Legacy:**\n- Python's design and philosophy have influenced many other programming languages, including Boo, Cobra, CoffeeScript, ECMAScript, GDScript, Go, Groovy, Julia, Mojo, Nim, Ruby, and Swift.\n\nThis comprehensive overview of Python programming language is based on the most reliable sources, primarily Wikipedia, and includes all relevant data from the provided sources.",
+        "citations": [
+          {
+            "title": "Python (programming language) - Wikipedia",
+            "url": "https://en.wikipedia.org/wiki/Python_(programming_language)",
+            "start_index": 0,
+            "end_index": 206986,
+            "type": "url_citation"
+          },
+          {
+            "title": "Portal:Computer programming/Selected article/6 - Wikipedia",
+            "url": "https://en.wikipedia.org/wiki/Portal:Computer_programming/Selected_article/6",
+            "start_index": 0,
+            "end_index": 2063,
+            "type": "url_citation"
+          },
+          {
+            "title": "Python syntax and semantics - Wikipedia",
+            "url": "https://en.wikipedia.org/wiki/Python_syntax_and_semantics",
+            "start_index": 0,
+            "end_index": 65860,
+            "type": "url_citation"
+          }
+        ]
+      },
+      "error_message": null,
+      "error_details": null,
+      "duration_ms": 33001
+    }
+  ],
+  "metadata": {}
+}

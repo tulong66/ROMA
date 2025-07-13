@@ -227,6 +227,21 @@ agents:
       named_keys: ["GeminiCustomSearcher", "default_gemini_searcher", "gemini_searcher"]
     enabled: true
 
+  - name: "ExaComprehensiveSearcher"
+    type: "custom_search"
+    adapter_class: "ExaCustomSearchAdapter"
+    description: "Comprehensive search using Exa API with LiteLLM processing - prioritizes reliable sources"
+    adapter_params:
+      model_id: "openrouter/google/gemini-2.5-pro"  # Can be any LiteLLM-supported model
+      num_results: 5      # Number of Exa search results to retrieve
+      # include_domains: ["en.wikipedia.org", "imdb.com"]
+    registration:
+      action_keys:
+        - action_verb: "execute"
+          task_type: "SEARCH"
+      named_keys: ["ExaComprehensiveSearcher", "exa_searcher", "comprehensive_searcher"]
+    enabled: true
+
   # =============================================================================
   # AGGREGATOR AGENTS - Combine results from sub-tasks
   # =============================================================================

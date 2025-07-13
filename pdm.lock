@@ -5,7 +5,7 @@
 groups = ["default"]
 strategy = []
 lock_version = "4.5.0"
-content_hash = "sha256:2e738572859a6210b2d86c6ce73368fe4b1db82a8bc24c93a561315dda04ae56"
+content_hash = "sha256:a6fedcb6dc66bf369732a944d3c1569b469532999b2200a8f0263c457e3b995b"
 
 [[metadata.targets]]
 requires_python = ">=3.12"
@@ -424,6 +424,22 @@ dependencies = [
 files = [
     {file = "eventlet-0.40.0-py3-none-any.whl", hash = "sha256:496915bc92d054236bad872d5143112a13b0216a7bbeeb832e1a858ae131fe8a"},
     {file = "eventlet-0.40.0.tar.gz", hash = "sha256:f659d735e06795a26167b666008798c7a203fcd8119b08b84036e41076432ff1"},
+]
+
+[[package]]
+name = "exa-py"
+version = "1.14.16"
+summary = ""
+dependencies = [
+    "httpx",
+    "openai",
+    "pydantic",
+    "requests",
+    "typing-extensions",
+]
+files = [
+    {file = "exa_py-1.14.16-py3-none-any.whl", hash = "sha256:9774a5fe4113d1e4fc51cea1cfb1ae633cfcaf39d388dc54bd10b731a9524587"},
+    {file = "exa_py-1.14.16.tar.gz", hash = "sha256:6404775afe9eac83fdfb8cdf558f5206164c5550e54de90502a05fe96646c508"},
 ]
 
 [[package]]
