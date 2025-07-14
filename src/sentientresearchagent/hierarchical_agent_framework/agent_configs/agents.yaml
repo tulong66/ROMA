@@ -206,7 +206,11 @@ agents:
     adapter_class: "OpenAICustomSearchAdapter"
     description: "Direct API-based search using OpenAI's search capabilities"
     adapter_params:
-      model_id: "gpt-4o" 
+      model_id: "gpt-4o"
+      search_context_size: "high"  # Options: "medium", "high", "deep" (works with both OpenAI and OpenRouter)
+      # Optional: use OpenRouter instead of OpenAI API (requires OPENROUTER_API_KEY)
+      # use_openrouter: true
+      # model_id: "openai/gpt-4o-search-preview"  # When using OpenRouter
     registration:
       action_keys:
         - action_verb: "execute"
