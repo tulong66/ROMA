@@ -364,30 +364,11 @@ Ensure your output is a valid JSON conforming to the PlanOutput schema, containi
         """
         logger.info(f"  Adapter '{self.agent_name}': Processing node {node.task_id} (Goal: '{node.goal[:50]}...')")
 
-        # Determine the stage name based on adapter type AND node status
+        # Determine the stage name based on adapter type
         stage_name = self._get_stage_name(node)
         
-        # CRITICAL FIX: Override stage name based on node status
-        # This ensures the stage matches what's actually happening
-        if hasattr(node, 'status'):
-            from sentientresearchagent.hierarchical_agent_framework.types import TaskStatus
-            
-            if node.status == TaskStatus.AGGREGATING:
-                # Node is actually aggregating - use aggregation stage
-                stage_name = 'aggregation'
-            elif node.status in [TaskStatus.READY, TaskStatus.RUNNING] and stage_name == 'aggregation':
-                # Node is not aggregating but adapter thinks it should be
-                # This is the bug - force to execution
-                logger.warning(
-                    f"🚨 FIX: Node {node.task_id} (status: {node.status}) using aggregator adapter "
-                    f"but not in AGGREGATING status. Forcing stage to 'execution'."
-                )
-                stage_name = 'execution'
-        
-        # Additional validation based on adapter name
-        if 'search' in self.__class__.__name__.lower() and stage_name == 'aggregation':
-            logger.error(f"🚨 CRITICAL ERROR: Search adapter {self.__class__.__name__} attempted aggregation stage!")
-            stage_name = 'execution'  # Force to execution
+        # Log the stage name for debugging
+        logger.debug(f"  Adapter '{self.agent_name}': Using stage name '{stage_name}' for node {node.task_id} (status: {node.status})")
         
         # CRITICAL FIX: Don't create new stage, just update existing one
         # The node handlers should already have created the stage

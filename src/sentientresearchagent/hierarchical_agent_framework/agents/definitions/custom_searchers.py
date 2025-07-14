@@ -29,6 +29,18 @@ except ImportError:
     logger.warning("Warning: wikipediaapi module not found. Wikipedia enhancement will not be available.")
     wikipediaapi = None
 
+try:
+    from exa_py import Exa
+except ImportError:
+    logger.warning("Warning: exa_py module not found. ExaCustomSearchAdapter will not be usable.")
+    Exa = None
+
+try:
+    from litellm import acompletion
+except ImportError:
+    logger.warning("Warning: litellm module not found. ExaCustomSearchAdapter will not be usable.")
+    acompletion = None
+
 from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models import (
     CustomSearcherOutput,
     AnnotationURLCitationModel,
@@ -99,34 +111,62 @@ async def fetch_wikipedia_content(url: str) -> Optional[str]:
 # --- OpenAI Custom Searcher with Annotations (Adapter Version) ---
 class OpenAICustomSearchAdapter(BaseAdapter):
     """
-    A direct adapter that uses OpenAI's gpt-4.1 (or similar) with the 
+    A direct adapter that uses OpenAI's gpt-4o (or similar) with the 
     'web_search_preview' tool to get answers with URL annotations.
+    
+    Supports two modes:
+    1. Direct OpenAI API (default) - Uses responses.create with web_search_preview tool
+    2. OpenRouter API (when use_openrouter=True) - Uses chat.completions with web_search tool
+    
+    Configuration options:
+    - model_id: The model to use (e.g., "gpt-4o" or "openai/gpt-4o-search-preview")
+    - use_openrouter: Whether to use OpenRouter API instead of OpenAI (default: False)
+    - search_context_size: Search context depth - "medium", "high", or "low" (default: "standard")
+    
+    Note: Both modes enforce tool_choice to ensure the web search tool is always used.
+    - OpenRouter: tool_choice={"type": "tool", "function": {"name": "web_search"}}
+    - OpenAI: tool_choice={"type": "web_search_preview"}
+    
     It does not use an underlying AgnoAgent.
     """
     adapter_name: str = "OpenAICustomSearchAdapter" 
     model_id: str = "gpt-4o" # Updated to use gpt-4o for better search results
 
-    def __init__(self, openai_client = None, model_id: str = "gpt-4o"):
+    def __init__(self, openai_client = None, model_id: str = "gpt-4o", use_openrouter: bool = False, search_context_size: str = "standard", **kwargs):
         super().__init__(self.adapter_name)
         if AsyncOpenAI is None:
             raise ImportError("AsyncOpenAI client from openai library is not available. Please install or update 'openai'.")
         
-        # Debug: Let's see what environment variables are actually set
-        api_key = os.getenv("OPENAI_API_KEY")
-        logger.info(f"🔍 DEBUG: OPENAI_API_KEY from os.getenv: {api_key[:10] if api_key else 'None'}...{api_key[-4:] if api_key and len(api_key) > 10 else ''}")
+        self.use_openrouter = use_openrouter
+        self.search_context_size = search_context_size  # Can be "medium", "high", or "low"
         
-        # Also check if there are any other OpenAI-related env vars
-        for key, value in os.environ.items():
-            if "OPENAI" in key.upper():
-                logger.info(f"🔍 DEBUG: Found env var {key}: {value[:10] if value else 'None'}...{value[-4:] if value and len(value) > 10 else ''}")
+        if use_openrouter:
+            # Use OpenRouter configuration
+            api_key = os.getenv("OPENROUTER_API_KEY")
+            if not api_key:
+                raise ValueError("OPENROUTER_API_KEY environment variable is required when use_openrouter=True")
+            
+            base_url = "https://openrouter.ai/api/v1"
+            logger.info(f"Using OpenRouter with base URL: {base_url}")
+            
+            # Ensure model_id has the proper OpenRouter format
+            if not model_id.startswith("openai/"):
+                model_id = f"openai/{model_id}"
+            
+            self.client = openai_client or AsyncOpenAI(
+                api_key=api_key,
+                base_url=base_url
+            )
+        else:
+            # Use standard OpenAI configuration
+            api_key = os.getenv("OPENAI_API_KEY")
+            if not api_key:
+                raise ValueError("OPENAI_API_KEY environment variable is required for OpenAICustomSearchAdapter")
+            
+            self.client = openai_client or AsyncOpenAI(api_key=api_key)
         
-        if not api_key:
-            raise ValueError("OPENAI_API_KEY environment variable is required for OpenAICustomSearchAdapter")
-        
-        # Create client with explicit API key
-        self.client = openai_client or AsyncOpenAI(api_key=api_key)
         self.model_id = model_id
-        logger.info(f"Initialized {self.agent_name} with model: {self.model_id} (API key: {api_key[:10]}...{api_key[-4:]})")
+        logger.info(f"Initialized {self.agent_name} with model: {self.model_id} (OpenRouter: {use_openrouter}, search_context_size: {search_context_size})")
 
     async def process(self, node: TaskNode, agent_task_input: AgentTaskInput, trace_manager: "TraceManager") -> Dict:
         """
@@ -193,17 +233,56 @@ QUERY: {query}
 
 RETRIEVED DATA:"""
             
-            api_response = await self.client.responses.create(
-                model=self.model_id,
-                tools=[{"type": "web_search_preview"}],
-                input=enhanced_query
-            )
-
-            # 1. Prioritize getting api_response.output_text
-            if hasattr(api_response, 'output_text') and api_response.output_text:
-                raw_output = api_response.output_text
+            # Configure web search options based on search_context_size
+            if self.use_openrouter:
+                # OpenRouter uses the standard chat completions API with web_search_options
+                web_search_options = {}
+                if self.search_context_size and self.search_context_size != "standard":
+                    web_search_options["search_context_size"] = self.search_context_size
                 
-                # Post-process to extract just the retrieved data if it contains our prompt
+                api_response = await self.client.chat.completions.create(
+                    model=self.model_id,
+                    web_search_options=web_search_options if web_search_options else None,
+                    tool_choice={"type": "tool", "function": {"name": "web_search_preview"}},
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": enhanced_query
+                        }
+                    ]
+                )
+            else:
+                # Standard OpenAI API with responses.create
+                # Build web_search_preview tool configuration
+                web_search_tool = {"type": "web_search_preview"}
+                if self.search_context_size and self.search_context_size != "standard":
+                    web_search_tool["search_context_size"] = self.search_context_size
+                
+                api_response = await self.client.responses.create(
+                    model=self.model_id,
+                    tools=[web_search_tool],
+                    tool_choice={"type": "web_search_preview"},  # Force use of web search tool
+                    input=enhanced_query
+                )
+
+            # 1. Handle different response formats based on API type
+            if self.use_openrouter:
+                # OpenRouter returns standard chat completion format
+                if hasattr(api_response, 'choices') and api_response.choices:
+                    raw_output = api_response.choices[0].message.content
+                else:
+                    logger.error(f"    {self.adapter_name}: No choices found in OpenRouter response")
+                    raw_output = None
+            else:
+                # Standard OpenAI responses.create format
+                if hasattr(api_response, 'output_text') and api_response.output_text:
+                    raw_output = api_response.output_text
+                else:
+                    logger.error(f"    {self.adapter_name}: 'output_text' not found or empty in API response. Main output will be error message.")
+                    raw_output = None
+            
+            # Post-process to extract just the retrieved data if it contains our prompt
+            if raw_output:
                 if "RETRIEVED DATA:" in raw_output:
                     # Extract everything after "RETRIEVED DATA:"
                     data_parts = raw_output.split("RETRIEVED DATA:", 1)
@@ -216,12 +295,12 @@ RETRIEVED DATA:"""
                     
                 logger.success(f"    {self.adapter_name}: Retrieved 'output_text' (length: {len(output_text_with_citations)}).")
             else:
-                logger.error(f"    {self.adapter_name}: 'output_text' not found or empty in API response. Main output will be error message.")
                 # Keep the default error message for output_text_with_citations
+                pass
 
             # 2. Attempt to parse nested text_content and annotations as supplementary info
             raw_annotations_data = []
-            if hasattr(api_response, 'output') and \
+            if not self.use_openrouter and hasattr(api_response, 'output') and \
                isinstance(api_response.output, list) and \
                len(api_response.output) > 1 and \
                hasattr(api_response.output[1], 'content') and \
@@ -272,7 +351,7 @@ RETRIEVED DATA:"""
             clean_output = {
                 "query_used": query,
                 "output_text": output_text_with_citations,
-                "citations": [ann.dict() for ann in parsed_annotations]  # Include citations for transparency
+                "citations": [ann.model_dump() for ann in parsed_annotations]  # Include citations for transparency
             }
 
             main_output_preview = clean_output["output_text"][:150] + "..." if len(clean_output["output_text"]) > 150 else clean_output["output_text"]
@@ -560,7 +639,7 @@ RETRIEVED DATA:"""
             clean_output = {
                 "query_used": query,
                 "output_text": enhanced_output_text,
-                "citations": [ann.dict() for ann in parsed_annotations]  # Include citations for transparency
+                "citations": [ann.model_dump() for ann in parsed_annotations]  # Include citations for transparency
             }
             
             main_output_preview = clean_output["output_text"][:150] + "..." if len(clean_output["output_text"]) > 150 else clean_output["output_text"]

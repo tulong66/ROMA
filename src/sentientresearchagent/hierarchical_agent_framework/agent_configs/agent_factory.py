@@ -41,6 +41,7 @@ from ..agents.adapters import (
     AggregatorAdapter, PlanModifierAdapter
 )
 from ..agents.definitions.custom_searchers import OpenAICustomSearchAdapter, GeminiCustomSearchAdapter
+from ..agents.definitions.exa_searcher import ExaCustomSearchAdapter
 from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models import (
     PlanOutput, AtomizerOutput, WebSearchResultsOutput, 
     CustomSearcherOutput, PlanModifierInput
@@ -180,6 +181,7 @@ class AgentFactory:
             "PlanModifierAdapter": PlanModifierAdapter,
             "OpenAICustomSearchAdapter": OpenAICustomSearchAdapter,
             "GeminiCustomSearchAdapter": GeminiCustomSearchAdapter,
+            "ExaCustomSearchAdapter": ExaCustomSearchAdapter,
         }
         
         # Enhanced response models mapping
@@ -410,7 +412,7 @@ class AgentFactory:
         """
         # Some agents (like custom search adapters) don't use AgnoAgent
         adapter_class_name = agent_config.get("adapter_class", "")
-        if adapter_class_name in ["OpenAICustomSearchAdapter", "GeminiCustomSearchAdapter"]:
+        if adapter_class_name in ["OpenAICustomSearchAdapter", "GeminiCustomSearchAdapter", "ExaCustomSearchAdapter"]:
             logger.debug(f"Agent {agent_config.name} doesn't use AgnoAgent (custom search adapter)")
             return None
         
@@ -521,7 +523,7 @@ class AgentFactory:
         
         try:
             # Special handling for different adapter types
-            if adapter_class_name in ["OpenAICustomSearchAdapter", "GeminiCustomSearchAdapter"]:
+            if adapter_class_name in ["OpenAICustomSearchAdapter", "GeminiCustomSearchAdapter", "ExaCustomSearchAdapter"]:
                 # These adapters don't use AgnoAgent and have special initialization
                 adapter_kwargs = {}
                 

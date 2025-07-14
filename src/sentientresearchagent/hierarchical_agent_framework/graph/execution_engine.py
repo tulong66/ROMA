@@ -2,6 +2,7 @@ from loguru import logger
 from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode, TaskStatus, NodeType, TaskType
 from sentientresearchagent.hierarchical_agent_framework.context.knowledge_store import KnowledgeStore # For logging to KS
 from sentientresearchagent.hierarchical_agent_framework.utils.hitl_utils import request_human_review
+from sentientresearchagent.hierarchical_agent_framework.types import is_terminal_status
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -12,9 +13,11 @@ if TYPE_CHECKING:
 
 
 from agno.exceptions import StopAgentRun # Added import
-from typing import Optional, Callable
+from typing import Optional, Callable, Dict
 import pprint # For logging results
 import asyncio # Import asyncio
+import time  # For timeout tracking
+from sentientresearchagent.exceptions import TaskTimeoutError, AgentExecutionError  # For error handling
 
 # Import new ProjectInitializer
 from .project_initializer import ProjectInitializer
@@ -44,6 +47,8 @@ class ExecutionEngine:
                 ):
         self.task_graph = task_graph
         self.config: SentientConfig = config # Store config
+        self.node_start_times: Dict[str, float] = {}  # Track when nodes start processing
+        self.stuck_node_attempts: Dict[str, int] = {}  # Track recovery attempts for stuck nodes
         
         if node_processor:
             self.node_processor = node_processor
@@ -171,59 +176,263 @@ class ExecutionEngine:
         # await self.hitl_coordinator.review_initial_project_goal(...)
         
         logger.info("ExecutionEngine: Project initialized. Proceeding directly to execution cycle.")
-        return await self.run_cycle(max_steps)
+        # Use timeout from config
+        node_timeout = self.config.execution.node_execution_timeout_seconds
+        return await self.run_cycle(max_steps, node_timeout_seconds=node_timeout)
 
-    async def run_cycle(self, max_steps: Optional[int] = None):
-        """Runs the execution loop for a specified number of steps or until completion/deadlock."""
+    async def run_cycle(self, max_steps: Optional[int] = None, node_timeout_seconds: float = 600.0):
+        """
+        Runs the execution loop for a specified number of steps or until completion/deadlock.
+        
+        Args:
+            max_steps: Maximum number of execution steps
+            node_timeout_seconds: Maximum time in seconds for overall execution (default: 600 = 10 minutes)
+        """
         # Use config default if max_steps not provided
         max_steps = max_steps or self.config.execution.max_execution_steps
         
-        logger.info(f"\n--- Starting Execution Cycle (max_steps: {max_steps}) ---")
+        # Track start time for timeout
+        start_time = time.time()
+        
+        logger.info(f"\n--- Starting Execution Cycle (max_steps: {max_steps}, timeout: {node_timeout_seconds}s) ---")
         
         root_node_initial_check = self.task_graph.get_node("root")
         if not self.task_graph.root_graph_id or not root_node_initial_check:
             logger.error("ExecutionEngine: Project not initialized properly or root node missing before cycle start.")
-            return None
+            return {"error": "Project initialization failed - root node missing"}
         if root_node_initial_check.status in [TaskStatus.CANCELLED, TaskStatus.FAILED]:
             logger.warning(f"ExecutionEngine: Root node is already {root_node_initial_check.status.name}. Cycle may not run effectively.")
             self._log_final_statuses()
+            # Return error if root node failed
+            if root_node_initial_check.status == TaskStatus.FAILED:
+                return {"error": f"Root node failed: {root_node_initial_check.error or 'Unknown error'}"}
             return root_node_initial_check.result
 
         for step in range(max_steps):
-            logger.info(f"\n--- Execution Step {step + 1} of {max_steps} ---")
+            # Check for timeout
+            elapsed_time = time.time() - start_time
+            if elapsed_time > node_timeout_seconds:
+                logger.error(f"\n--- Execution Timeout: Exceeded {node_timeout_seconds}s timeout after {elapsed_time:.2f}s ---")
+                # Mark root node as failed with timeout error
+                root_node = self.task_graph.get_node("root")
+                if root_node:
+                    root_node.update_status(TaskStatus.FAILED, error_msg=f"Execution timeout after {elapsed_time:.2f}s")
+                self._log_final_statuses()
+                return {"error": f"Execution timeout: Exceeded {node_timeout_seconds}s limit"}
+            
+            logger.info(f"\n--- Execution Step {step + 1} of {max_steps} (elapsed: {elapsed_time:.2f}s) ---")
             
             # Delegate step execution to CycleManager
-            processed_in_step = await self.cycle_manager.execute_step(
-                task_graph=self.task_graph,
-                state_manager=self.state_manager,
-                node_processor=self.node_processor, # type: ignore
-                knowledge_store=self.knowledge_store
-            )
+            # Pass the update callback from node processor if available
+            update_callback = None
+            if hasattr(self.node_processor, 'update_callback') and self.node_processor.update_callback:
+                update_callback = self.node_processor.update_callback
+            
+            try:
+                processed_in_step = await self.cycle_manager.execute_step(
+                    task_graph=self.task_graph,
+                    state_manager=self.state_manager,
+                    node_processor=self.node_processor, # type: ignore
+                    knowledge_store=self.knowledge_store,
+                    update_callback=update_callback
+                )
+            except Exception as e:
+                logger.error(f"\n--- Execution Error: {str(e)} ---")
+                # Mark root node as failed with error
+                root_node = self.task_graph.get_node("root")
+                if root_node:
+                    root_node.update_status(TaskStatus.FAILED, error_msg=f"Execution error: {str(e)}")
+                self._log_final_statuses()
+                return {"error": f"Execution failed: {str(e)}"}
             
             # --- Check for completion or deadlock for this step ---
             active_statuses = {TaskStatus.PENDING, TaskStatus.READY, TaskStatus.RUNNING, TaskStatus.PLAN_DONE, TaskStatus.AGGREGATING, TaskStatus.NEEDS_REPLAN}
             all_nodes_after_step = self.task_graph.get_all_nodes() 
+
+            # Check for critical failures (e.g., all nodes failed)
+            failed_nodes = [n for n in all_nodes_after_step if n.status == TaskStatus.FAILED]
+            if failed_nodes:
+                # Check if any critical nodes failed (e.g., root or key execution nodes)
+                critical_failures = [n for n in failed_nodes if n.layer == 0 or "execution" in n.task_id.lower()]
+                if critical_failures:
+                    logger.error(f"\n--- Execution Failed: Critical node failures detected ---")
+                    for node in critical_failures:
+                        logger.error(f"    - Failed: {node.task_id}, Error: {node.error}")
+                    self._log_final_statuses()
+                    # Return the most relevant error
+                    primary_error = critical_failures[0].error or "Critical node failure"
+                    return {"error": f"Execution failed: {primary_error}"}
 
             if not any(n.status in active_statuses for n in all_nodes_after_step):
                 logger.success("\n--- Execution Finished: No active nodes left. ---")
                 break
 
             if not processed_in_step and any(n.status in active_statuses for n in all_nodes_after_step):
-                logger.error("\n--- Execution Halted: No progress made in this step by CycleManager. Possible deadlock or logic error. ---")
+                logger.warning("\n--- No progress made in this step. Checking for stuck nodes... ---")
+                
+                # Try to recover stuck nodes before declaring deadlock
+                active_nodes = [n for n in all_nodes_after_step if n.status in active_statuses]
+                recovery_attempted = await self._check_and_recover_stuck_nodes(active_nodes, time.time())
+                
+                if recovery_attempted:
+                    logger.info("Recovery actions taken for stuck nodes. Continuing execution...")
+                    continue  # Skip deadlock check and continue with next step
+                
+                logger.error("\n--- Execution Halted: No progress made and no recovery possible. Deadlock detected. ---")
+                
+                # Detailed deadlock diagnostics
+                deadlock_info = self._diagnose_deadlock(all_nodes_after_step, active_statuses)
+                
                 for n_active in all_nodes_after_step:
                     if n_active.status in active_statuses:
                         logger.error(f"    - Active: {n_active.task_id}, Status: {n_active.status.name}, Goal: '{n_active.goal[:50]}...'")
-                break 
+                        
+                        # Log why each node is stuck
+                        if n_active.status == TaskStatus.PENDING:
+                            if n_active.parent_node_id:
+                                parent = self.task_graph.get_node(n_active.parent_node_id)
+                                if parent:
+                                    logger.error(f"      -> Waiting for parent {parent.task_id} (status: {parent.status.name})")
+                            container_graph = self.state_manager._find_container_graph_id_for_node(n_active)
+                            if container_graph:
+                                preds = self.task_graph.get_node_predecessors(container_graph, n_active.task_id)
+                                if preds:
+                                    logger.error(f"      -> Waiting for predecessors: {[f'{p.task_id}({p.status.name})' for p in preds]}")
+                        
+                        elif n_active.status == TaskStatus.PLAN_DONE:
+                            if n_active.sub_graph_id:
+                                sub_nodes = self.task_graph.get_nodes_in_graph(n_active.sub_graph_id)
+                                incomplete = [n for n in sub_nodes if not is_terminal_status(n.status)]
+                                if incomplete:
+                                    logger.error(f"      -> Waiting for {len(incomplete)} sub-tasks to complete")
+                                    for inc in incomplete[:3]:  # Show first 3
+                                        logger.error(f"         - {inc.task_id}: {inc.status.name}")
+                
+                self._log_final_statuses()
+                return {"error": f"Execution deadlock: {deadlock_info}"}
         
         if step == max_steps - 1: # type: ignore # Check if loop completed due to max_steps
              # Check active nodes one last time if loop finished due to max_steps
             if any(n.status in active_statuses for n in self.task_graph.get_all_nodes()): # type: ignore
                  logger.warning("\n--- Execution Finished: Reached max steps with active nodes remaining. ---")
+                 return {"error": f"Execution incomplete: Reached max steps ({max_steps}) with active nodes remaining"}
 
         self._log_final_statuses()
         
         root_node_final = self.task_graph.get_node("root")
-        return root_node_final.result if root_node_final else None
+        
+        # Check if root node failed
+        if root_node_final and root_node_final.status == TaskStatus.FAILED:
+            return {"error": f"Task failed: {root_node_final.error or 'Unknown error'}"}
+        
+        # Return result or error message
+        if root_node_final and root_node_final.result:
+            return root_node_final.result
+        else:
+            return {"error": "No result generated"}
+
+    async def _check_and_recover_stuck_nodes(self, active_nodes, current_time: float) -> bool:
+        """
+        Check for nodes that have been stuck in the same state for too long
+        and attempt recovery actions.
+        
+        Returns:
+            bool: True if any recovery action was taken
+        """
+        recovered = False
+        node_timeout = self.config.execution.node_execution_timeout_seconds / 3  # Per-node timeout is 1/3 of total
+        
+        for node in active_nodes:
+            # Track when we first see this node in its current status
+            node_key = f"{node.task_id}_{node.status.name}"
+            if node_key not in self.node_start_times:
+                self.node_start_times[node_key] = current_time
+                continue
+            
+            # Check if node has been stuck too long
+            time_in_status = current_time - self.node_start_times[node_key]
+            
+            if time_in_status > node_timeout:
+                logger.warning(f"Node {node.task_id} has been in {node.status.name} for {time_in_status:.0f}s")
+                
+                # Track recovery attempts
+                if node.task_id not in self.stuck_node_attempts:
+                    self.stuck_node_attempts[node.task_id] = 0
+                
+                if self.stuck_node_attempts[node.task_id] < 2:  # Max 2 recovery attempts
+                    self.stuck_node_attempts[node.task_id] += 1
+                    
+                    # Different recovery strategies based on status
+                    if node.status == TaskStatus.PENDING:
+                        # Force transition to READY if parent conditions met
+                        if self.state_manager._check_parent_conditions_for_ready(node):
+                            logger.warning(f"Force transitioning stuck PENDING node {node.task_id} to READY")
+                            node.update_status(TaskStatus.READY)
+                            self.knowledge_store.add_or_update_record_from_node(node)
+                            recovered = True
+                    
+                    elif node.status == TaskStatus.RUNNING:
+                        # Mark as NEEDS_REPLAN to retry
+                        logger.warning(f"Marking stuck RUNNING node {node.task_id} as NEEDS_REPLAN")
+                        node.update_status(TaskStatus.NEEDS_REPLAN, 
+                                         error_msg=f"Node stuck in RUNNING state for {time_in_status:.0f}s")
+                        self.knowledge_store.add_or_update_record_from_node(node)
+                        recovered = True
+                    
+                    elif node.status == TaskStatus.PLAN_DONE:
+                        # Force aggregation check
+                        if self.state_manager.can_aggregate(node):
+                            logger.warning(f"Force transitioning stuck PLAN_DONE node {node.task_id} to AGGREGATING")
+                            node.update_status(TaskStatus.AGGREGATING)
+                            self.knowledge_store.add_or_update_record_from_node(node)
+                            recovered = True
+                else:
+                    # Max attempts reached, fail the node
+                    logger.error(f"Node {node.task_id} recovery failed after {self.stuck_node_attempts[node.task_id]} attempts")
+                    node.update_status(TaskStatus.FAILED, 
+                                     error_msg=f"Node stuck in {node.status.name} for {time_in_status:.0f}s, recovery failed")
+                    self.knowledge_store.add_or_update_record_from_node(node)
+                    recovered = True
+        
+        return recovered
+
+    def _diagnose_deadlock(self, all_nodes, active_statuses) -> str:
+        """Diagnose the cause of deadlock and return a descriptive message."""
+        active_nodes = [n for n in all_nodes if n.status in active_statuses]
+        
+        # Count nodes by status
+        status_counts = {}
+        for node in active_nodes:
+            status_counts[node.status.name] = status_counts.get(node.status.name, 0) + 1
+        
+        # Common deadlock scenarios
+        pending_nodes = [n for n in active_nodes if n.status == TaskStatus.PENDING]
+        plan_done_nodes = [n for n in active_nodes if n.status == TaskStatus.PLAN_DONE]
+        
+        deadlock_reasons = []
+        
+        # Check for circular dependencies
+        if pending_nodes:
+            for node in pending_nodes:
+                if node.parent_node_id:
+                    parent = self.task_graph.get_node(node.parent_node_id)
+                    if parent and parent.status not in (TaskStatus.RUNNING, TaskStatus.PLAN_DONE):
+                        deadlock_reasons.append(f"Node {node.task_id} waiting for parent {parent.task_id} with incompatible status {parent.status.name}")
+        
+        # Check for stuck PLAN_DONE nodes
+        if plan_done_nodes:
+            for node in plan_done_nodes:
+                if node.sub_graph_id:
+                    sub_nodes = self.task_graph.get_nodes_in_graph(node.sub_graph_id)
+                    stuck_sub_nodes = [n for n in sub_nodes if n.status in active_statuses and n.status != TaskStatus.DONE]
+                    if stuck_sub_nodes:
+                        deadlock_reasons.append(f"Node {node.task_id} has {len(stuck_sub_nodes)} incomplete sub-tasks")
+        
+        # Build diagnostic message
+        if deadlock_reasons:
+            return f"No progress possible. {len(active_nodes)} nodes stuck ({', '.join(f'{k}:{v}' for k,v in status_counts.items())}). Root causes: {'; '.join(deadlock_reasons[:2])}"
+        else:
+            return f"No progress possible. {len(active_nodes)} nodes stuck ({', '.join(f'{k}:{v}' for k,v in status_counts.items())}). Check logs for details."
 
     def _log_final_statuses(self):
         logger.info("\n--- Final Node Statuses & Results ---")

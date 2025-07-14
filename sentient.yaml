@@ -5,7 +5,7 @@
 llm:
   provider: "openrouter"  # Since you're using OpenRouter
   api_key: "your-openrouter-key"  # Or OPENROUTER_API_KEY env var
-  timeout: 60.0  # Longer timeout for complex reasoning
+  timeout: 300.0  # Increased to 5 minutes for complex code execution and reasoning
   max_retries: 3
 
 # Cache System (for your sophisticated agent responses)  
@@ -23,6 +23,7 @@ execution:
   rate_limit_rpm: 30  # Reduced from 60 to avoid Gemini rate limits
   enable_hitl: true
   hitl_timeout_seconds: 600.0  # 10 minutes for human review
+  node_execution_timeout_seconds: 900.0  # 15 minutes max for overall task execution
   
   # CHANGED: Default to root plan only - only review the initial high-level plan
   hitl_root_plan_only: true  # Set to true to only review root node's plan

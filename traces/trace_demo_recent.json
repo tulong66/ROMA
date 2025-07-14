@@ -1,0 +1,31 @@
+{
+  "node_id": "demo_recent",
+  "node_goal": "Node demo_recent",
+  "trace_id": "de6573b5-b397-45f9-b5d7-8ba75c6cc3fb",
+  "created_at": "2025-07-13T13:39:05.825559",
+  "stages": [
+    {
+      "stage_name": "execution",
+      "stage_id": "2bba0bea-f4e9-4bf5-866a-3264b4bab5f2",
+      "started_at": "2025-07-13T13:39:05.825596",
+      "completed_at": null,
+      "status": "running",
+      "agent_name": "ExaCustomSearchAdapter",
+      "adapter_name": "ExaCustomSearchAdapter",
+      "model_info": {
+        "model": "gpt-4o",
+        "provider": "litellm"
+      },
+      "system_prompt": null,
+      "user_input": "Latest AI breakthroughs and announcements in December 2024",
+      "llm_response": null,
+      "input_context": null,
+      "processing_parameters": null,
+      "output_data": null,
+      "error_message": null,
+      "error_details": null,
+      "duration_ms": null
+    }
+  ],
+  "metadata": {}
+}

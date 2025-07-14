@@ -153,15 +153,23 @@ class RealtimeExecutionWrapper:
         Args:
             execution_task: The main execution task to monitor
         """
+        # Use a shorter interval for more responsive updates
+        update_interval = 0.5  # Update every 0.5 seconds instead of 2 seconds
+        last_update_time = 0
+        
         while not execution_task.done():
-            await asyncio.sleep(2)  # Update every 2 seconds
+            await asyncio.sleep(update_interval)
             if not execution_task.done():
+                current_time = time.time()
                 # Only update display if we're the current project
                 if self._check_if_current():
                     self.update_callback()
+                    last_update_time = current_time
                 else:
-                    # Still save state for background projects
-                    self._save_background_state()
+                    # Still save state for background projects, but less frequently
+                    if current_time - last_update_time > 5.0:  # Save every 5 seconds for background
+                        self._save_background_state()
+                        last_update_time = current_time
     
     def _save_background_state(self):
         """Save state for background projects without updating display."""
@@ -420,7 +428,19 @@ class ExecutionService:
                         self.project_service.broadcast_callback()
                 
                 logger.info("⚡ Resuming execution...")
-                await realtime_engine.run_cycle(max_steps=max_steps)
+                result = await realtime_engine.run_cycle(max_steps=max_steps)
+                
+                # Handle execution result
+                if isinstance(result, dict) and 'error' in result:
+                    logger.error(f"❌ Execution failed: {result['error']}")
+                    self.project_service.project_manager.update_project(project_id, status='failed', error=result['error'])
+                    # Store error in the root node
+                    root_node = project_task_graph.get_node("root")
+                    if root_node:
+                        root_node.error = result['error']
+                        root_node.status = TaskStatus.FAILED
+                else:
+                    logger.info("✅ Execution completed successfully")
             else:
                 logger.info("🧹 Starting fresh project...")
                 
@@ -446,13 +466,27 @@ class ExecutionService:
                 logger.info("🚀 Starting project flow...")
                 start_time = time.time()
                 
-                await realtime_engine.run_project_flow(root_goal=goal, max_steps=max_steps)
+                result = await realtime_engine.run_project_flow(root_goal=goal, max_steps=max_steps)
                 
                 total_time = time.time() - start_time
                 logger.info(f"⏱️ Project execution took {total_time:.2f} seconds")
+                
+                # Handle execution result
+                if isinstance(result, dict) and 'error' in result:
+                    logger.error(f"❌ Execution failed: {result['error']}")
+                    self.project_service.project_manager.update_project(project_id, status='failed', error=result['error'])
+                    # Store error in the root node
+                    root_node = project_task_graph.get_node("root")
+                    if root_node:
+                        root_node.error = result['error']
+                        root_node.status = TaskStatus.FAILED
+                else:
+                    logger.info("✅ Execution completed successfully")
             
-            # CRITICAL: Update project status BEFORE saving
-            self.project_service.project_manager.update_project(project_id, status='completed')
+            # CRITICAL: Update project status BEFORE saving (only if not already marked as failed)
+            current_project = self.project_service.project_manager.get_project(project_id)
+            if current_project and current_project.status != 'failed':
+                self.project_service.project_manager.update_project(project_id, status='completed')
             
             # CRITICAL: Save state IMMEDIATELY after execution completes
             logger.info(f"🚨 CRITICAL SAVE - Saving final state for project {project_id}")

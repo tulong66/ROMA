@@ -399,14 +399,16 @@ def _generate_markdown_report(results_package):
 """
     
     if root_node and root_node.get('status') == 'DONE':
-        if root_node.get('full_result', {}).get('output_text_with_citations'):
-            content += root_node['full_result']['output_text_with_citations']
-        elif root_node.get('full_result', {}).get('output_text'):
-            content += root_node['full_result']['output_text']
-        elif root_node.get('output_summary'):
-            content += root_node['output_summary']
+        full_result = root_node.get('full_result')
+        if full_result and isinstance(full_result, dict):
+            if full_result.get('output_text_with_citations'):
+                content += full_result['output_text_with_citations']
+            elif full_result.get('output_text'):
+                content += full_result['output_text']
+            else:
+                content += root_node.get('output_summary', "No final result available.")
         else:
-            content += "No final result available."
+            content += root_node.get('output_summary', "No final result available.")
     else:
         content += "Project not completed or no root node found."
     
@@ -447,12 +449,16 @@ def _generate_html_report(results_package):
     # Get final result
     final_result = "Project not completed or no root node found."
     if root_node and root_node.get('status') == 'DONE':
-        if root_node.get('full_result', {}).get('output_text_with_citations'):
-            final_result = root_node['full_result']['output_text_with_citations']
-        elif root_node.get('full_result', {}).get('output_text'):
-            final_result = root_node['full_result']['output_text']
-        elif root_node.get('output_summary'):
-            final_result = root_node['output_summary']
+        full_result = root_node.get('full_result')
+        if full_result and isinstance(full_result, dict):
+            if full_result.get('output_text_with_citations'):
+                final_result = full_result['output_text_with_citations']
+            elif full_result.get('output_text'):
+                final_result = full_result['output_text']
+            else:
+                final_result = root_node.get('output_summary', "No final result available.")
+        else:
+            final_result = root_node.get('output_summary', "No final result available.")
     
     content = f"""<!DOCTYPE html>
 <html lang="en">

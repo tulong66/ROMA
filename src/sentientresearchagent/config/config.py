@@ -75,6 +75,7 @@ class ExecutionConfig(BaseModel):
     rate_limit_rpm: int = 60  # requests per minute
     max_execution_steps: int = 250
     max_recursion_depth: int = 5  # NEW: Maximum recursion depth for task decomposition
+    node_execution_timeout_seconds: float = 600.0  # 10 minutes default timeout for overall execution
     
     # HITL (Human-in-the-Loop) Configuration - Centralized
     enable_hitl: bool = True  # Master HITL switch

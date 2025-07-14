@@ -26,6 +26,7 @@ class ProjectMetadata:
     max_steps: int
     node_count: int = 0
     completion_percentage: float = 0.0
+    error: Optional[str] = None  # Store error message if execution fails
     
     def to_dict(self) -> Dict[str, Any]:
         data = asdict(self)

@@ -365,6 +365,24 @@ def main():
         print(f"Error reading input file: {e}")
         return
     
+    # Load checkpoint if it exists
+    processed_indices = set()
+    existing_results = []
+    
+    if os.path.exists(args.checkpoint_file):
+        print(f"🔄 Found checkpoint file: {args.checkpoint_file}")
+        try:
+            checkpoint_df = pd.read_csv(args.checkpoint_file)
+            # Determine which queries have been processed
+            if 'index' in checkpoint_df.columns:
+                processed_indices = set(checkpoint_df['index'].tolist())
+                existing_results = checkpoint_df.to_dict('records')
+                print(f"✅ Resuming from checkpoint: {len(processed_indices)} queries already processed")
+            else:
+                print("⚠️ Checkpoint file doesn't have 'index' column, starting fresh")
+        except Exception as e:
+            print(f"⚠️ Error loading checkpoint: {e}, starting fresh")
+    
     # Prepare worker configuration
     worker_config = {
         'server_url': args.server_url,
@@ -405,8 +423,16 @@ def main():
     task_queue = multiprocessing.Queue()
     result_queue = multiprocessing.Queue()
     
-    # Enqueue all tasks
-    for i, query in enumerate(queries):
+    # Enqueue only unprocessed tasks
+    queries_to_process = [(query, i) for i, query in enumerate(queries) if i not in processed_indices]
+    
+    if not queries_to_process:
+        print("✅ All queries already processed!")
+        return
+    
+    print(f"📋 Processing {len(queries_to_process)} out of {len(queries)} total queries")
+    
+    for query, i in queries_to_process:
         task_queue.put((query, i))
     
     # Add sentinel values
@@ -415,7 +441,7 @@ def main():
     
     # Start worker processes with staggered startup
     processes = []
-    print(f"🏁 Starting {args.num_processes} worker processes for {len(queries)} queries...")
+    print(f"🏁 Starting {args.num_processes} worker processes for {len(queries_to_process)} queries...")
     for i in range(args.num_processes):
         process = multiprocessing.Process(
             target=evaluation_worker,
@@ -425,24 +451,26 @@ def main():
         processes.append(process)
         process.start()
     
-    # Collect results
-    results = []
-    num_queries = len(queries)
+    # Collect results (start with existing results from checkpoint)
+    results = existing_results.copy()
+    num_queries_to_process = len(queries_to_process)
     
     # Add timestamp for tracking
     eval_start_time = datetime.now()
     
-    with tqdm(total=num_queries, desc="Processing queries", ncols=100) as pbar:
-        while len(results) < num_queries:
+    with tqdm(total=num_queries_to_process, desc="Processing queries", ncols=100, initial=0) as pbar:
+        processed_count = 0
+        while processed_count < num_queries_to_process:
             try:
                 result = result_queue.get(timeout=300)
                 with result_lock:
                     results.append(result)
+                    processed_count += 1
                     pbar.update(1)
                     
                     # Show project ID for frontend reference
                     if 'project_id' in result:
-                        print(f"📊 Progress: {len(results)}/{num_queries} - "
+                        print(f"📊 Progress: {len(existing_results) + processed_count}/{len(queries)} - "
                               f"Latest project: {result['project_id']}")
                     
                     if len(results) % args.checkpoint_interval == 0:
@@ -466,9 +494,13 @@ def main():
         results_df = pd.DataFrame(results)
         
         output_df = df.copy()
-        for col in results_df.columns:
-            if col != 'index':
-                output_df[col] = results_df[col].values
+        # Map results back to original dataframe by index
+        result_map = {r['index']: r for r in results}
+        for idx in range(len(df)):
+            if idx in result_map:
+                for col, val in result_map[idx].items():
+                    if col != 'index' and col != 'query':  # Don't overwrite query column
+                        output_df.loc[idx, col] = val
         
         # Add evaluation metadata
         output_df['eval_timestamp'] = eval_start_time.isoformat()
@@ -476,6 +508,11 @@ def main():
         
         output_df.to_csv(args.output_file, index=False)
         print(f"💾 Results saved to {args.output_file}")
+        
+        # Clean up checkpoint file after successful completion
+        if os.path.exists(args.checkpoint_file):
+            os.remove(args.checkpoint_file)
+            print(f"🧹 Cleaned up checkpoint file: {args.checkpoint_file}")
         
         # Print summary
         print("\n📊 Evaluation Summary:")

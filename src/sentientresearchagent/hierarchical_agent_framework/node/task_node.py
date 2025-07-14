@@ -86,8 +86,14 @@ class TaskNode(BaseModel):
                 logger.warning(f"Task {self.task_id}: Potentially invalid status transition {old_status} → {new_status_enum}")
                 # Don't raise exception - just log the warning and proceed
             
+            # Enhanced logging for state transitions
+            transition_time = datetime.now()
+            logger.info(f"🔄 STATE TRANSITION [{transition_time.strftime('%H:%M:%S.%f')[:-3]}] "
+                       f"Node: {self.task_id} | {old_status} → {new_status_enum} | "
+                       f"Layer: {self.layer} | Goal: '{self.goal[:50]}...'")
+            
             self.status = new_status_enum
-            self.timestamp_updated = datetime.now()
+            self.timestamp_updated = transition_time
             
             if result is not None:
                 self.result = result
@@ -102,10 +108,13 @@ class TaskNode(BaseModel):
             if self.status in [TaskStatus.DONE, TaskStatus.FAILED, TaskStatus.NEEDS_REPLAN, TaskStatus.CANCELLED]:
                 self.timestamp_completed = datetime.now()
             
-            # Improved logging
-            logger.info(f"Task {self.task_id} status: {old_status} → {self.status}. "
-                       f"Result: {str(result)[:50] if result else 'N/A'}... "
-                       f"Error: {error_msg or 'None'}")
+            # Comprehensive logging for state transitions
+            transition_time = datetime.now()
+            logger.info(f"🔄 STATE TRANSITION [{transition_time.strftime('%H:%M:%S.%f')[:-3]}] "
+                       f"Task {self.task_id} (layer {self.layer}): {old_status.name} → {self.status.name} "
+                       f"| Goal: '{self.goal[:40]}...' "
+                       f"| Result: {str(result)[:50] if result else 'None'}... "
+                       f"| Error: {error_msg[:50] if error_msg else 'None'}")
                        
         except Exception as e:
             logger.error(f"Failed to update status for task {self.task_id}: {e}")
