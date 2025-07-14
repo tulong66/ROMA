@@ -509,8 +509,8 @@ def main():
         output_df.to_csv(args.output_file, index=False)
         print(f"💾 Results saved to {args.output_file}")
         
-        # Clean up checkpoint file after successful completion
-        if os.path.exists(args.checkpoint_file):
+        # Clean up checkpoint file after successful completion (only if different from output file)
+        if os.path.exists(args.checkpoint_file) and args.checkpoint_file != args.output_file:
             os.remove(args.checkpoint_file)
             print(f"🧹 Cleaned up checkpoint file: {args.checkpoint_file}")
         

@@ -325,11 +325,26 @@ class ExecutionEngine:
         if root_node_final and root_node_final.status == TaskStatus.FAILED:
             return {"error": f"Task failed: {root_node_final.error or 'Unknown error'}"}
         
-        # Return result or error message
-        if root_node_final and root_node_final.result:
-            return root_node_final.result
+        # Check if execution completed successfully
+        if root_node_final and root_node_final.status == TaskStatus.DONE:
+            # Return the result even if it's None or empty
+            # An empty result from a successful execution is valid
+            if root_node_final.result is not None:
+                return root_node_final.result
+            else:
+                # Check if we have a meaningful summary that indicates success
+                if root_node_final.output_summary and "completed" in root_node_final.output_summary.lower():
+                    # Return a success indicator with the summary
+                    return {"status": "success", "summary": root_node_final.output_summary}
+                else:
+                    # Return empty dict to indicate successful completion with no output
+                    return {}
+        
+        # If we get here, something went wrong
+        if root_node_final:
+            return {"error": f"Execution did not complete successfully. Final status: {root_node_final.status.name}"}
         else:
-            return {"error": "No result generated"}
+            return {"error": "No root node found"}
 
     async def _check_and_recover_stuck_nodes(self, active_nodes, current_time: float) -> bool:
         """

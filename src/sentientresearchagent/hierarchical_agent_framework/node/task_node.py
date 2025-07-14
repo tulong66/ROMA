@@ -1,4 +1,5 @@
 import uuid
+import threading
 from typing import Optional, Any, List, Dict, Union, Callable, TYPE_CHECKING
 from pydantic import BaseModel, Field
 from datetime import datetime
@@ -55,11 +56,18 @@ class TaskNode(BaseModel):
     # NEW: To store arbitrary auxiliary data that might be useful for certain handlers or agents
     # For example, storing the original plan and user modification instructions during HITL replan
     aux_data: Dict[str, Any] = Field(default_factory=dict)
+    
+    # We'll add the lock via __init__ without declaring it as a field
 
     class Config:
         # Remove use_enum_values to keep enums as enum objects, not strings
         # use_enum_values = True # This was causing enums to be stored as strings!
-        pass  # Keep the Config class but remove the problematic setting
+        arbitrary_types_allowed = True  # Allow non-pydantic types like threading.RLock
+
+    def __init__(self, **data):
+        super().__init__(**data)
+        # Initialize the lock after the object is created
+        object.__setattr__(self, '_status_lock', threading.RLock())
 
     def update_status(self, new_status: TaskStatus, result: Any = None, 
                      error_msg: Optional[str] = None, result_summary: Optional[str] = None,
@@ -74,52 +82,57 @@ class TaskNode(BaseModel):
             result_summary: Optional summary of the result
             validate_transition: Whether to validate status transitions
         """
-        old_status = self.status
+        # Ensure we have a lock (in case of deserialized objects)
+        if not hasattr(self, '_status_lock') or self._status_lock is None:
+            object.__setattr__(self, '_status_lock', threading.RLock())
         
-        try:
-            # Use safe conversion to handle string inputs
-            new_status_enum = safe_task_status(new_status) if not isinstance(new_status, TaskStatus) else new_status
+        with self._status_lock:
+            old_status = self.status
             
-            # Validate transition if requested
-            if validate_transition and not self._is_valid_transition(old_status, new_status_enum):
-                # Log warning but don't fail - just warn about potentially invalid transition
-                logger.warning(f"Task {self.task_id}: Potentially invalid status transition {old_status} → {new_status_enum}")
-                # Don't raise exception - just log the warning and proceed
-            
-            # Enhanced logging for state transitions
-            transition_time = datetime.now()
-            logger.info(f"🔄 STATE TRANSITION [{transition_time.strftime('%H:%M:%S.%f')[:-3]}] "
-                       f"Node: {self.task_id} | {old_status} → {new_status_enum} | "
-                       f"Layer: {self.layer} | Goal: '{self.goal[:50]}...'")
-            
-            self.status = new_status_enum
-            self.timestamp_updated = transition_time
-            
-            if result is not None:
-                self.result = result
+            try:
+                # Use safe conversion to handle string inputs
+                new_status_enum = safe_task_status(new_status) if not isinstance(new_status, TaskStatus) else new_status
                 
-            if result_summary is not None:
-                self.output_summary = result_summary
+                # Validate transition if requested
+                if validate_transition and not self._is_valid_transition(old_status, new_status_enum):
+                    # Log warning but don't fail - just warn about potentially invalid transition
+                    logger.warning(f"Task {self.task_id}: Potentially invalid status transition {old_status} → {new_status_enum}")
+                    # Don't raise exception - just log the warning and proceed
                 
-            if error_msg is not None:
-                self.error = error_msg
-                self.status = TaskStatus.FAILED # Ensure status is FAILED if error is provided
-            
-            if self.status in [TaskStatus.DONE, TaskStatus.FAILED, TaskStatus.NEEDS_REPLAN, TaskStatus.CANCELLED]:
-                self.timestamp_completed = datetime.now()
-            
-            # Comprehensive logging for state transitions
-            transition_time = datetime.now()
-            logger.info(f"🔄 STATE TRANSITION [{transition_time.strftime('%H:%M:%S.%f')[:-3]}] "
-                       f"Task {self.task_id} (layer {self.layer}): {old_status.name} → {self.status.name} "
-                       f"| Goal: '{self.goal[:40]}...' "
-                       f"| Result: {str(result)[:50] if result else 'None'}... "
-                       f"| Error: {error_msg[:50] if error_msg else 'None'}")
+                # Enhanced logging for state transitions
+                transition_time = datetime.now()
+                logger.info(f"🔄 STATE TRANSITION [{transition_time.strftime('%H:%M:%S.%f')[:-3]}] "
+                           f"Node: {self.task_id} | {old_status} → {new_status_enum} | "
+                           f"Layer: {self.layer} | Goal: '{self.goal[:50]}...'")
+                
+                self.status = new_status_enum
+                self.timestamp_updated = transition_time
+                
+                if result is not None:
+                    self.result = result
+                    
+                if result_summary is not None:
+                    self.output_summary = result_summary
+                    
+                if error_msg is not None:
+                    self.error = error_msg
+                    self.status = TaskStatus.FAILED # Ensure status is FAILED if error is provided
+                
+                if self.status in [TaskStatus.DONE, TaskStatus.FAILED, TaskStatus.NEEDS_REPLAN, TaskStatus.CANCELLED]:
+                    self.timestamp_completed = datetime.now()
+                
+                # Comprehensive logging for state transitions
+                transition_time = datetime.now()
+                logger.info(f"🔄 STATE TRANSITION [{transition_time.strftime('%H:%M:%S.%f')[:-3]}] "
+                           f"Task {self.task_id} (layer {self.layer}): {old_status.name} → {self.status.name} "
+                           f"| Goal: '{self.goal[:40]}...' "
+                           f"| Result: {str(result)[:50] if result else 'None'}... "
+                           f"| Error: {error_msg[:50] if error_msg else 'None'}")
                        
-        except Exception as e:
-            logger.error(f"Failed to update status for task {self.task_id}: {e}")
-            # Don't re-raise here to avoid cascading failures
-            # Just log the error and keep the old status
+            except Exception as e:
+                logger.error(f"Failed to update status for task {self.task_id}: {e}")
+                # Don't re-raise here to avoid cascading failures
+                # Just log the error and keep the old status
     
     def _is_valid_transition(self, from_status: TaskStatus, to_status: TaskStatus) -> bool:
         """

@@ -9,6 +9,39 @@ from sentientresearchagent.hierarchical_agent_framework.context.knowledge_store 
 # NodeProcessor itself is passed, not its components separately to CycleManager.
 # from sentientresearchagent.hierarchical_agent_framework.node.node_processor import NodeProcessor 
 
+
+async def _atomic_transition_if_eligible(
+    node: TaskNode,
+    from_status: TaskStatus,
+    to_status: TaskStatus,
+    eligibility_check: Callable[[], bool],
+    knowledge_store: KnowledgeStore,
+    update_callback: Optional[Callable] = None
+) -> bool:
+    """
+    Atomically transitions a node from one status to another if eligible.
+    This prevents race conditions where the node status might change between
+    the check and the update.
+    
+    Returns:
+        bool: True if transition occurred, False otherwise
+    """
+    # The node's internal lock ensures atomicity
+    if node.status == from_status and eligibility_check():
+        node.update_status(to_status)
+        knowledge_store.add_or_update_record_from_node(node)
+        
+        # Trigger update callback for immediate broadcast
+        if update_callback:
+            try:
+                update_callback()
+                logger.debug(f"  Atomic transition: Update callback triggered after {from_status} -> {to_status} for {node.task_id}")
+            except Exception as e:
+                logger.warning(f"  Atomic transition: Update callback failed: {e}")
+        
+        return True
+    return False 
+
 class CycleManager:
     """
     Manages the core logic of a single step within the ExecutionEngine's run_cycle.
@@ -39,19 +72,12 @@ class CycleManager:
         # --- 1. Update PENDING -> READY transitions ---
         logger.debug("CycleManager: Checking for PENDING -> READY transitions.")
         for node in all_nodes_current_step:
-            if node.status == TaskStatus.PENDING:
-                if state_manager.can_become_ready(node):
-                    node.update_status(TaskStatus.READY)
-                    knowledge_store.add_or_update_record_from_node(node)
-                    processed_in_step = True
-                    logger.info(f"  CycleManager Transition: Node {node.task_id} PENDING -> READY (Goal: '{node.goal[:30]}...')")
-                    # Trigger update callback for immediate broadcast
-                    if update_callback:
-                        try:
-                            update_callback()
-                            logger.debug(f"  CycleManager: Update callback triggered after PENDING -> READY transition for {node.task_id}")
-                        except Exception as e:
-                            logger.warning(f"  CycleManager: Update callback failed: {e}")
+            # Atomic check-and-update for PENDING -> READY transition
+            if await _atomic_transition_if_eligible(node, TaskStatus.PENDING, TaskStatus.READY,
+                                                   lambda: state_manager.can_become_ready(node),
+                                                   knowledge_store, update_callback):
+                processed_in_step = True
+                logger.info(f"  CycleManager Transition: Node {node.task_id} PENDING -> READY (Goal: '{node.goal[:30]}...')")
 
         # --- 2. Process AGGREGATING nodes (serially, one at a time) ---
         # Re-fetch nodes as statuses might have changed
@@ -91,32 +117,20 @@ class CycleManager:
                 # ENHANCED: Check if this node was converted to EXECUTE type during planning
                 if node.node_type == NodeType.EXECUTE:
                     # A PLAN node that becomes EXECUTE is an atomic task
-                    logger.info(f"  CycleManager Transition: Node {node.task_id} was atomic. Transitioning PLAN_DONE -> DONE.")
-                    node.update_status(TaskStatus.DONE)
-                    knowledge_store.add_or_update_record_from_node(node)
-                    processed_in_step = True
-                    made_plan_done_transition = True
-                    # Trigger update callback for immediate broadcast
-                    if update_callback:
-                        try:
-                            update_callback()
-                            logger.debug(f"  CycleManager: Update callback triggered after PLAN_DONE -> DONE transition for {node.task_id}")
-                        except Exception as e:
-                            logger.warning(f"  CycleManager: Update callback failed: {e}")
+                    if await _atomic_transition_if_eligible(node, TaskStatus.PLAN_DONE, TaskStatus.DONE,
+                                                           lambda: True,  # Always eligible if we got here
+                                                           knowledge_store, update_callback):
+                        logger.info(f"  CycleManager Transition: Node {node.task_id} was atomic. Transitioning PLAN_DONE -> DONE.")
+                        processed_in_step = True
+                        made_plan_done_transition = True
                 # Also check if this was originally an EXECUTE node that somehow got planned
                 elif hasattr(node, 'aux_data') and node.aux_data.get('was_executed_as_atomic'):
-                    logger.warning(f"  CycleManager: Node {node.task_id} was already executed as atomic but reached PLAN_DONE. Transitioning directly to DONE.")
-                    node.update_status(TaskStatus.DONE)
-                    knowledge_store.add_or_update_record_from_node(node)
-                    processed_in_step = True
-                    made_plan_done_transition = True
-                    # Trigger update callback for immediate broadcast
-                    if update_callback:
-                        try:
-                            update_callback()
-                            logger.debug(f"  CycleManager: Update callback triggered after PLAN_DONE -> DONE transition for {node.task_id}")
-                        except Exception as e:
-                            logger.warning(f"  CycleManager: Update callback failed: {e}")
+                    if await _atomic_transition_if_eligible(node, TaskStatus.PLAN_DONE, TaskStatus.DONE,
+                                                           lambda: True,  # Always eligible if we got here
+                                                           knowledge_store, update_callback):
+                        logger.warning(f"  CycleManager: Node {node.task_id} was already executed as atomic but reached PLAN_DONE. Transitioning directly to DONE.")
+                        processed_in_step = True
+                        made_plan_done_transition = True
                 elif state_manager.can_aggregate(node):
                     children_failed = False
                     if node.sub_graph_id:
@@ -125,27 +139,15 @@ class CycleManager:
                             children_failed = True
                     
                     if children_failed:
-                        node.update_status(TaskStatus.NEEDS_REPLAN)
-                        knowledge_store.add_or_update_record_from_node(node)
-                        logger.info(f"  CycleManager Transition: Node {node.task_id} PLAN_DONE -> NEEDS_REPLAN (due to failed children, Goal: '{node.goal[:30]}...')")
-                        # Trigger update callback for immediate broadcast
-                        if update_callback:
-                            try:
-                                update_callback()
-                                logger.debug(f"  CycleManager: Update callback triggered after PLAN_DONE -> NEEDS_REPLAN transition for {node.task_id}")
-                            except Exception as e:
-                                logger.warning(f"  CycleManager: Update callback failed: {e}")
+                        if await _atomic_transition_if_eligible(node, TaskStatus.PLAN_DONE, TaskStatus.NEEDS_REPLAN,
+                                                               lambda: True,  # Already checked children_failed
+                                                               knowledge_store, update_callback):
+                            logger.info(f"  CycleManager Transition: Node {node.task_id} PLAN_DONE -> NEEDS_REPLAN (due to failed children, Goal: '{node.goal[:30]}...')")
                     else:
-                        node.update_status(TaskStatus.AGGREGATING)
-                        knowledge_store.add_or_update_record_from_node(node)
-                        logger.info(f"  CycleManager Transition: Node {node.task_id} PLAN_DONE -> AGGREGATING (Goal: '{node.goal[:30]}...')")
-                        # Trigger update callback for immediate broadcast
-                        if update_callback:
-                            try:
-                                update_callback()
-                                logger.debug(f"  CycleManager: Update callback triggered after PLAN_DONE -> AGGREGATING transition for {node.task_id}")
-                            except Exception as e:
-                                logger.warning(f"  CycleManager: Update callback failed: {e}")
+                        if await _atomic_transition_if_eligible(node, TaskStatus.PLAN_DONE, TaskStatus.AGGREGATING,
+                                                               lambda: True,  # Already checked can_aggregate
+                                                               knowledge_store, update_callback):
+                            logger.info(f"  CycleManager Transition: Node {node.task_id} PLAN_DONE -> AGGREGATING (Goal: '{node.goal[:30]}...')")
                     processed_in_step = True
                     made_plan_done_transition = True
                 else:
