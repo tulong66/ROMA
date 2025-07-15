@@ -1,4 +1,5 @@
 from typing import Optional, Any, cast
+from datetime import datetime
 from loguru import logger
 
 from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode, TaskStatus, NodeType, TaskType
@@ -595,6 +596,30 @@ class ReadyExecuteHandler(INodeHandler):
                 node.update_status(TaskStatus.DONE)
                 logger.success(f"ReadyExecuteHandler: Node {node.task_id} execution complete. Status: {node.status.name}.")
                 
+                # Update the execution stage to mark it as completed without overwriting data
+                # First, let's check what data exists in the stage before updating
+                trace = context.trace_manager.get_trace_for_node(node.task_id)
+                if trace:
+                    stage = trace.get_stage("execution")
+                    if stage and hasattr(stage, 'additional_data') and stage.additional_data:
+                        logger.info(f"🔍 BEFORE COMPLETION - Stage has additional_data with keys: {list(stage.additional_data.keys())}")
+                
+                context.trace_manager.update_stage(
+                    node_id=node.task_id,
+                    stage_name="execution",
+                    status="completed",
+                    completed_at=datetime.now()
+                )
+                
+                # Check again after update
+                if trace:
+                    stage = trace.get_stage("execution")
+                    if stage and hasattr(stage, 'additional_data') and stage.additional_data:
+                        logger.info(f"🔍 AFTER COMPLETION - Stage has additional_data with keys: {list(stage.additional_data.keys())}")
+                
+                # Force save the trace to disk to ensure it's persisted properly
+                context.trace_manager._save_trace_to_disk(trace)
+                
                 # Trigger update callback after status change
                 if context.update_callback:
                     try:
@@ -603,7 +628,7 @@ class ReadyExecuteHandler(INodeHandler):
                     except Exception as e:
                         logger.warning(f"ReadyExecuteHandler: Update callback failed: {e}")
                 
-                # Stage completion is handled by BaseAdapter, but we enhance it here
+                # Stage completion is now handled here since we removed it from adapters
             else:
                 error_msg = "Executor returned no result."
                 if node.status not in [TaskStatus.CANCELLED, TaskStatus.FAILED]:
