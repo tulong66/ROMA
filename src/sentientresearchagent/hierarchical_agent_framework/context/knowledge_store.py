@@ -1,3 +1,4 @@
+import threading
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
 from datetime import datetime
@@ -44,37 +45,49 @@ class TaskRecord(BaseModel):
 class KnowledgeStore(BaseModel):
     """A central repository for all task records."""
     records: Dict[str, TaskRecord] = Field(default_factory=dict)
+    
+    class Config:
+        arbitrary_types_allowed = True  # Allow non-pydantic types
+    
+    def __init__(self, **data):
+        super().__init__(**data)
+        # Initialize the lock after the object is created
+        object.__setattr__(self, '_lock', threading.RLock())
 
     def add_or_update_record_from_node(self, node: Any): # Use Any to avoid circular dep with TaskNode initially
         """Creates or updates a TaskRecord from a TaskNode with improved type handling."""
+        # Ensure we have a lock (in case of deserialized objects)
+        if not hasattr(self, '_lock') or self._lock is None:
+            object.__setattr__(self, '_lock', threading.RLock())
         
-        # Simplified enum handling - string enums work directly
-        task_type_val = str(node.task_type)
-        node_type_val = str(node.node_type) if node.node_type else None
-        status_val = str(node.status)
+        with self._lock:
+            # Simplified enum handling - string enums work directly
+            task_type_val = str(node.task_type)
+            node_type_val = str(node.node_type) if node.node_type else None
+            status_val = str(node.status)
 
-        record = TaskRecord(
-            task_id=node.task_id,
-            goal=node.goal,
-            task_type=task_type_val,
-            node_type=node_type_val,
-            input_params_dict=node.input_payload_dict or {},
-            output_content=node.result,
-            output_type_description=node.output_type_description,
-            output_summary=node.output_summary,
-            status=status_val,
-            timestamp_created=node.timestamp_created,
-            timestamp_updated=node.timestamp_updated,
-            timestamp_completed=node.timestamp_completed,
-            parent_task_id=node.parent_node_id,
-            child_task_ids_generated=node.planned_sub_task_ids or [],
-            layer=node.layer,
-            error_message=node.error,
-            sub_graph_id=node.sub_graph_id,  # CRITICAL FIX: Include sub_graph_id for PLAN nodes
-            aux_data=node.aux_data or {}  # CRITICAL FIX: Preserve aux_data including depends_on_indices
-        )
-        self.records[record.task_id] = record
-        logger.info(f"KnowledgeStore: Added/Updated record for {node.task_id}")
+            record = TaskRecord(
+                task_id=node.task_id,
+                goal=node.goal,
+                task_type=task_type_val,
+                node_type=node_type_val,
+                input_params_dict=node.input_payload_dict or {},
+                output_content=node.result,
+                output_type_description=node.output_type_description,
+                output_summary=node.output_summary,
+                status=status_val,
+                timestamp_created=node.timestamp_created,
+                timestamp_updated=node.timestamp_updated,
+                timestamp_completed=node.timestamp_completed,
+                parent_task_id=node.parent_node_id,
+                child_task_ids_generated=node.planned_sub_task_ids or [],
+                layer=node.layer,
+                error_message=node.error,
+                sub_graph_id=node.sub_graph_id,  # CRITICAL FIX: Include sub_graph_id for PLAN nodes
+                aux_data=node.aux_data or {}  # CRITICAL FIX: Preserve aux_data including depends_on_indices
+            )
+            self.records[record.task_id] = record
+            logger.info(f"KnowledgeStore: Added/Updated record for {node.task_id}")
 
     def get_record(self, task_id: str) -> Optional[TaskRecord]:
         """Get a task record by ID."""
@@ -82,7 +95,8 @@ class KnowledgeStore(BaseModel):
 
     def get_records_by_status(self, status: TaskStatusLiteral) -> List[TaskRecord]:
         """Get all records with a specific status."""
-        return [record for record in self.records.values() if record.status == status]
+        with self._lock:
+            return [record for record in self.records.values() if record.status == status]
 
     def get_records_by_layer(self, layer: int) -> List[TaskRecord]:
         """Get all records at a specific layer."""
@@ -90,13 +104,15 @@ class KnowledgeStore(BaseModel):
 
     def get_child_records(self, parent_task_id: str) -> List[TaskRecord]:
         """Get all direct child records of a parent task."""
-        return [record for record in self.records.values() 
-                if record.parent_task_id == parent_task_id]
+        with self._lock:
+            return [record for record in self.records.values() 
+                    if record.parent_task_id == parent_task_id]
 
     def clear(self):
         """Clear all records."""
-        self.records.clear()
-        logger.info("KnowledgeStore: All records cleared")
+        with self._lock:
+            self.records.clear()
+            logger.info("KnowledgeStore: All records cleared")
 
     def get_summary_stats(self) -> Dict[str, Any]:
         """Get summary statistics about stored records."""

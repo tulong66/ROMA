@@ -28,6 +28,8 @@ interface ProcessingStage {
   error_message?: string
   error_details?: any
   duration_ms?: number
+  additional_data?: any
+  llm_input_messages?: Array<{role: string, content: string}>
 }
 
 interface NodeTrace {
@@ -216,30 +218,57 @@ const NodeTracingModal: React.FC<NodeTracingModalProps> = ({
           </TabsList>
           
           <TabsContent value="input" className="space-y-3 mt-4">
-            {stage.system_prompt ? (
+            {/* Check if we have llm_input_messages in additional_data */}
+            {stage.additional_data?.llm_input_messages ? (
               <div>
-                <h4 className="font-medium mb-2">System Prompt:</h4>
-                <ScrollArea className="max-h-48 w-full rounded border p-3 bg-muted/50">
-                  <pre className="text-xs whitespace-pre-wrap">{stage.system_prompt}</pre>
-                </ScrollArea>
+                <h4 className="font-medium mb-2">LLM Input Messages:</h4>
+                <div className="space-y-3">
+                  {stage.additional_data.llm_input_messages.map((message: any, index: number) => (
+                    <div key={index} className="border rounded p-3 bg-muted/50">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-xs font-semibold uppercase text-muted-foreground">
+                          {message.role}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          ({message.content?.length?.toLocaleString() || 0} characters)
+                        </span>
+                      </div>
+                      <ScrollArea className="max-h-64 w-full">
+                        <pre className="text-xs whitespace-pre-wrap">{message.content}</pre>
+                      </ScrollArea>
+                    </div>
+                  ))}
+                </div>
               </div>
             ) : (
-              <div className="text-sm text-muted-foreground p-4 text-center border rounded">
-                No system prompt data available
-              </div>
-            )}
-            
-            {stage.user_input ? (
-              <div>
-                <h4 className="font-medium mb-2">User Input:</h4>
-                <ScrollArea className="max-h-48 w-full rounded border p-3 bg-muted/50">
-                  <pre className="text-xs whitespace-pre-wrap">{stage.user_input}</pre>
-                </ScrollArea>
-              </div>
-            ) : (
-              <div className="text-sm text-muted-foreground p-4 text-center border rounded">
-                No user input data available
-              </div>
+              /* Fall back to showing system_prompt and user_input separately */
+              <>
+                {stage.system_prompt ? (
+                  <div>
+                    <h4 className="font-medium mb-2">System Prompt:</h4>
+                    <ScrollArea className="max-h-48 w-full rounded border p-3 bg-muted/50">
+                      <pre className="text-xs whitespace-pre-wrap">{stage.system_prompt}</pre>
+                    </ScrollArea>
+                  </div>
+                ) : (
+                  <div className="text-sm text-muted-foreground p-4 text-center border rounded">
+                    No system prompt data available
+                  </div>
+                )}
+                
+                {stage.user_input ? (
+                  <div>
+                    <h4 className="font-medium mb-2">User Input:</h4>
+                    <ScrollArea className="max-h-48 w-full rounded border p-3 bg-muted/50">
+                      <pre className="text-xs whitespace-pre-wrap">{stage.user_input}</pre>
+                    </ScrollArea>
+                  </div>
+                ) : (
+                  <div className="text-sm text-muted-foreground p-4 text-center border rounded">
+                    No user input data available
+                  </div>
+                )}
+              </>
             )}
           </TabsContent>
           

@@ -117,23 +117,16 @@ class TraceManager:
         
         stage = trace.get_stage(stage_name)
         if stage:
-            updated_fields = []
-            for key, value in updates.items():
-                if hasattr(stage, key):
-                    try:
-                        # Use object.__setattr__ to bypass Pydantic validation issues
-                        object.__setattr__(stage, key, value)
-                        updated_fields.append(key)
-                    except Exception as e:
-                        logger.warning(f"🔍 TRACE: Failed to update {key}: {e}")
+            # Log what we're updating
+            if "additional_data" in updates:
+                logger.info(f"🔍 TRACE: Updating stage with additional_data containing: {list(updates['additional_data'].keys()) if isinstance(updates['additional_data'], dict) else 'Not a dict'}")
             
-            if updated_fields:
-                logger.info(f"🔍 TRACE: Updated stage '{stage_name}' for node {node_id} with {updated_fields}")
-                
-                # Auto-save trace after updates
-                self._save_trace_to_disk(trace)
-            else:
-                logger.warning(f"🔍 TRACE: No valid fields updated for stage '{stage_name}' in node {node_id}")
+            # Use the ProcessingStage's update_fields method which handles extra fields
+            stage.update_fields(**updates)
+            logger.info(f"🔍 TRACE: Updated stage '{stage_name}' for node {node_id} with fields: {list(updates.keys())}")
+            
+            # Auto-save trace after updates
+            self._save_trace_to_disk(trace)
         else:
             logger.warning(f"🔍 TRACE: No stage '{stage_name}' found for node {node_id}")
     
@@ -199,10 +192,17 @@ class TraceManager:
             
             # Reconstruct stages
             for stage_data in trace_data['stages']:
-                stage = ProcessingStage(**{
+                # Create stage with all fields except computed ones
+                stage_fields = {
                     k: v for k, v in stage_data.items() 
                     if k not in ['duration_ms']  # Skip computed fields
-                })
+                }
+                
+                # Debug log for additional_data
+                if 'additional_data' in stage_fields:
+                    logger.debug(f"🔍 TRACE LOAD: Stage {stage_fields.get('stage_name')} has additional_data with keys: {list(stage_fields['additional_data'].keys()) if isinstance(stage_fields['additional_data'], dict) else 'Not a dict'}")
+                
+                stage = ProcessingStage(**stage_fields)
                 trace.stages.append(stage)
             
             trace.metadata = trace_data.get('metadata', {})
@@ -285,10 +285,17 @@ class TraceManager:
             
             # Reconstruct stages
             for stage_data in trace_data['stages']:
-                stage = ProcessingStage(**{
+                # Create stage with all fields except computed ones
+                stage_fields = {
                     k: v for k, v in stage_data.items() 
                     if k not in ['duration_ms']  # Skip computed fields
-                })
+                }
+                
+                # Debug log for additional_data
+                if 'additional_data' in stage_fields:
+                    logger.debug(f"🔍 TRACE LOAD: Stage {stage_fields.get('stage_name')} has additional_data with keys: {list(stage_fields['additional_data'].keys()) if isinstance(stage_fields['additional_data'], dict) else 'Not a dict'}")
+                
+                stage = ProcessingStage(**stage_fields)
                 trace.stages.append(stage)
             
             trace.metadata = trace_data.get('metadata', {})

@@ -302,6 +302,10 @@ def main():
                        help="Name of the column containing queries")
     parser.add_argument("--num-examples", type=int, default=None, 
                        help="Number of examples to run")
+    parser.add_argument("--start-idx", type=int, default=None, 
+                       help="Start index for batch processing (inclusive)")
+    parser.add_argument("--end-idx", type=int, default=None, 
+                       help="End index for batch processing (exclusive)")
     parser.add_argument("--checkpoint-interval", type=int, default=10, 
                        help="Number of queries between checkpoints")
     parser.add_argument("--checkpoint-file", type=str, default="server_checkpoint.csv", 
@@ -355,8 +359,26 @@ def main():
     # Load dataset
     try:
         df = pd.read_csv(args.input_file)
-        if args.num_examples:
+        
+        # Handle batch processing with start/end indices
+        start_idx = args.start_idx if args.start_idx is not None else 0
+        end_idx = args.end_idx if args.end_idx is not None else len(df)
+        
+        # Apply slicing if indices are specified
+        if args.start_idx is not None or args.end_idx is not None:
+            # Validate indices
+            if start_idx < 0 or start_idx >= len(df):
+                print(f"Error: start_idx {start_idx} is out of range [0, {len(df)})")
+                return
+            if end_idx <= start_idx or end_idx > len(df):
+                print(f"Error: end_idx {end_idx} must be > start_idx {start_idx} and <= {len(df)}")
+                return
+                
+            print(f"📋 Processing batch: indices {start_idx} to {end_idx-1} ({end_idx-start_idx} examples)")
+            df = df.iloc[start_idx:end_idx]
+        elif args.num_examples:
             df = df.iloc[:args.num_examples]
+            
         if args.query_column not in df.columns:
             print(f"Error: Query column '{args.query_column}' not found")
             return
@@ -373,13 +395,47 @@ def main():
         print(f"🔄 Found checkpoint file: {args.checkpoint_file}")
         try:
             checkpoint_df = pd.read_csv(args.checkpoint_file)
-            # Determine which queries have been processed
+            # Determine which queries have been processed successfully
             if 'index' in checkpoint_df.columns:
-                processed_indices = set(checkpoint_df['index'].tolist())
-                existing_results = checkpoint_df.to_dict('records')
-                print(f"✅ Resuming from checkpoint: {len(processed_indices)} queries already processed")
+                # Case 1: Checkpoint has explicit index column
+                completed_mask = (
+                    checkpoint_df['result'].notna() & 
+                    (checkpoint_df['result'].str.strip() != '') &
+                    (checkpoint_df.get('error', False) != True)
+                )
+                completed_rows = checkpoint_df[completed_mask]
+                processed_indices = set(completed_rows['index'].tolist())
+                existing_results = completed_rows.to_dict('records')
             else:
-                print("⚠️ Checkpoint file doesn't have 'index' column, starting fresh")
+                # Case 2: Match questions by content instead of position
+                print("🔍 No 'index' column found, matching questions by content")
+                completed_mask = (
+                    checkpoint_df['result'].notna() & 
+                    (checkpoint_df['result'].str.strip() != '') &
+                    (checkpoint_df.get('error', False) != True)
+                )
+                completed_rows = checkpoint_df[completed_mask].copy()
+                
+                # Find which questions from the original dataset are completed
+                completed_questions = set(completed_rows['question'].tolist())
+                processed_indices = set()
+                
+                # Match completed questions to their indices in the original dataset
+                for i, query in enumerate(queries):
+                    if query in completed_questions:
+                        processed_indices.add(i)
+                        
+                # Add index column for existing results
+                completed_rows['index'] = [i for i, q in enumerate(queries) if q in completed_questions]
+                existing_results = completed_rows.to_dict('records')
+            
+            total_in_checkpoint = len(checkpoint_df)
+            completed_count = len(completed_rows)
+            failed_or_incomplete = total_in_checkpoint - completed_count
+            
+            print(f"✅ Resuming from checkpoint: {completed_count} queries completed successfully")
+            if failed_or_incomplete > 0:
+                print(f"🔄 Will re-run {failed_or_incomplete} failed/incomplete queries")
         except Exception as e:
             print(f"⚠️ Error loading checkpoint: {e}, starting fresh")
     
@@ -455,6 +511,22 @@ def main():
     results = existing_results.copy()
     num_queries_to_process = len(queries_to_process)
     
+    # Create batch-aware filenames
+    if args.start_idx is not None or args.end_idx is not None:
+        batch_suffix = f"_{start_idx}_{end_idx}"
+        # Update output filenames to include batch info
+        base_output = args.output_file.rsplit('.', 1)
+        if len(base_output) == 2:
+            args.output_file = f"{base_output[0]}{batch_suffix}.{base_output[1]}"
+        else:
+            args.output_file = f"{args.output_file}{batch_suffix}"
+            
+        base_checkpoint = args.checkpoint_file.rsplit('.', 1)
+        if len(base_checkpoint) == 2:
+            args.checkpoint_file = f"{base_checkpoint[0]}{batch_suffix}.{base_checkpoint[1]}"
+        else:
+            args.checkpoint_file = f"{args.checkpoint_file}{batch_suffix}"
+    
     # Add timestamp for tracking
     eval_start_time = datetime.now()
     
@@ -509,8 +581,8 @@ def main():
         output_df.to_csv(args.output_file, index=False)
         print(f"💾 Results saved to {args.output_file}")
         
-        # Clean up checkpoint file after successful completion
-        if os.path.exists(args.checkpoint_file):
+        # Clean up checkpoint file after successful completion (only if different from output file)
+        if os.path.exists(args.checkpoint_file) and args.checkpoint_file != args.output_file:
             os.remove(args.checkpoint_file)
             print(f"🧹 Cleaned up checkpoint file: {args.checkpoint_file}")
         

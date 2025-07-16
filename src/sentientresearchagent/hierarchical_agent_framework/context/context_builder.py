@@ -12,7 +12,7 @@ from sentientresearchagent.hierarchical_agent_framework.context.knowledge_store 
 # NEW IMPORT for context strategies
 from .strategies import (
     ContextResolutionStrategy,
-    ParentContextStrategy,
+    # ParentContextStrategy,  # Removed - parent plans should not be included in child nodes
     PrerequisiteSiblingContextStrategy,
     AncestorBranchContextStrategy,
     GoalReferenceContextStrategy,
@@ -26,10 +26,10 @@ from .strategies import (
 
 DEFAULT_CONTEXT_STRATEGIES: List[ContextResolutionStrategy] = [
     DependencyContextStrategy(),  # Highest priority - explicit dependencies
-    ParentContextStrategy(),
     PrerequisiteSiblingContextStrategy(),
     AncestorBranchContextStrategy(), 
     GoalReferenceContextStrategy(),
+    # ParentContextStrategy removed - parent plans should not be included in child nodes
 ]
 
 # TASK_TYPE_STRATEGY_MAPPING defines which strategies to use for specific task types.
@@ -40,31 +40,37 @@ TASK_TYPE_STRATEGY_MAPPING: Dict[str, List[ContextResolutionStrategy]] = {
     # "DEFAULT" key isn't strictly necessary if we always fallback to DEFAULT_CONTEXT_STRATEGIES object
     "WRITE": [
         DependencyContextStrategy(),  # Highest priority - explicit dependencies
-        ParentContextStrategy(),
         PrerequisiteSiblingContextStrategy(),
         AncestorBranchContextStrategy(), # Crucial for writers
         GoalReferenceContextStrategy(),
+        # ParentContextStrategy removed - parent plans should not be included in child nodes
     ],
     "THINK": [ # Similar to WRITE, might need broad context
         DependencyContextStrategy(),  # Highest priority - explicit dependencies
-        ParentContextStrategy(),
         PrerequisiteSiblingContextStrategy(),
         AncestorBranchContextStrategy(),
         GoalReferenceContextStrategy(),
+        # ParentContextStrategy removed - parent plans should not be included in child nodes
     ],
     "PLAN": [ # Planners might need more focused context
         DependencyContextStrategy(),  # Highest priority - explicit dependencies
-        ParentContextStrategy(),
         PrerequisiteSiblingContextStrategy(), # See what came before in this plan
         GoalReferenceContextStrategy(), # Check if goal refers to other tasks
+        # ParentContextStrategy removed - parent plans should not be included in child nodes
         # AncestorBranchContextStrategy might be too broad for initial planning,
         # but could be useful for re-planning or very deep plans.
     ],
     "RESEARCH_WEB": [ # Example: A web research task might prioritize different things
         DependencyContextStrategy(),  # Highest priority - explicit dependencies
-        ParentContextStrategy(), # What is the parent task asking for?
         GoalReferenceContextStrategy(), # Any specific prior results to build upon?
+        # ParentContextStrategy removed - parent plans should not be included in child nodes
         # PrerequisiteSiblingContextStrategy might be less relevant if it's a standalone search
+    ],
+    "SEARCH": [ # Search tasks should only use sibling dependencies, not parent context
+        DependencyContextStrategy(),  # Highest priority - explicit dependencies
+        PrerequisiteSiblingContextStrategy(), # Context from earlier sibling tasks
+        GoalReferenceContextStrategy(), # Any specific prior results to build upon?
+        # NO ParentContextStrategy - as per user requirement, only sibling dependencies
     ]
     # Add other task types and their specific strategy lists as needed.
     # For example, an "AGGREGATE" task might have no strategies here if its context

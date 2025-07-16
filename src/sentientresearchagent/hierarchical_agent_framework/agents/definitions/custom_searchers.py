@@ -180,13 +180,29 @@ class OpenAICustomSearchAdapter(BaseAdapter):
         query = agent_task_input.current_goal
         logger.info(f"  Adapter '{self.adapter_name}': Processing node {node.task_id} (Query: '{query[:100]}...') with OpenAI model {self.model_id}")
         
-        # Start tracing stage
-        trace_manager.start_stage(
+        # Build context string from relevant_context_items
+        context_strings = []
+        for ctx_item in agent_task_input.relevant_context_items:
+            context_strings.append(f"\n--- Task ID: {ctx_item.source_task_id} ---\n[{ctx_item.content_type_description}]:\n{ctx_item.content}\n")
+        
+        full_context = "\n".join(context_strings) if context_strings else "No additional context provided."
+        
+        # Update the existing execution stage (don't start a new one)
+        trace_manager.update_stage(
             node_id=node.task_id,
             stage_name="execution",
             agent_name=self.adapter_name,
             adapter_name=self.__class__.__name__,
             user_input=query,
+            input_context={
+                "query": query,
+                "task_type": str(node.task_type),
+                "node_type": str(node.node_type),
+                "context_items_count": len(agent_task_input.relevant_context_items),
+                "has_dependency_context": any(item.content_type_description == "explicit_dependency_output" for item in agent_task_input.relevant_context_items),
+                "full_agent_task_input": agent_task_input.model_dump(),
+                "relevant_context": full_context
+            },
             model_info={"model": self.model_id, "provider": "openai"}
         )
         
@@ -200,6 +216,25 @@ class OpenAICustomSearchAdapter(BaseAdapter):
                  logger.error(f"  {self.adapter_name}: Invalid OpenAI client. Expected AsyncOpenAI with responses.create. Got: {type(self.client)}")
                  raise TypeError("Invalid OpenAI client setup for async operation.")
 
+            # Build enhanced query with context
+            context_section = ""
+            context_emphasis = ""
+            if agent_task_input.relevant_context_items:
+                context_section = "\n\n[IMPORTANT CONTEXT FROM PREVIOUS TASKS - HIGHLY RELEVANT TO YOUR SEARCH]\n"
+                context_section += "The following context contains crucial information that will help you search more effectively.\n"
+                context_section += "PAY CLOSE ATTENTION as this context likely contains specific names, terms, or data you need to search for:\n"
+                for ctx_item in agent_task_input.relevant_context_items:
+                    context_section += f"\n[{ctx_item.content_type_description}]:\n{ctx_item.content}\n"
+                
+                # Add emphasis in guidelines
+                context_emphasis = """
+
+CONTEXT USAGE PRIORITY:
+   - The provided context above contains CRITICAL information for your search
+   - Use specific names, terms, and data from the context in your searches
+   - The context shows what has already been discovered - build upon it
+   - If the context mentions specific entities, search for those exact terms"""
+            
             # Expert searcher prompt for comprehensive data retrieval
             enhanced_query = f"""You are an expert data searcher with 20+ years of experience in searching and retrieving information from reliable sources with a keen eye for relevant data.
 
@@ -227,11 +262,24 @@ Guidelines:
    - Maintain original formatting (tables, lists, etc.)
    - Include all columns, rows, and data points
    - Do NOT analyze, interpret, or reason about the data
-   - Do NOT summarize or condense - present everything
+   - Do NOT summarize or condense - present everything{context_emphasis}{context_section}
 
 QUERY: {query}
 
 RETRIEVED DATA:"""
+            
+            # Log the complete LLM input message
+            logger.debug(f"Complete LLM input for {self.adapter_name}:\n{enhanced_query}")
+            
+            # Update trace with full LLM input
+            trace_manager.update_stage(
+                node_id=node.task_id,
+                stage_name="execution",
+                additional_data={
+                    "llm_input_messages": [{"role": "user", "content": enhanced_query}],
+                    "llm_input_length": len(enhanced_query)
+                }
+            )
             
             # Configure web search options based on search_context_size
             if self.use_openrouter:
@@ -269,7 +317,16 @@ RETRIEVED DATA:"""
             if self.use_openrouter:
                 # OpenRouter returns standard chat completion format
                 if hasattr(api_response, 'choices') and api_response.choices:
-                    raw_output = api_response.choices[0].message.content
+                    # CRITICAL FIX: Check that choices array has items and message exists
+                    if len(api_response.choices) > 0 and hasattr(api_response.choices[0], 'message'):
+                        if api_response.choices[0].message and hasattr(api_response.choices[0].message, 'content'):
+                            raw_output = api_response.choices[0].message.content
+                        else:
+                            logger.error(f"    {self.adapter_name}: No message content in OpenRouter response")
+                            raw_output = None
+                    else:
+                        logger.error(f"    {self.adapter_name}: Empty choices array or no message in OpenRouter response")
+                        raw_output = None
                 else:
                     logger.error(f"    {self.adapter_name}: No choices found in OpenRouter response")
                     raw_output = None
@@ -300,43 +357,47 @@ RETRIEVED DATA:"""
 
             # 2. Attempt to parse nested text_content and annotations as supplementary info
             raw_annotations_data = []
-            if not self.use_openrouter and hasattr(api_response, 'output') and \
-               isinstance(api_response.output, list) and \
-               len(api_response.output) > 1 and \
-               hasattr(api_response.output[1], 'content') and \
-               isinstance(api_response.output[1].content, list) and \
-               len(api_response.output[1].content) > 0:
-                
-                content_item = api_response.output[1].content[0]
-                
-                if hasattr(content_item, 'text') and content_item.text:
-                    parsed_text_content = content_item.text
-                    logger.success(f"    {self.adapter_name}: Retrieved nested 'text_content' (length: {len(parsed_text_content)}).")
-                else:
-                    logger.warning(f"    {self.adapter_name}: Nested 'text' attribute not found or empty.")
-
-                if hasattr(content_item, 'annotations') and isinstance(content_item.annotations, list):
-                    temp_raw_annotations = []
-                    for ann_obj in content_item.annotations:
-                        ann_dict = {
-                            'title': getattr(ann_obj, 'title', None),
-                            'url': getattr(ann_obj, 'url', None),
-                            'start_index': getattr(ann_obj, 'start_index', -1),
-                            'end_index': getattr(ann_obj, 'end_index', -1),
-                            'type': getattr(ann_obj, 'type', 'url_citation')
-                        }
-                        if ann_dict['url'] and ann_dict['start_index'] != -1 and ann_dict['end_index'] != -1:
-                            temp_raw_annotations.append(ann_dict)
-                        else:
-                            logger.warning(f"    {self.adapter_name}: Skipping invalid nested annotation object: {ann_obj}")
+            parsed_text_content = None
+            try:
+                if not self.use_openrouter and hasattr(api_response, 'output') and \
+                   isinstance(api_response.output, list) and \
+                   len(api_response.output) > 1 and \
+                   hasattr(api_response.output[1], 'content') and \
+                   isinstance(api_response.output[1].content, list) and \
+                   len(api_response.output[1].content) > 0:
                     
-                    if temp_raw_annotations:
-                        raw_annotations_data = temp_raw_annotations # Assign if we got valid annotations
-                        logger.success(f"    {self.adapter_name}: Retrieved {len(raw_annotations_data)} nested 'annotations'.")
+                    content_item = api_response.output[1].content[0]
+                    
+                    if hasattr(content_item, 'text') and content_item.text:
+                        parsed_text_content = content_item.text
+                        logger.success(f"    {self.adapter_name}: Retrieved nested 'text_content' (length: {len(parsed_text_content)}).")
+                    else:
+                        logger.warning(f"    {self.adapter_name}: Nested 'text' attribute not found or empty.")
+
+                    if hasattr(content_item, 'annotations') and isinstance(content_item.annotations, list):
+                        temp_raw_annotations = []
+                        for ann_obj in content_item.annotations:
+                            ann_dict = {
+                                'title': getattr(ann_obj, 'title', None),
+                                'url': getattr(ann_obj, 'url', None),
+                                'start_index': getattr(ann_obj, 'start_index', -1),
+                                'end_index': getattr(ann_obj, 'end_index', -1),
+                                'type': getattr(ann_obj, 'type', 'url_citation')
+                            }
+                            if ann_dict['url'] and ann_dict['start_index'] != -1 and ann_dict['end_index'] != -1:
+                                temp_raw_annotations.append(ann_dict)
+                            else:
+                                logger.warning(f"    {self.adapter_name}: Skipping invalid nested annotation object: {ann_obj}")
+                        
+                        if temp_raw_annotations:
+                            raw_annotations_data = temp_raw_annotations # Assign if we got valid annotations
+                            logger.success(f"    {self.adapter_name}: Retrieved {len(raw_annotations_data)} nested 'annotations'.")
+                    else:
+                        logger.warning(f"    {self.adapter_name}: Nested 'annotations' attribute not found or not a list.")
                 else:
-                    logger.warning(f"    {self.adapter_name}: Nested 'annotations' attribute not found or not a list.")
-            else:
-                logger.warning(f"    {self.adapter_name}: Nested API response structure 'output[1].content[0]' not found. No supplementary text/annotations.")
+                    logger.warning(f"    {self.adapter_name}: Nested API response structure 'output[1].content[0]' not found. No supplementary text/annotations.")
+            except (AttributeError, IndexError, TypeError) as e:
+                logger.warning(f"    {self.adapter_name}: Could not parse nested content from API response: {e}")
 
             for ann_data in raw_annotations_data:
                 try:
@@ -359,19 +420,23 @@ RETRIEVED DATA:"""
             node.output_type_description = "custom_searcher_output"
             
             # FIXED: Complete tracing stage with rich output
-            # First update the stage with LLM response data
+            # Update the stage with both input and output data
             trace_manager.update_stage(
                 node_id=node.task_id,
                 stage_name="execution",
-                llm_response=clean_output["output_text"]
+                llm_response=clean_output["output_text"],
+                additional_data={
+                    "llm_input_messages": [{"role": "user", "content": enhanced_query}],
+                    "llm_input_length": len(enhanced_query),
+                    "full_llm_output": output_text_with_citations,
+                    "llm_output_length": len(output_text_with_citations),
+                    "citations_count": len(parsed_annotations),
+                    "raw_api_response_type": type(api_response).__name__
+                }
             )
             
-            # Then complete the stage with output data
-            trace_manager.complete_stage(
-                node_id=node.task_id,
-                stage_name="execution",
-                output_data=clean_output
-            )
+            # Don't complete the stage here - let the node handler do it
+            # This prevents overwriting the input_context and other fields
             
             return clean_output
 
@@ -379,11 +444,11 @@ RETRIEVED DATA:"""
             error_message = f"Error during {self.adapter_name} execution for node {node.task_id} (Query: {query}): {e}"
             logger.error(f"  Adapter Error: {error_message}")
             
-            # FIXED: Complete tracing stage with error
-            trace_manager.complete_stage(
+            # Update stage with error but don't complete it - let node handler do that
+            trace_manager.update_stage(
                 node_id=node.task_id,
                 stage_name="execution",
-                error=error_message
+                error_message=error_message
             )
             
             # Return a simple dictionary with the error
@@ -441,13 +506,29 @@ class GeminiCustomSearchAdapter(BaseAdapter):
         query = agent_task_input.current_goal
         logger.info(f"  Adapter '{self.adapter_name}': Processing node {node.task_id} (Query: '{query[:100]}...') with Gemini model {self.model_id}")
         
-        # Start tracing stage
-        trace_manager.start_stage(
+        # Build context string from relevant_context_items
+        context_strings = []
+        for ctx_item in agent_task_input.relevant_context_items:
+            context_strings.append(f"\n--- Task ID: {ctx_item.source_task_id} ---\n[{ctx_item.content_type_description}]:\n{ctx_item.content}\n")
+        
+        full_context = "\n".join(context_strings) if context_strings else "No additional context provided."
+        
+        # Update the existing execution stage (don't start a new one)
+        trace_manager.update_stage(
             node_id=node.task_id,
             stage_name="execution",
             agent_name=self.adapter_name,
             adapter_name=self.__class__.__name__,
             user_input=query,
+            input_context={
+                "query": query,
+                "task_type": str(node.task_type),
+                "node_type": str(node.node_type),
+                "context_items_count": len(agent_task_input.relevant_context_items),
+                "has_dependency_context": any(item.content_type_description == "explicit_dependency_output" for item in agent_task_input.relevant_context_items),
+                "full_agent_task_input": agent_task_input.model_dump(),
+                "relevant_context": full_context
+            },
             model_info={"model": self.model_id, "provider": "google_gemini"}
         )
         
@@ -456,6 +537,25 @@ class GeminiCustomSearchAdapter(BaseAdapter):
         parsed_annotations: List[AnnotationURLCitationModel] = []
 
         try:
+            # Build enhanced query with context
+            context_section = ""
+            context_emphasis = ""
+            if agent_task_input.relevant_context_items:
+                context_section = "\n\n[IMPORTANT CONTEXT FROM PREVIOUS TASKS - HIGHLY RELEVANT TO YOUR SEARCH]\n"
+                context_section += "The following context contains crucial information that will help you search more effectively.\n"
+                context_section += "PAY CLOSE ATTENTION as this context likely contains specific names, terms, or data you need to search for:\n"
+                for ctx_item in agent_task_input.relevant_context_items:
+                    context_section += f"\n[{ctx_item.content_type_description}]:\n{ctx_item.content}\n"
+                
+                # Add emphasis in guidelines
+                context_emphasis = """
+
+CONTEXT USAGE PRIORITY:
+   - The provided context above contains CRITICAL information for your search
+   - Use specific names, terms, and data from the context in your searches
+   - The context shows what has already been discovered - build upon it
+   - If the context mentions specific entities, search for those exact terms"""
+            
             # Expert searcher prompt for comprehensive data retrieval
             enhanced_query = f"""You are an expert data searcher with 20+ years of experience in searching and retrieving information from reliable sources with a keen eye for relevant data.
 
@@ -483,11 +583,24 @@ Guidelines:
    - Maintain original formatting (tables, lists, etc.)
    - Include all columns, rows, and data points
    - Do NOT analyze, interpret, or reason about the data
-   - Do NOT summarize or condense - present everything
+   - Do NOT summarize or condense - present everything{context_emphasis}{context_section}
 
 QUERY: {query}
 
 RETRIEVED DATA:"""
+            
+            # Log the complete LLM input message
+            logger.debug(f"Complete LLM input for {self.adapter_name}:\n{enhanced_query}")
+            
+            # Update trace with full LLM input
+            trace_manager.update_stage(
+                node_id=node.task_id,
+                stage_name="execution",
+                additional_data={
+                    "llm_input_messages": [{"role": "user", "content": enhanced_query}],
+                    "llm_input_length": len(enhanced_query)
+                }
+            )
             
             # Call Gemini API with Google Search tool using ASYNC API
             # Add better error handling for event loop issues and rate limiting
@@ -650,14 +763,21 @@ RETRIEVED DATA:"""
             trace_manager.update_stage(
                 node_id=node.task_id,
                 stage_name="execution",
-                llm_response=clean_output["output_text"]
+                llm_response=clean_output["output_text"],
+                additional_data={
+                    "llm_input_messages": [{"role": "user", "content": enhanced_query}],
+                    "llm_input_length": len(enhanced_query),
+                    "full_llm_output": output_text_with_citations,
+                    "llm_output_length": len(output_text_with_citations),
+                    "enhanced_output_length": len(enhanced_output_text),
+                    "citations_count": len(parsed_annotations),
+                    "wikipedia_additions": len(wikipedia_contents),
+                    "raw_api_response_type": type(api_response).__name__
+                }
             )
             
-            trace_manager.complete_stage(
-                node_id=node.task_id,
-                stage_name="execution",
-                output_data=clean_output["output_text"]
-            )
+            # Don't complete the stage here - let the node handler do it
+            # This prevents overwriting the input_context and other fields
             
             return clean_output
 
@@ -665,10 +785,11 @@ RETRIEVED DATA:"""
             error_message = f"Error during {self.adapter_name} execution for node {node.task_id} (Query: {query}): {e}"
             logger.error(f"  Adapter Error: {error_message}")
             
-            trace_manager.complete_stage(
+            # Update stage with error but don't complete it - let node handler do that
+            trace_manager.update_stage(
                 node_id=node.task_id,
                 stage_name="execution",
-                error=error_message
+                error_message=error_message
             )
             
             # Return a simple dictionary with the error

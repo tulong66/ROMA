@@ -522,6 +522,14 @@ def register_websocket_events(socketio, project_service, execution_service):
                     logger.info(f"🔍 TRACE: Stage {i+1}: {stage.stage_name} ({stage.status})")
                 
                 trace_data = trace.to_dict()
+                
+                # Debug: Check if execution stage has additional_data
+                for stage in trace_data.get('stages', []):
+                    if stage.get('stage_name') == 'execution' and 'additional_data' in stage:
+                        logger.info(f"🔍 TRACE DATA DEBUG: Execution stage has additional_data with keys: {list(stage['additional_data'].keys())}")
+                        if 'llm_input_messages' in stage.get('additional_data', {}):
+                            logger.info(f"🔍 TRACE DATA DEBUG: Found llm_input_messages with {len(stage['additional_data']['llm_input_messages'])} messages")
+                
                 emit('node_trace_data', {
                     'node_id': node_id,
                     'trace': trace_data

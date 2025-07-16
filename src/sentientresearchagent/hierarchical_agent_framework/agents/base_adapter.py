@@ -410,6 +410,12 @@ Ensure your output is a valid JSON conforming to the PlanOutput schema, containi
             # Store the final formatted input for frontend display and tracing
             node.aux_data["execution_details"]["final_llm_input"] = user_message_string
             
+            # Build complete LLM messages array
+            llm_messages = []
+            if system_prompt:
+                llm_messages.append({"role": "system", "content": system_prompt})
+            llm_messages.append({"role": "user", "content": user_message_string})
+            
             # CRITICAL FIX: Update trace stage with all LLM interaction data
             trace_manager.update_stage(
                 node_id=node.task_id,
@@ -420,16 +426,20 @@ Ensure your output is a valid JSON conforming to the PlanOutput schema, containi
                 system_prompt=system_prompt,
                 user_input=user_message_string,
                 input_context={
-                    "agent_task_input": str(agent_task_input)[:1000],
+                    "agent_task_input": agent_task_input.model_dump(),
                     "formatted_input_length": len(user_message_string),
                     "task_type": str(node.task_type),
-                    "node_type": str(node.node_type)
+                    "node_type": str(node.node_type),
+                    "context_items_count": len(agent_task_input.relevant_context_items),
+                    "has_dependency_context": any(item.content_type_description == "explicit_dependency_output" for item in agent_task_input.relevant_context_items)
                 },
                 processing_parameters={
                     "temperature": getattr(self.agno_agent, 'temperature', None),
                     "max_tokens": getattr(self.agno_agent, 'max_tokens', None),
                     "model": getattr(self.agno_agent, 'model', None)
-                }
+                },
+                llm_input_messages=llm_messages,
+                llm_input_length=sum(len(msg["content"]) for msg in llm_messages)
             )
             
         except Exception as e:

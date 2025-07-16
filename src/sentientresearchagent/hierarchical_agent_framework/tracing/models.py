@@ -7,6 +7,7 @@ import json
 from typing import Dict, Any, List, Optional, Literal
 from datetime import datetime
 from pydantic import BaseModel, Field
+from loguru import logger
 
 
 def make_json_safe(obj):
@@ -67,11 +68,18 @@ class ProcessingStage(BaseModel):
     def update_fields(self, **kwargs):
         """Safely update multiple fields at once."""
         for key, value in kwargs.items():
-            if hasattr(self, key):
-                setattr(self, key, value)
+            # Special handling for additional_data - merge instead of replace
+            if key == 'additional_data' and hasattr(self, 'additional_data') and isinstance(self.additional_data, dict) and isinstance(value, dict):
+                # Merge the new additional_data with existing
+                existing_data = getattr(self, 'additional_data', {})
+                merged_data = {**existing_data, **value}
+                setattr(self, key, merged_data)
+                logger.debug(f"ProcessingStage.update_fields: Merged additional_data - existing keys: {list(existing_data.keys())}, new keys: {list(value.keys())}, merged keys: {list(merged_data.keys())}")
             else:
-                # For extra fields, add them dynamically
-                self.__dict__[key] = value
+                # Use setattr for all other fields
+                setattr(self, key, value)
+                if not hasattr(self.__class__, key):
+                    logger.debug(f"ProcessingStage.update_fields: Set extra field '{key}'")
     
     def complete_stage(self, output_data: Any = None, error: str = None):
         """Mark the stage as completed or failed."""
@@ -93,25 +101,35 @@ class ProcessingStage(BaseModel):
     
     def to_dict_safe(self) -> Dict[str, Any]:
         """Convert to dictionary with JSON-safe serialization."""
-        return {
-            "stage_name": self.stage_name,
-            "stage_id": self.stage_id,
-            "started_at": self.started_at.isoformat(),
-            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
-            "status": self.status,
-            "agent_name": self.agent_name,
-            "adapter_name": self.adapter_name,
-            "model_info": make_json_safe(self.model_info),
-            "system_prompt": self.system_prompt,
-            "user_input": self.user_input,
-            "llm_response": self.llm_response,
-            "input_context": make_json_safe(self.input_context),
-            "processing_parameters": make_json_safe(self.processing_parameters),
-            "output_data": make_json_safe(self.output_data),
-            "error_message": self.error_message,
-            "error_details": make_json_safe(self.error_details),
-            "duration_ms": self.get_duration_ms()
-        }
+        # Use Pydantic's model_dump() method to get all fields including extras
+        all_fields = self.model_dump()
+        
+        # Debug log all fields
+        logger.debug(f"ProcessingStage.to_dict_safe: model_dump returned fields: {list(all_fields.keys())}")
+        
+        # Build result with proper serialization
+        result = {}
+        for key, value in all_fields.items():
+            if key in ["started_at", "completed_at"]:
+                # Handle datetime fields
+                if key == "started_at":
+                    result[key] = self.started_at.isoformat()
+                elif key == "completed_at":
+                    result[key] = self.completed_at.isoformat() if self.completed_at else None
+            else:
+                # Use make_json_safe for all other fields
+                result[key] = make_json_safe(value)
+        
+        # Add duration_ms which is computed
+        result["duration_ms"] = self.get_duration_ms()
+        
+        # Debug log to check if additional_data is included
+        if "additional_data" in result:
+            logger.info(f"ProcessingStage.to_dict_safe: Found additional_data with keys: {list(result['additional_data'].keys()) if isinstance(result['additional_data'], dict) else 'Not a dict'}")
+        else:
+            logger.debug(f"ProcessingStage.to_dict_safe: No additional_data found in result")
+        
+        return result
 
 
 class NodeProcessingTrace(BaseModel):

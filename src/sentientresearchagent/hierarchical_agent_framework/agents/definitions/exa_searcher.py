@@ -76,13 +76,29 @@ class ExaCustomSearchAdapter(BaseAdapter):
         query = agent_task_input.current_goal
         logger.info(f"  Adapter '{self.adapter_name}': Processing node {node.task_id} (Query: '{query[:100]}...') with Exa search")
         
-        # Start tracing stage
-        trace_manager.start_stage(
+        # Build context string from relevant_context_items
+        context_strings = []
+        for ctx_item in agent_task_input.relevant_context_items:
+            context_strings.append(f"\n--- Task ID: {ctx_item.source_task_id} ---\n[{ctx_item.content_type_description}]:\n{ctx_item.content}\n")
+        
+        full_context = "\n".join(context_strings) if context_strings else "No additional context provided."
+        
+        # Update the existing execution stage (don't start a new one)
+        trace_manager.update_stage(
             node_id=node.task_id,
             stage_name="execution",
             agent_name=self.adapter_name,
             adapter_name=self.__class__.__name__,
             user_input=query,
+            input_context={
+                "query": query,
+                "task_type": str(node.task_type),
+                "node_type": str(node.node_type),
+                "context_items_count": len(agent_task_input.relevant_context_items),
+                "has_dependency_context": any(item.content_type_description == "explicit_dependency_output" for item in agent_task_input.relevant_context_items),
+                "full_agent_task_input": agent_task_input.model_dump(),
+                "relevant_context": full_context
+            },
             model_info={"model": self.model_id, "provider": "litellm"}
         )
         
@@ -142,6 +158,8 @@ class ExaCustomSearchAdapter(BaseAdapter):
             # Step 3: Create system prompt for LiteLLM
             system_prompt = """You are an expert data extraction and presentation assistant. Your task is to process multiple sources and present data in the most concise and thorough form relevant to the query.
 
+[CONTEXT AWARENESS]: When context from previous tasks is provided, it contains CRITICAL information that directly relates to what you need to extract. Use it to identify specific entities, terms, and relationships to focus on.
+
 CRITICAL GUIDELINES:
 
 1. SOURCE RELIABILITY HIERARCHY:
@@ -187,8 +205,20 @@ Remember: Your primary goal is to be THOROUGH and COMPLETE while prioritizing th
             # Step 4: Combine all sources
             all_sources = "\n\n".join(formatted_sources)
             
-            # Step 5: Create user prompt
-            user_prompt = f"""Query: {query}
+            # Step 5: Create user prompt with context
+            context_section = ""
+            if agent_task_input.relevant_context_items:
+                context_section = "\n\n[IMPORTANT CONTEXT FROM PREVIOUS TASKS]\n"
+                context_section += "This context is CRITICAL for understanding what to extract from the sources below.\n"
+                context_section += "The context shows what has already been discovered - use it to identify the specific data needed:\n"
+                for ctx_item in agent_task_input.relevant_context_items:
+                    context_section += f"\n[{ctx_item.content_type_description}]:\n{ctx_item.content}\n"
+                context_section += "\n\n[USE THE ABOVE CONTEXT TO]:\n"
+                context_section += "- Identify specific names, terms, or entities mentioned that you should look for in the sources\n"
+                context_section += "- Understand what information has already been found and what still needs to be extracted\n"
+                context_section += "- Focus your extraction on data that relates to the entities/terms in the context\n"
+            
+            user_prompt = f"""Query: {query}{context_section}
 
 Below are {len(formatted_sources)} sources with relevant information. Extract and present ALL data related to the query:
 
@@ -204,6 +234,20 @@ IMPORTANT: Include EVERY piece of relevant data from ALL sources. Do not summari
                 {"role": "user", "content": user_prompt}
             ]
             
+            # Log the complete LLM input messages
+            logger.debug(f"Complete LLM input for {self.adapter_name}:\nSystem: {system_prompt[:200]}...\nUser: {user_prompt[:200]}...")
+            
+            # Update trace with full LLM input
+            trace_manager.update_stage(
+                node_id=node.task_id,
+                stage_name="execution",
+                additional_data={
+                    "llm_input_messages": messages,
+                    "llm_input_length": sum(len(msg["content"]) for msg in messages),
+                    "exa_results_count": len(exa_results.results) if exa_results else 0
+                }
+            )
+            
             # Use acompletion for async call
             llm_response = await acompletion(
                 model=self.model_id,
@@ -212,8 +256,14 @@ IMPORTANT: Include EVERY piece of relevant data from ALL sources. Do not summari
                 max_tokens=4000   # Allow for comprehensive responses
             )
             
-            # Extract the response text
-            output_text = llm_response.choices[0].message.content
+            # Extract the response text with proper null checks
+            output_text = None
+            if llm_response and hasattr(llm_response, 'choices') and llm_response.choices:
+                if len(llm_response.choices) > 0 and llm_response.choices[0].message:
+                    output_text = llm_response.choices[0].message.content
+            
+            if not output_text:
+                raise ValueError("No response content received from LLM")
             
             logger.success(f"    {self.adapter_name}: Successfully processed {len(formatted_sources)} sources")
             
@@ -228,14 +278,20 @@ IMPORTANT: Include EVERY piece of relevant data from ALL sources. Do not summari
             trace_manager.update_stage(
                 node_id=node.task_id,
                 stage_name="execution",
-                llm_response=output_text
+                llm_response=output_text,
+                additional_data={
+                    "llm_input_messages": messages,
+                    "llm_input_length": sum(len(msg["content"]) for msg in messages),
+                    "full_llm_output": output_text,
+                    "llm_output_length": len(output_text),
+                    "citations_count": len(citations),
+                    "exa_sources_included": len(formatted_sources),
+                    "exa_results_count": len(exa_results.results) if exa_results else 0
+                }
             )
             
-            trace_manager.complete_stage(
-                node_id=node.task_id,
-                stage_name="execution",
-                output_data=clean_output
-            )
+            # Don't complete the stage here - let the node handler do it
+            # This prevents overwriting the input_context and other fields
             
             node.output_type_description = "custom_searcher_output"
             
@@ -245,10 +301,11 @@ IMPORTANT: Include EVERY piece of relevant data from ALL sources. Do not summari
             error_message = f"Error during {self.adapter_name} execution for node {node.task_id} (Query: {query}): {e}"
             logger.error(f"  Adapter Error: {error_message}")
             
-            trace_manager.complete_stage(
+            # Update stage with error but don't complete it - let node handler do that
+            trace_manager.update_stage(
                 node_id=node.task_id,
                 stage_name="execution",
-                error=error_message
+                error_message=error_message
             )
             
             return {
