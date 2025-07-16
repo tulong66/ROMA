@@ -138,7 +138,10 @@ def save_checkpoint(results, df, output_file, lock):
         # Add all result columns
         for col in results_df.columns:
             if col != 'index':
-                output_df.loc[results_df['index'], col] = results_df[col].values
+                # Use iloc for positional indexing instead of loc with original indices
+                for i, original_idx in enumerate(results_df['index']):
+                    if original_idx in output_df.index:
+                        output_df.loc[original_idx, col] = results_df.iloc[i][col]
                 
         output_df.to_csv(output_file, index=False)
         print(f"💾 [Checkpoint] Saved {len(results)} results -> {output_file}")
@@ -563,7 +566,6 @@ def main():
     # Save final results
     if results:
         results.sort(key=lambda x: x['index'])
-        results_df = pd.DataFrame(results)
         
         output_df = df.copy()
         # Map results back to original dataframe by index
