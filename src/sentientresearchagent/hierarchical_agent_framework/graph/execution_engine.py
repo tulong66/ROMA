@@ -1,10 +1,11 @@
+import time
 from loguru import logger
 from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode, TaskStatus, NodeType, TaskType
 from sentientresearchagent.hierarchical_agent_framework.context.knowledge_store import KnowledgeStore # For logging to KS
 from sentientresearchagent.hierarchical_agent_framework.utils.hitl_utils import request_human_review
 from sentientresearchagent.hierarchical_agent_framework.types import is_terminal_status
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, List
 if TYPE_CHECKING:
     from sentientresearchagent.hierarchical_agent_framework.graph.task_graph import TaskGraph
     from sentientresearchagent.hierarchical_agent_framework.graph.state_manager import StateManager
@@ -272,6 +273,19 @@ class ExecutionEngine:
                 
                 # Try to recover stuck nodes before declaring deadlock
                 active_nodes = [n for n in all_nodes_after_step if n.status in active_statuses]
+                
+                # CRITICAL PREEMPTIVE FIX: Check for single hanging RUNNING node
+                single_running_fix = await self._check_single_running_hang(active_nodes)
+                if single_running_fix:
+                    logger.info(f"Applied immediate fix for hanging RUNNING node: {single_running_fix}")
+                    continue  # Skip deadlock check and continue with next step
+                
+                # CRITICAL PREEMPTIVE FIX: Check for parent-child sync failure
+                immediate_fix = await self._check_parent_child_sync_failure(active_nodes)
+                if immediate_fix:
+                    logger.info(f"Applied immediate fix for parent-child sync: {immediate_fix}")
+                    continue  # Skip deadlock check and continue with next step
+                
                 recovery_attempted = await self._check_and_recover_stuck_nodes(active_nodes, time.time())
                 
                 if recovery_attempted:
@@ -355,7 +369,23 @@ class ExecutionEngine:
             bool: True if any recovery action was taken
         """
         recovered = False
-        node_timeout = self.config.execution.node_execution_timeout_seconds / 3  # Per-node timeout is 1/3 of total
+        
+        # Get timeout thresholds from config
+        timeout_config = getattr(self.config.execution, 'timeout_strategy', None)
+        if timeout_config:
+            warning_threshold = timeout_config.warning_threshold_seconds
+            soft_timeout = timeout_config.soft_timeout_seconds
+            hard_timeout = timeout_config.hard_timeout_seconds
+            max_attempts = timeout_config.max_recovery_attempts
+            aggressive_recovery = timeout_config.enable_aggressive_recovery
+        else:
+            # Fallback to original logic
+            node_timeout = self.config.execution.node_execution_timeout_seconds / 3
+            warning_threshold = node_timeout * 0.5
+            soft_timeout = node_timeout
+            hard_timeout = self.config.execution.node_execution_timeout_seconds
+            max_attempts = 2
+            aggressive_recovery = False
         
         for node in active_nodes:
             # Track when we first see this node in its current status
@@ -367,40 +397,53 @@ class ExecutionEngine:
             # Check if node has been stuck too long
             time_in_status = current_time - self.node_start_times[node_key]
             
-            if time_in_status > node_timeout:
-                logger.warning(f"Node {node.task_id} has been in {node.status.name} for {time_in_status:.0f}s")
+            # Escalating timeout strategy
+            recovery_level = None
+            if time_in_status > hard_timeout:
+                recovery_level = "HARD"
+            elif time_in_status > soft_timeout:
+                recovery_level = "SOFT"
+            elif time_in_status > warning_threshold:
+                recovery_level = "WARNING"
+            
+            if recovery_level:
+                if recovery_level == "WARNING":
+                    logger.warning(f"Node {node.task_id} approaching timeout: {time_in_status:.0f}s in {node.status.name}")
+                    continue  # Just warn, don't take action yet
+                
+                logger.warning(f"Node {node.task_id} timeout ({recovery_level}): {time_in_status:.0f}s in {node.status.name}")
                 
                 # Track recovery attempts
                 if node.task_id not in self.stuck_node_attempts:
                     self.stuck_node_attempts[node.task_id] = 0
                 
-                if self.stuck_node_attempts[node.task_id] < 2:  # Max 2 recovery attempts
+                if self.stuck_node_attempts[node.task_id] < max_attempts:
                     self.stuck_node_attempts[node.task_id] += 1
                     
-                    # Different recovery strategies based on status
-                    if node.status == TaskStatus.PENDING:
-                        # Force transition to READY if parent conditions met
-                        if self.state_manager._check_parent_conditions_for_ready(node):
-                            logger.warning(f"Force transitioning stuck PENDING node {node.task_id} to READY")
-                            node.update_status(TaskStatus.READY)
-                            self.knowledge_store.add_or_update_record_from_node(node)
-                            recovered = True
-                    
-                    elif node.status == TaskStatus.RUNNING:
-                        # Mark as NEEDS_REPLAN to retry
-                        logger.warning(f"Marking stuck RUNNING node {node.task_id} as NEEDS_REPLAN")
-                        node.update_status(TaskStatus.NEEDS_REPLAN, 
-                                         error_msg=f"Node stuck in RUNNING state for {time_in_status:.0f}s")
-                        self.knowledge_store.add_or_update_record_from_node(node)
+                    # Try hierarchy-aware recovery with escalation level
+                    recovery_action = await self._attempt_hierarchical_recovery(
+                        node, time_in_status, recovery_level, aggressive_recovery
+                    )
+                    if recovery_action:
+                        logger.warning(f"Recovery action for {node.task_id}: {recovery_action}")
                         recovered = True
-                    
-                    elif node.status == TaskStatus.PLAN_DONE:
-                        # Force aggregation check
-                        if self.state_manager.can_aggregate(node):
-                            logger.warning(f"Force transitioning stuck PLAN_DONE node {node.task_id} to AGGREGATING")
-                            node.update_status(TaskStatus.AGGREGATING)
+                    else:
+                        # Fallback to original recovery strategies
+                        if node.status == TaskStatus.RUNNING:
+                            # Mark as NEEDS_REPLAN to retry
+                            logger.warning(f"Marking stuck RUNNING node {node.task_id} as NEEDS_REPLAN")
+                            node.update_status(TaskStatus.NEEDS_REPLAN, 
+                                             error_msg=f"Node stuck in RUNNING state for {time_in_status:.0f}s")
                             self.knowledge_store.add_or_update_record_from_node(node)
                             recovered = True
+                        
+                        elif node.status == TaskStatus.PLAN_DONE:
+                            # Force aggregation check
+                            if self.state_manager.can_aggregate(node):
+                                logger.warning(f"Force transitioning stuck PLAN_DONE node {node.task_id} to AGGREGATING")
+                                node.update_status(TaskStatus.AGGREGATING)
+                                self.knowledge_store.add_or_update_record_from_node(node)
+                                recovered = True
                 else:
                     # Max attempts reached, fail the node
                     logger.error(f"Node {node.task_id} recovery failed after {self.stuck_node_attempts[node.task_id]} attempts")
@@ -411,8 +454,276 @@ class ExecutionEngine:
         
         return recovered
 
+    async def _check_single_running_hang(self, active_nodes) -> str:
+        """
+        Check for a single RUNNING node that appears to be hanging.
+        This is often caused by executor adapters getting stuck.
+        
+        Returns:
+            str: Description of fix applied, or empty string if no fix needed
+        """
+        # Check if we have exactly one active node and it's RUNNING
+        if len(active_nodes) == 1 and active_nodes[0].status == TaskStatus.RUNNING:
+            hanging_node = active_nodes[0]
+            
+            # Check how long it's been running
+            node_key = f"{hanging_node.task_id}_{hanging_node.status.name}"
+            if node_key in self.node_start_times:
+                time_in_status = time.time() - self.node_start_times[node_key]
+                
+                # Apply aggressive timeout for single hanging nodes (90 seconds)
+                if time_in_status > 90:
+                    logger.warning(f"EMERGENCY: Single RUNNING node {hanging_node.task_id} hanging for {time_in_status:.0f}s - forcing recovery")
+                    
+                    # Force the node to retry
+                    hanging_node.update_status(TaskStatus.NEEDS_REPLAN, 
+                                             error_msg=f"Emergency recovery: Node hung in RUNNING for {time_in_status:.0f}s")
+                    self.knowledge_store.add_or_update_record_from_node(hanging_node)
+                    
+                    return f"Emergency: Forced hanging RUNNING node {hanging_node.task_id[:8]} to NEEDS_REPLAN after {time_in_status:.0f}s"
+        
+        return ""
+
+    async def _check_parent_child_sync_failure(self, active_nodes) -> str:
+        """
+        Check for the specific pattern where a RUNNING parent has PENDING children
+        that can't find their container graph. Apply immediate fix.
+        
+        Returns:
+            str: Description of fix applied, or empty string if no fix needed
+        """
+        # Find RUNNING nodes with PENDING children
+        running_nodes = [n for n in active_nodes if n.status == TaskStatus.RUNNING]
+        pending_nodes = [n for n in active_nodes if n.status == TaskStatus.PENDING]
+        
+        for running_parent in running_nodes:
+            # Find children of this parent
+            children = [n for n in pending_nodes if n.parent_node_id == running_parent.task_id]
+            
+            if children:
+                # Check if children can't find their container graph
+                container_issues = []
+                for child in children:
+                    container_graph_id = self.state_manager._find_container_graph_id_for_node(child)
+                    if not container_graph_id:
+                        container_issues.append(child)
+                
+                if container_issues:
+                    logger.warning(f"CRITICAL FIX: Parent {running_parent.task_id} has {len(container_issues)} children with container graph issues")
+                    
+                    # Find the graph containing the children
+                    children_graph_id = None
+                    for graph_id, graph_obj in self.task_graph.graphs.items():
+                        if any(child.task_id in graph_obj.nodes for child in children):
+                            children_graph_id = graph_id
+                            break
+                    
+                    if children_graph_id:
+                        # Set sub_graph_id on parent if not set
+                        if not running_parent.sub_graph_id:
+                            running_parent.sub_graph_id = children_graph_id
+                            logger.info(f"Set sub_graph_id {children_graph_id} on parent {running_parent.task_id}")
+                        
+                        # Force transition to PLAN_DONE
+                        running_parent.update_status(TaskStatus.PLAN_DONE, 
+                                                   result_summary=f"Emergency transition: had {len(children)} waiting children")
+                        self.knowledge_store.add_or_update_record_from_node(running_parent)
+                        
+                        return f"Emergency fix: Transitioned parent {running_parent.task_id[:8]} RUNNING->PLAN_DONE for {len(children)} stuck children"
+                    else:
+                        logger.error(f"Could not find graph containing children of {running_parent.task_id}")
+        
+        return ""
+
+    async def _attempt_hierarchical_recovery(self, node: TaskNode, time_in_status: float, 
+                                             recovery_level: str = "SOFT", aggressive: bool = False) -> str:
+        """
+        Attempt hierarchy-aware recovery strategies based on parent-child relationships.
+        
+        Args:
+            node: The stuck node to recover
+            time_in_status: How long the node has been in current status
+            recovery_level: "SOFT" or "HARD" indicating escalation level
+            aggressive: Whether to use aggressive recovery strategies
+            
+        Returns:
+            str: Description of recovery action taken, or empty string if no action
+        """
+        
+        # Strategy 1: PENDING nodes with parent issues
+        if node.status == TaskStatus.PENDING:
+            if node.parent_node_id:
+                parent = self.task_graph.get_node(node.parent_node_id)
+                if parent:
+                    # Parent stuck in RUNNING - escalated intervention
+                    if parent.status == TaskStatus.RUNNING:
+                        # Check if parent has been running too long
+                        parent_key = f"{parent.task_id}_{parent.status.name}"
+                        if parent_key in self.node_start_times:
+                            parent_time = time.time() - self.node_start_times[parent_key]
+                            
+                            # Escalated recovery based on level
+                            if recovery_level == "HARD" or (aggressive and parent_time > 300):
+                                logger.warning(f"HARD recovery: Forcing completion of stuck parent {parent.task_id}")
+                                parent.update_status(TaskStatus.NEEDS_REPLAN, 
+                                                   error_msg=f"Parent stuck in RUNNING for {parent_time:.0f}s (HARD timeout)")
+                                self.knowledge_store.add_or_update_record_from_node(parent)
+                                return f"HARD: Forced parent {parent.task_id[:8]} to NEEDS_REPLAN"
+                            elif recovery_level == "SOFT" and parent_time > 600:
+                                logger.warning(f"SOFT recovery: Nudging stuck parent {parent.task_id}")
+                                parent.update_status(TaskStatus.NEEDS_REPLAN, 
+                                                   error_msg=f"Parent stuck in RUNNING for {parent_time:.0f}s (SOFT timeout)")
+                                self.knowledge_store.add_or_update_record_from_node(parent)
+                                return f"SOFT: Forced parent {parent.task_id[:8]} to NEEDS_REPLAN"
+                    
+                    # Parent has wrong status for children to proceed
+                    elif parent.status not in (TaskStatus.RUNNING, TaskStatus.PLAN_DONE, TaskStatus.DONE):
+                        logger.warning(f"Parent {parent.task_id} has invalid status {parent.status.name} for child")
+                        # Try to force parent to appropriate status if possible
+                        if self.state_manager._check_parent_conditions_for_ready(node):
+                            node.update_status(TaskStatus.READY)
+                            self.knowledge_store.add_or_update_record_from_node(node)
+                            return f"Bypassed invalid parent status, promoted to READY"
+            
+            # No parent - check predecessors
+            else:
+                container_graph = self.state_manager._find_container_graph_id_for_node(node)
+                if container_graph:
+                    preds = self.task_graph.get_node_predecessors(container_graph, node.task_id)
+                    if preds:
+                        stuck_preds = [p for p in preds if p.status in [TaskStatus.RUNNING, TaskStatus.PENDING]]
+                        if stuck_preds and self.state_manager._check_parent_conditions_for_ready(node):
+                            # Force transition if predecessors are taking too long
+                            node.update_status(TaskStatus.READY)
+                            self.knowledge_store.add_or_update_record_from_node(node)
+                            return f"Bypassed {len(stuck_preds)} stuck predecessors"
+        
+        # Strategy 2: RUNNING nodes stuck in execution
+        elif node.status == TaskStatus.RUNNING:
+            # CRITICAL: Check for single RUNNING node hanging (likely executor adapter issue)
+            all_active_nodes = [n for n in self.task_graph.get_all_nodes() if n.status in [TaskStatus.PENDING, TaskStatus.READY, TaskStatus.RUNNING, TaskStatus.PLAN_DONE, TaskStatus.AGGREGATING, TaskStatus.NEEDS_REPLAN]]
+            single_running_hang = (len(all_active_nodes) == 1 and all_active_nodes[0].task_id == node.task_id)
+            
+            if single_running_hang and (recovery_level == "HARD" or time_in_status > 120):  # 2 minute timeout for single hanging nodes
+                logger.warning(f"CRITICAL: Single RUNNING node {node.task_id} hanging for {time_in_status:.0f}s - likely executor adapter stuck")
+                node.update_status(TaskStatus.NEEDS_REPLAN, 
+                                 error_msg=f"Node stuck in RUNNING for {time_in_status:.0f}s - executor likely hanging")
+                self.knowledge_store.add_or_update_record_from_node(node)
+                return f"CRITICAL: Single hanging RUNNING node {node.task_id[:8]} forced to NEEDS_REPLAN"
+            
+            # Check if this node should have created subtasks but hasn't
+            elif not node.sub_graph_id and node.node_type == NodeType.PLAN:
+                # This PLAN node is stuck in RUNNING without creating subtasks
+                node.update_status(TaskStatus.NEEDS_REPLAN, 
+                                 error_msg=f"PLAN node stuck in RUNNING without creating subtasks")
+                self.knowledge_store.add_or_update_record_from_node(node)
+                return "PLAN node stuck without subtasks, forcing replan"
+            
+            # CRITICAL FIX: Check if this RUNNING node has children that can't find their container graph
+            all_nodes = self.task_graph.get_all_nodes()
+            stuck_children = [n for n in all_nodes if n.parent_node_id == node.task_id and n.status == TaskStatus.PENDING]
+            
+            if stuck_children and (recovery_level == "HARD" or time_in_status > 60):  # 1 minute timeout
+                # Force parent to PLAN_DONE so children can proceed
+                logger.warning(f"CRITICAL: Parent {node.task_id} stuck RUNNING with {len(stuck_children)} PENDING children")
+                
+                # Find or create sub_graph_id for the children
+                children_graph_id = None
+                for graph_id, graph_obj in self.task_graph.graphs.items():
+                    if any(child.task_id in graph_obj.nodes for child in stuck_children):
+                        children_graph_id = graph_id
+                        break
+                
+                if children_graph_id:
+                    # Set the sub_graph_id on the parent
+                    node.sub_graph_id = children_graph_id
+                    # Force transition to PLAN_DONE
+                    node.update_status(TaskStatus.PLAN_DONE, 
+                                     result_summary=f"Forced transition: had {len(stuck_children)} waiting children")
+                    self.knowledge_store.add_or_update_record_from_node(node)
+                    return f"CRITICAL: Forced RUNNING parent {node.task_id[:8]} to PLAN_DONE for {len(stuck_children)} children"
+                else:
+                    logger.error(f"Could not find graph containing children of {node.task_id}")
+                    return f"Failed to find children graph for {node.task_id[:8]}"
+        
+        # Strategy 3: PLAN_DONE nodes with stuck children
+        elif node.status == TaskStatus.PLAN_DONE and node.sub_graph_id:
+            sub_nodes = self.task_graph.get_nodes_in_graph(node.sub_graph_id)
+            stuck_children = [n for n in sub_nodes if n.status in [TaskStatus.PENDING, TaskStatus.RUNNING]]
+            
+            if stuck_children:
+                # Try to unstick the most problematic children
+                for child in stuck_children[:2]:  # Limit to first 2
+                    child_recovery = await self._attempt_hierarchical_recovery(
+                        child, time_in_status, recovery_level, aggressive
+                    )
+                    if child_recovery:
+                        return f"Fixed child {child.task_id[:8]}: {child_recovery}"
+                
+                # If children can't be fixed, force aggregation with partial results
+                if len(stuck_children) < len(sub_nodes) / 2:  # Less than half stuck
+                    logger.warning(f"Forcing aggregation with {len(stuck_children)} stuck children")
+                    node.update_status(TaskStatus.AGGREGATING)
+                    self.knowledge_store.add_or_update_record_from_node(node)
+                    return f"Forced aggregation ignoring {len(stuck_children)} stuck children"
+        
+        return ""  # No recovery action taken
+
+    def _validate_execution_state(self, all_nodes) -> List[str]:
+        """
+        Validate the overall execution state for inconsistencies.
+        
+        Returns:
+            List of validation errors found
+        """
+        errors = []
+        
+        # Check for invalid parent-child combinations
+        for node in all_nodes:
+            if node.parent_node_id:
+                parent = self.task_graph.get_node(node.parent_node_id)
+                if parent:
+                    # Child can't be READY/RUNNING if parent is not RUNNING/PLAN_DONE
+                    if node.status in [TaskStatus.READY, TaskStatus.RUNNING]:
+                        if parent.status not in [TaskStatus.RUNNING, TaskStatus.PLAN_DONE, TaskStatus.DONE]:
+                            errors.append(f"Invalid state: Child {node.task_id[:8]} is {node.status.name} but parent {parent.task_id[:8]} is {parent.status.name}")
+                    
+                    # PLAN_DONE parent should have active children or be done
+                    if parent.status == TaskStatus.PLAN_DONE and parent.sub_graph_id:
+                        children = self.task_graph.get_nodes_in_graph(parent.sub_graph_id)
+                        if children and all(child.status in [TaskStatus.DONE, TaskStatus.FAILED] for child in children):
+                            # All children done but parent still PLAN_DONE
+                            if parent not in [n for n in all_nodes if n.status == TaskStatus.AGGREGATING]:
+                                errors.append(f"Invalid state: Parent {parent.task_id[:8]} PLAN_DONE with all children complete")
+        
+        # Check for nodes with invalid sub-graph relationships
+        for node in all_nodes:
+            if node.sub_graph_id:
+                sub_nodes = self.task_graph.get_nodes_in_graph(node.sub_graph_id)
+                if not sub_nodes and node.status == TaskStatus.PLAN_DONE:
+                    errors.append(f"Invalid state: Node {node.task_id[:8]} PLAN_DONE with empty sub-graph")
+        
+        # Check for circular parent relationships
+        visited_chains = set()
+        for node in all_nodes:
+            if node.parent_node_id and node.task_id not in visited_chains:
+                chain = []
+                current = node
+                while current and len(chain) < 10:  # Prevent infinite loops
+                    if current.task_id in chain:
+                        errors.append(f"Circular parent relationship detected: {' -> '.join(chain + [current.task_id[:8]])}")
+                        break
+                    chain.append(current.task_id)
+                    visited_chains.add(current.task_id)
+                    if current.parent_node_id:
+                        current = self.task_graph.get_node(current.parent_node_id)
+                    else:
+                        break
+        
+        return errors
+
     def _diagnose_deadlock(self, all_nodes, active_statuses) -> str:
-        """Diagnose the cause of deadlock and return a descriptive message."""
+        """Diagnose the cause of deadlock with comprehensive hierarchical analysis."""
         active_nodes = [n for n in all_nodes if n.status in active_statuses]
         
         # Count nodes by status
@@ -420,34 +731,151 @@ class ExecutionEngine:
         for node in active_nodes:
             status_counts[node.status.name] = status_counts.get(node.status.name, 0) + 1
         
-        # Common deadlock scenarios
-        pending_nodes = [n for n in active_nodes if n.status == TaskStatus.PENDING]
-        plan_done_nodes = [n for n in active_nodes if n.status == TaskStatus.PLAN_DONE]
+        # Enhanced deadlock pattern analysis
+        deadlock_patterns = self._analyze_deadlock_patterns(active_nodes)
+        dependency_chains = self._build_dependency_visualization(active_nodes)
+        validation_errors = self._validate_execution_state(all_nodes)
         
-        deadlock_reasons = []
+        # Log comprehensive diagnostics
+        logger.error("=== DEADLOCK ANALYSIS ===")
+        logger.error(f"Active nodes: {len(active_nodes)} ({', '.join(f'{k}:{v}' for k,v in status_counts.items())})")
         
-        # Check for circular dependencies
-        if pending_nodes:
-            for node in pending_nodes:
-                if node.parent_node_id:
-                    parent = self.task_graph.get_node(node.parent_node_id)
-                    if parent and parent.status not in (TaskStatus.RUNNING, TaskStatus.PLAN_DONE):
-                        deadlock_reasons.append(f"Node {node.task_id} waiting for parent {parent.task_id} with incompatible status {parent.status.name}")
+        if validation_errors:
+            logger.error("State validation errors:")
+            for error in validation_errors:
+                logger.error(f"  - {error}")
         
-        # Check for stuck PLAN_DONE nodes
+        if deadlock_patterns:
+            logger.error("Detected patterns:")
+            for pattern in deadlock_patterns:
+                logger.error(f"  - {pattern}")
+        
+        if dependency_chains:
+            logger.error("Dependency chains:")
+            for chain in dependency_chains:
+                logger.error(f"  {chain}")
+        
+        # Build concise message for return
+        primary_pattern = deadlock_patterns[0] if deadlock_patterns else "Unknown deadlock pattern"
+        return f"No progress possible. {len(active_nodes)} nodes stuck ({', '.join(f'{k}:{v}' for k,v in status_counts.items())}). Pattern: {primary_pattern}"
+
+    def _analyze_deadlock_patterns(self, active_nodes) -> List[str]:
+        """Analyze common deadlock patterns in the active nodes."""
+        patterns = []
+        
+        # Group nodes by status
+        nodes_by_status = {}
+        for node in active_nodes:
+            status = node.status.name
+            if status not in nodes_by_status:
+                nodes_by_status[status] = []
+            nodes_by_status[status].append(node)
+        
+        # Pattern 1: Single RUNNING node stuck (executor hanging)
+        running_nodes = nodes_by_status.get('RUNNING', [])
+        if len(running_nodes) == 1 and len(active_nodes) == 1:
+            running_node = running_nodes[0]
+            patterns.append(f"Single Node Execution Hang: Node {running_node.task_id[:8]} stuck in RUNNING (likely executor adapter hanging)")
+        
+        # Pattern 2: Parent-Child Synchronization Failure
+        pending_nodes = nodes_by_status.get('PENDING', [])
+        
+        if running_nodes and pending_nodes:
+            # Check if pending nodes are children of running nodes
+            running_ids = {node.task_id for node in running_nodes}
+            children_of_running = [
+                node for node in pending_nodes 
+                if node.parent_node_id in running_ids
+            ]
+            if children_of_running:
+                patterns.append(f"Parent-Child Sync Failure: {len(running_nodes)} parent(s) stuck RUNNING, {len(children_of_running)} children stuck PENDING")
+        
+        # Pattern 3: PLAN_DONE nodes with incomplete sub-tasks
+        plan_done_nodes = nodes_by_status.get('PLAN_DONE', [])
         if plan_done_nodes:
             for node in plan_done_nodes:
                 if node.sub_graph_id:
                     sub_nodes = self.task_graph.get_nodes_in_graph(node.sub_graph_id)
-                    stuck_sub_nodes = [n for n in sub_nodes if n.status in active_statuses and n.status != TaskStatus.DONE]
-                    if stuck_sub_nodes:
-                        deadlock_reasons.append(f"Node {node.task_id} has {len(stuck_sub_nodes)} incomplete sub-tasks")
+                    incomplete_sub_nodes = [n for n in sub_nodes if n.status in [TaskStatus.PENDING, TaskStatus.READY, TaskStatus.RUNNING]]
+                    if incomplete_sub_nodes:
+                        patterns.append(f"Stuck Aggregation: Node {node.task_id[:8]} waiting for {len(incomplete_sub_nodes)} sub-tasks")
         
-        # Build diagnostic message
-        if deadlock_reasons:
-            return f"No progress possible. {len(active_nodes)} nodes stuck ({', '.join(f'{k}:{v}' for k,v in status_counts.items())}). Root causes: {'; '.join(deadlock_reasons[:2])}"
-        else:
-            return f"No progress possible. {len(active_nodes)} nodes stuck ({', '.join(f'{k}:{v}' for k,v in status_counts.items())}). Check logs for details."
+        # Pattern 4: Circular dependencies
+        for node in pending_nodes:
+            if self._has_circular_dependency(node, visited=set()):
+                patterns.append(f"Circular Dependency: Node {node.task_id[:8]} in dependency cycle")
+                break  # Only report one to avoid spam
+        
+        # Pattern 5: Orphaned nodes (PENDING without proper parent status)
+        orphaned = []
+        for node in pending_nodes:
+            if node.parent_node_id:
+                parent = self.task_graph.get_node(node.parent_node_id)
+                if parent and parent.status not in (TaskStatus.RUNNING, TaskStatus.PLAN_DONE, TaskStatus.DONE):
+                    orphaned.append(node)
+        
+        if orphaned:
+            patterns.append(f"Orphaned Nodes: {len(orphaned)} PENDING nodes with invalid parent status")
+        
+        return patterns
+    
+    def _build_dependency_visualization(self, active_nodes) -> List[str]:
+        """Build visual representation of dependency chains for stuck nodes."""
+        chains = []
+        
+        # Build parent-child chains
+        for node in active_nodes:
+            if node.status == TaskStatus.PENDING and node.parent_node_id:
+                chain = self._build_dependency_chain(node)
+                if chain:
+                    chains.append(chain)
+        
+        # Build predecessor chains for first few nodes
+        for node in active_nodes[:3]:  # Limit to prevent spam
+            container_graph = self.state_manager._find_container_graph_id_for_node(node)
+            if container_graph:
+                preds = self.task_graph.get_node_predecessors(container_graph, node.task_id)
+                if preds:
+                    pred_chain = " -> ".join([f"{p.task_id[:8]}({p.status.name})" for p in preds])
+                    chains.append(f"Predecessors: {pred_chain} -> {node.task_id[:8]}({node.status.name})")
+        
+        return chains[:10]  # Limit output
+    
+    def _build_dependency_chain(self, node, max_depth=5) -> str:
+        """Build a dependency chain string showing parent hierarchy."""
+        chain_parts = []
+        current = node
+        depth = 0
+        
+        while current and depth < max_depth:
+            chain_parts.append(f"{current.task_id[:8]}({current.status.name})")
+            if current.parent_node_id:
+                current = self.task_graph.get_node(current.parent_node_id)
+                depth += 1
+            else:
+                break
+        
+        if len(chain_parts) > 1:
+            chain_parts.reverse()
+            return "Parent chain: " + " -> ".join(chain_parts)
+        return ""
+    
+    def _has_circular_dependency(self, node, visited=None, max_depth=10) -> bool:
+        """Check if a node has circular dependencies in its parent chain."""
+        if visited is None:
+            visited = set()
+        
+        if len(visited) > max_depth or node.task_id in visited:
+            return True
+        
+        visited.add(node.task_id)
+        
+        if node.parent_node_id:
+            parent = self.task_graph.get_node(node.parent_node_id)
+            if parent:
+                return self._has_circular_dependency(parent, visited.copy(), max_depth)
+        
+        return False
 
     def _log_final_statuses(self):
         logger.info("\n--- Final Node Statuses & Results ---")

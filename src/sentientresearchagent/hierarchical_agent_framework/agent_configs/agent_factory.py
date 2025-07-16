@@ -267,6 +267,22 @@ class AgentFactory:
         
         model_class = self._model_providers[provider]
         
+        # Extract model parameters that should be passed to the model constructor
+        model_kwargs = {"id": model_id}
+        
+        # Standard LLM parameters that models support
+        supported_llm_params = [
+            'temperature', 'max_tokens', 'top_p', 'top_k', 
+            'frequency_penalty', 'presence_penalty', 'repetition_penalty',
+            'min_p', 'tfs', 'typical_p', 'epsilon_cutoff', 'eta_cutoff'
+        ]
+        
+        for param in supported_llm_params:
+            param_value = model_config.get(param)
+            if param_value is not None:
+                model_kwargs[param] = param_value
+                logger.debug(f"Adding model parameter {param}={param_value} to {provider}/{model_id}")
+        
         try:
             if provider == "litellm":
                 # Check if this is an o3 model that needs parameter dropping
@@ -280,20 +296,20 @@ class AgentFactory:
                 
                 # Create LiteLLM instance - environment variables are already validated
                 logger.info(f"🔧 Creating LiteLLM model: {model_id}")
-                return model_class(id=model_id)
+                return model_class(**model_kwargs)
                 
             elif provider == "openai":
                 logger.info(f"🔧 Creating OpenAI model: {model_id}")
-                return model_class(id=model_id)
+                return model_class(**model_kwargs)
                 
             elif provider in ["fireworks", "fireworks_ai"]:
                 logger.info(f"🔧 Creating Fireworks AI model: {model_id}")
-                return model_class(id=model_id)
+                return model_class(**model_kwargs)
                 
             else:
                 # Generic instantiation
                 logger.info(f"🔧 Creating {provider} model: {model_id}")
-                return model_class(id=model_id)
+                return model_class(**model_kwargs)
                 
         except Exception as e:
             logger.error(f"Failed to create model instance for {provider}/{model_id}: {e}")
@@ -461,28 +477,9 @@ class AgentFactory:
             if tools:
                 agno_kwargs["tools"] = tools
             
-            # NEW: Extract and add LLM settings from model configuration
-            model_config = agent_config.get("model")
-            llm_settings = {}
-            
-            if model_config:  # Only proceed if model_config exists
-                # Standard LLM parameters that AgnoAgent might support
-                supported_llm_params = [
-                    'temperature', 'max_tokens', 'top_p', 'top_k', 
-                    'frequency_penalty', 'presence_penalty', 'repetition_penalty',
-                    'min_p', 'tfs', 'typical_p', 'epsilon_cutoff', 'eta_cutoff'
-                ]
-                
-                for param in supported_llm_params:
-                    param_value = model_config.get(param)
-                    if param_value is not None:
-                        llm_settings[param] = param_value
-                        logger.debug(f"Adding LLM setting for {agent_config.name}: {param}={param_value}")
-            
-            # Add LLM settings to AgnoAgent kwargs if any were found
-            if llm_settings:
-                agno_kwargs.update(llm_settings)
-                logger.info(f"Applied LLM settings for {agent_config.name}: {list(llm_settings.keys())}")
+            # NOTE: LLM settings like temperature should be handled during model creation,
+            # not passed to AgnoAgent constructor which doesn't accept them.
+            # Removed problematic code that added LLM settings to agno_kwargs.
             
             # Handle additional AgnoAgent parameters from config
             if "agno_params" in agent_config:

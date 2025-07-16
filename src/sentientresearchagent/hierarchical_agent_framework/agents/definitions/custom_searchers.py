@@ -183,7 +183,7 @@ class OpenAICustomSearchAdapter(BaseAdapter):
         # Build context string from relevant_context_items
         context_strings = []
         for ctx_item in agent_task_input.relevant_context_items:
-            context_strings.append(f"\n[{ctx_item.content_type_description}]:\n{ctx_item.content}\n")
+            context_strings.append(f"\n--- Task ID: {ctx_item.source_task_id} ---\n[{ctx_item.content_type_description}]:\n{ctx_item.content}\n")
         
         full_context = "\n".join(context_strings) if context_strings else "No additional context provided."
         
@@ -317,7 +317,16 @@ RETRIEVED DATA:"""
             if self.use_openrouter:
                 # OpenRouter returns standard chat completion format
                 if hasattr(api_response, 'choices') and api_response.choices:
-                    raw_output = api_response.choices[0].message.content
+                    # CRITICAL FIX: Check that choices array has items and message exists
+                    if len(api_response.choices) > 0 and hasattr(api_response.choices[0], 'message'):
+                        if api_response.choices[0].message and hasattr(api_response.choices[0].message, 'content'):
+                            raw_output = api_response.choices[0].message.content
+                        else:
+                            logger.error(f"    {self.adapter_name}: No message content in OpenRouter response")
+                            raw_output = None
+                    else:
+                        logger.error(f"    {self.adapter_name}: Empty choices array or no message in OpenRouter response")
+                        raw_output = None
                 else:
                     logger.error(f"    {self.adapter_name}: No choices found in OpenRouter response")
                     raw_output = None
@@ -348,43 +357,47 @@ RETRIEVED DATA:"""
 
             # 2. Attempt to parse nested text_content and annotations as supplementary info
             raw_annotations_data = []
-            if not self.use_openrouter and hasattr(api_response, 'output') and \
-               isinstance(api_response.output, list) and \
-               len(api_response.output) > 1 and \
-               hasattr(api_response.output[1], 'content') and \
-               isinstance(api_response.output[1].content, list) and \
-               len(api_response.output[1].content) > 0:
-                
-                content_item = api_response.output[1].content[0]
-                
-                if hasattr(content_item, 'text') and content_item.text:
-                    parsed_text_content = content_item.text
-                    logger.success(f"    {self.adapter_name}: Retrieved nested 'text_content' (length: {len(parsed_text_content)}).")
-                else:
-                    logger.warning(f"    {self.adapter_name}: Nested 'text' attribute not found or empty.")
-
-                if hasattr(content_item, 'annotations') and isinstance(content_item.annotations, list):
-                    temp_raw_annotations = []
-                    for ann_obj in content_item.annotations:
-                        ann_dict = {
-                            'title': getattr(ann_obj, 'title', None),
-                            'url': getattr(ann_obj, 'url', None),
-                            'start_index': getattr(ann_obj, 'start_index', -1),
-                            'end_index': getattr(ann_obj, 'end_index', -1),
-                            'type': getattr(ann_obj, 'type', 'url_citation')
-                        }
-                        if ann_dict['url'] and ann_dict['start_index'] != -1 and ann_dict['end_index'] != -1:
-                            temp_raw_annotations.append(ann_dict)
-                        else:
-                            logger.warning(f"    {self.adapter_name}: Skipping invalid nested annotation object: {ann_obj}")
+            parsed_text_content = None
+            try:
+                if not self.use_openrouter and hasattr(api_response, 'output') and \
+                   isinstance(api_response.output, list) and \
+                   len(api_response.output) > 1 and \
+                   hasattr(api_response.output[1], 'content') and \
+                   isinstance(api_response.output[1].content, list) and \
+                   len(api_response.output[1].content) > 0:
                     
-                    if temp_raw_annotations:
-                        raw_annotations_data = temp_raw_annotations # Assign if we got valid annotations
-                        logger.success(f"    {self.adapter_name}: Retrieved {len(raw_annotations_data)} nested 'annotations'.")
+                    content_item = api_response.output[1].content[0]
+                    
+                    if hasattr(content_item, 'text') and content_item.text:
+                        parsed_text_content = content_item.text
+                        logger.success(f"    {self.adapter_name}: Retrieved nested 'text_content' (length: {len(parsed_text_content)}).")
+                    else:
+                        logger.warning(f"    {self.adapter_name}: Nested 'text' attribute not found or empty.")
+
+                    if hasattr(content_item, 'annotations') and isinstance(content_item.annotations, list):
+                        temp_raw_annotations = []
+                        for ann_obj in content_item.annotations:
+                            ann_dict = {
+                                'title': getattr(ann_obj, 'title', None),
+                                'url': getattr(ann_obj, 'url', None),
+                                'start_index': getattr(ann_obj, 'start_index', -1),
+                                'end_index': getattr(ann_obj, 'end_index', -1),
+                                'type': getattr(ann_obj, 'type', 'url_citation')
+                            }
+                            if ann_dict['url'] and ann_dict['start_index'] != -1 and ann_dict['end_index'] != -1:
+                                temp_raw_annotations.append(ann_dict)
+                            else:
+                                logger.warning(f"    {self.adapter_name}: Skipping invalid nested annotation object: {ann_obj}")
+                        
+                        if temp_raw_annotations:
+                            raw_annotations_data = temp_raw_annotations # Assign if we got valid annotations
+                            logger.success(f"    {self.adapter_name}: Retrieved {len(raw_annotations_data)} nested 'annotations'.")
+                    else:
+                        logger.warning(f"    {self.adapter_name}: Nested 'annotations' attribute not found or not a list.")
                 else:
-                    logger.warning(f"    {self.adapter_name}: Nested 'annotations' attribute not found or not a list.")
-            else:
-                logger.warning(f"    {self.adapter_name}: Nested API response structure 'output[1].content[0]' not found. No supplementary text/annotations.")
+                    logger.warning(f"    {self.adapter_name}: Nested API response structure 'output[1].content[0]' not found. No supplementary text/annotations.")
+            except (AttributeError, IndexError, TypeError) as e:
+                logger.warning(f"    {self.adapter_name}: Could not parse nested content from API response: {e}")
 
             for ann_data in raw_annotations_data:
                 try:
@@ -496,7 +509,7 @@ class GeminiCustomSearchAdapter(BaseAdapter):
         # Build context string from relevant_context_items
         context_strings = []
         for ctx_item in agent_task_input.relevant_context_items:
-            context_strings.append(f"\n[{ctx_item.content_type_description}]:\n{ctx_item.content}\n")
+            context_strings.append(f"\n--- Task ID: {ctx_item.source_task_id} ---\n[{ctx_item.content_type_description}]:\n{ctx_item.content}\n")
         
         full_context = "\n".join(context_strings) if context_strings else "No additional context provided."
         

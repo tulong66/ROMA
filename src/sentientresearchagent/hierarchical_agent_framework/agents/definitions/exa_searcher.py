@@ -79,7 +79,7 @@ class ExaCustomSearchAdapter(BaseAdapter):
         # Build context string from relevant_context_items
         context_strings = []
         for ctx_item in agent_task_input.relevant_context_items:
-            context_strings.append(f"\n[{ctx_item.content_type_description}]:\n{ctx_item.content}\n")
+            context_strings.append(f"\n--- Task ID: {ctx_item.source_task_id} ---\n[{ctx_item.content_type_description}]:\n{ctx_item.content}\n")
         
         full_context = "\n".join(context_strings) if context_strings else "No additional context provided."
         
@@ -256,8 +256,14 @@ IMPORTANT: Include EVERY piece of relevant data from ALL sources. Do not summari
                 max_tokens=4000   # Allow for comprehensive responses
             )
             
-            # Extract the response text
-            output_text = llm_response.choices[0].message.content
+            # Extract the response text with proper null checks
+            output_text = None
+            if llm_response and hasattr(llm_response, 'choices') and llm_response.choices:
+                if len(llm_response.choices) > 0 and llm_response.choices[0].message:
+                    output_text = llm_response.choices[0].message.content
+            
+            if not output_text:
+                raise ValueError("No response content received from LLM")
             
             logger.success(f"    {self.adapter_name}: Successfully processed {len(formatted_sources)} sources")
             

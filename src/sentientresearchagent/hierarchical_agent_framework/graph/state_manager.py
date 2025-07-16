@@ -27,7 +27,18 @@ class StateManager:
             parent_node = self.task_graph.get_node(node.parent_node_id)
             if parent_node:
                 # The node is in the sub-graph created and managed by its parent
-                return parent_node.sub_graph_id
+                if parent_node.sub_graph_id:
+                    return parent_node.sub_graph_id
+                else:
+                    # CRITICAL FIX: If parent doesn't have sub_graph_id yet, search all graphs
+                    # This happens when parent is RUNNING but children are already created
+                    logger.debug(f"Parent {parent_node.task_id} has no sub_graph_id yet, searching for child {node.task_id}")
+                    for graph_id, graph_obj in self.task_graph.graphs.items():
+                        if node.task_id in graph_obj.nodes:
+                            logger.debug(f"Found child {node.task_id} in graph {graph_id}")
+                            return graph_id
+                    logger.warning(f"Child {node.task_id} not found in any graph despite having parent {parent_node.task_id}")
+                    return None
             else:
                 # This case (parent_node_id exists but parent_node not found) is an inconsistency.
                 logger.warning(f"StateManager: Node {node.task_id} has parent_id {node.parent_node_id} but parent not found.")
