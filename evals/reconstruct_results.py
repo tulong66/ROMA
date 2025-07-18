@@ -6,6 +6,7 @@ Script to reconstruct run results from project_results JSON files using frames_b
 import json
 import csv
 import os
+import argparse
 from datetime import datetime
 from pathlib import Path
 
@@ -183,9 +184,19 @@ def process_json_file(file_path, benchmark_data):
 def main():
     """Main function to process all JSON files and create reconstructed CSV"""
     
+    # Set up argument parser
+    parser = argparse.ArgumentParser(description="Reconstruct run results from project_results JSON files.")
+    parser.add_argument(
+        '--benchmark_file',
+        type=str,
+        default='evals/datasets/frames_benchmark.csv',
+        help='Path to the benchmark CSV file.'
+    )
+    args = parser.parse_args()
+    
     # Paths
     project_results_dir = Path("project_results")
-    benchmark_file = Path("evals/datasets/frames_benchmark.csv")
+    benchmark_file = Path(args.benchmark_file)
     output_file = Path("reconstructed_results.csv")
     
     # Load benchmark data

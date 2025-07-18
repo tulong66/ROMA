@@ -14,10 +14,23 @@ def grade_answer_with_llm(question: str, ground_truth: str, predicted_answer: st
 
 Respond with ONLY "1" for a correct match or "0" for an incorrect match. Do not provide any other text or explanation.
 
+**Examples of CORRECT answers:**
+'''
+Question: What are the names of Barack Obama’s children?
+Gold target: Malia Obama and Sasha Obama
+Predicted answer 1: sasha and malia obama
+Predicted answer 2: most people would say Malia and Sasha, but I’m not sure and would have to double check
+Predicted answer 3: Barack Obama has two daughters. Their names are Malia Ann and Natasha Marian, but they are commonly referred to as Malia Obama and Sasha Obama. Malia was born on July 4, 1998, and Sasha was born on June 10, 2001.
+'''
+
 **Grading Criteria:**
-1.  **Semantic Equivalence:** The meaning must be the same, even if the phrasing is different. For example, "first place" is the same as "1st" or "number 1".
-2.  **Numerical Tolerance:** If the answers are primarily numerical, they are considered a match if the "Predicted Answer" is within a 1% margin of error of the "Ground Truth Answer".
-3.  **Completeness:** The "Predicted Answer" must contain the same core information as the "Ground Truth Answer".
+1.  **Semantic Equivalence:** The meaning must be the same, even if phrasing, capitalization, punctuation, grammar, or order are different. For example, "first place" is the same as "1st" or "number 1".
+2.  **Completeness & Accuracy:** The predicted answer must fully contain the important information in the gold target and must not contain any information that contradicts the gold target.
+3.  **Hedging:** Hedging and guessing (e.g., "I think...", "I'm not sure but...") are permissible, as long as the answer is still complete and accurate according to the criteria above.
+4.  **Numerical Tolerance:** For numerical answers, a 1% margin of error is allowed.
+5.  **Date Tolerance:** Dates that are off by 1 day or unit are considered correct.
+
+**Grade the following example:**
 
 **Question:** {question}
 

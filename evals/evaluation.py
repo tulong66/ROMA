@@ -401,22 +401,32 @@ def main():
             # Determine which queries have been processed successfully
             if 'index' in checkpoint_df.columns:
                 # Case 1: Checkpoint has explicit index column
-                completed_mask = (
-                    checkpoint_df['result'].notna() & 
-                    (checkpoint_df['result'].str.strip() != '') &
-                    (checkpoint_df.get('error', False) != True)
-                )
+                if 'completion_status' in checkpoint_df.columns:
+                    print("✅ Using 'completion_status' column for resume logic")
+                    completed_mask = checkpoint_df['completion_status'] == 'completed'
+                else:
+                    print("⚠️ 'completion_status' column not found, falling back to result/error check")
+                    completed_mask = (
+                        checkpoint_df['result'].notna() & 
+                        (checkpoint_df['result'].str.strip() != '') &
+                        (checkpoint_df.get('error', False) != True)
+                    )
                 completed_rows = checkpoint_df[completed_mask]
                 processed_indices = set(completed_rows['index'].tolist())
                 existing_results = completed_rows.to_dict('records')
             else:
                 # Case 2: Match questions by content instead of position
                 print("🔍 No 'index' column found, matching questions by content")
-                completed_mask = (
-                    checkpoint_df['result'].notna() & 
-                    (checkpoint_df['result'].str.strip() != '') &
-                    (checkpoint_df.get('error', False) != True)
-                )
+                if 'completion_status' in checkpoint_df.columns:
+                    print("✅ Using 'completion_status' column for resume logic")
+                    completed_mask = checkpoint_df['completion_status'] == 'completed'
+                else:
+                    print("⚠️ 'completion_status' column not found, falling back to result/error check")
+                    completed_mask = (
+                        checkpoint_df['result'].notna() & 
+                        (checkpoint_df['result'].str.strip() != '') &
+                        (checkpoint_df.get('error', False) != True)
+                    )
                 completed_rows = checkpoint_df[completed_mask].copy()
                 
                 # Find which questions from the original dataset are completed
