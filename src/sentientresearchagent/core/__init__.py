@@ -1,7 +1,7 @@
 """
 Core components of the Sentient Research Agent framework.
 """
-from .system_manager import SystemManager
+from .system_manager import SystemManagerV2 as SystemManager
 from .error_handler import (
     ErrorHandler, 
     get_error_handler, 

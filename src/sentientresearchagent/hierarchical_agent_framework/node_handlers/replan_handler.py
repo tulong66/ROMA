@@ -216,32 +216,40 @@ class ReplanHandler(BaseNodeHandler):
             # Check if this was a user modification
             is_user_modification = node.aux_data.get('user_modification_instructions') is not None
             
-            # HITL review
-            if is_user_modification:
-                # Review modified plan
-                review_result = await context.hitl_service.review_modified_plan(
-                    node=node,
-                    modified_plan=result,
-                    replan_attempt=node.replan_attempts
-                )
-            else:
-                # Review replanned result
-                review_result = await context.hitl_service.review_plan(
-                    node=node,
-                    plan_output=result,
-                    planning_context=node.input_payload_dict,
-                    is_replan=True
-                )
-            
-            if review_result["status"] == "approved":
-                # Clear existing sub-graph if any
-                if node.sub_graph_id:
-                    logger.info(f"Clearing existing sub-graph {node.sub_graph_id}")
-                    # In real implementation: context.task_graph.remove_graph_and_nodes(node.sub_graph_id)
-                    node.sub_graph_id = None
-                    node.planned_sub_task_ids = []
+            # HITL review if available
+            if context.hitl_service:
+                if is_user_modification:
+                    # Review modified plan
+                    review_result = await context.hitl_service.review_modified_plan(
+                        node=node,
+                        modified_plan=result,
+                        replan_attempt=node.replan_attempts
+                    )
+                else:
+                    # Review replanned result
+                    review_result = await context.hitl_service.review_plan(
+                        node=node,
+                        plan_output=result,
+                        planning_context=node.input_payload_dict,
+                        is_replan=True
+                    )
                 
-                # Create new sub-nodes
+                if review_result["status"] != "approved":
+                    # Not approved - handle based on status
+                    if review_result["status"] == "request_modification":
+                        # Set up for another modification
+                        pass  # Implementation depends on requirements
+                    else:
+                        raise ValueError(f"Replan not approved: {review_result['status']}")
+            
+            # Clear existing sub-graph if any
+            if node.sub_graph_id:
+                logger.info(f"Clearing existing sub-graph {node.sub_graph_id}")
+                # In real implementation: context.task_graph.remove_graph_and_nodes(node.sub_graph_id)
+                node.sub_graph_id = None
+                node.planned_sub_task_ids = []
+            
+            # Create new sub-nodes
                 # In real implementation: await context.sub_node_creator.create_sub_nodes(node, result)
                 
                 # Clear replan data

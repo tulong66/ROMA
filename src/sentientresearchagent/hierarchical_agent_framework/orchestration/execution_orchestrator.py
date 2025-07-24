@@ -208,6 +208,29 @@ class ExecutionOrchestrator:
             
             logger.info(f"Execution step {step + 1}/{max_steps} (elapsed: {elapsed_time:.2f}s)")
             
+            # Update node readiness (transitions PENDING to READY when dependencies satisfied)
+            transitioned = await self.task_scheduler.update_node_readiness()
+            if transitioned > 0:
+                logger.info(f"Transitioned {transitioned} nodes from PENDING to READY")
+                # Update knowledge store for all newly ready nodes
+                for node in self.task_graph.get_all_nodes():
+                    if node.status == TaskStatus.READY:
+                        self.knowledge_store.add_or_update_record_from_node(node)
+            
+            # Check for nodes ready to aggregate (PLAN_DONE -> AGGREGATING)
+            aggregated = 0
+            all_nodes = self.task_graph.get_all_nodes()
+            for node in all_nodes:
+                if node.status == TaskStatus.PLAN_DONE and self.state_manager.can_aggregate(node):
+                    # Transition to AGGREGATING
+                    node.update_status(TaskStatus.AGGREGATING, validate_transition=True)
+                    self.knowledge_store.add_or_update_record_from_node(node)
+                    aggregated += 1
+                    logger.info(f"Node {node.task_id} ready to aggregate - transitioned to AGGREGATING")
+            
+            if aggregated > 0:
+                logger.info(f"Transitioned {aggregated} nodes from PLAN_DONE to AGGREGATING")
+            
             # Get next tasks to execute
             ready_nodes = await self.task_scheduler.get_ready_nodes()
             
@@ -236,6 +259,10 @@ class ExecutionOrchestrator:
             # Process ready nodes
             processed_count = await self._process_nodes(ready_nodes)
             self._execution_stats["nodes_processed"] += processed_count
+            
+            # Clear dependency cache after processing nodes (graph may have changed)
+            if processed_count > 0:
+                self.task_scheduler.clear_dependency_cache()
             
             # Create checkpoint if needed
             if self.checkpoint_manager and self.checkpoint_manager.should_checkpoint():
@@ -404,6 +431,13 @@ class ExecutionOrchestrator:
         if root_node.status == TaskStatus.DONE:
             final_result["result"] = root_node.result
             final_result["summary"] = root_node.output_summary
+        elif root_node.status == TaskStatus.AGGREGATING:
+            # For nodes that finished aggregation but didn't transition to DONE
+            if root_node.result:
+                final_result["result"] = root_node.result
+                final_result["summary"] = root_node.output_summary or "Aggregation completed"
+            else:
+                final_result["error"] = "Node in AGGREGATING state but has no result"
         elif root_node.status == TaskStatus.FAILED:
             final_result["error"] = root_node.error or "Task failed"
         else:

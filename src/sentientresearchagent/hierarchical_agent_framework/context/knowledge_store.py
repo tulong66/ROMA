@@ -38,6 +38,10 @@ class TaskRecord(BaseModel):
     
     # CRITICAL FIX: Store aux_data for dependency information and other metadata
     aux_data: Dict[str, Any] = Field(default_factory=dict)
+    
+    # Additional fields for dependency resolution
+    result: Optional[Any] = None  # Store the actual result
+    planned_sub_task_ids: List[str] = Field(default_factory=list)  # For PLAN nodes
 
     class Config:
         use_enum_values = True # Keep this for serialization consistency
@@ -84,7 +88,9 @@ class KnowledgeStore(BaseModel):
                 layer=node.layer,
                 error_message=node.error,
                 sub_graph_id=node.sub_graph_id,  # CRITICAL FIX: Include sub_graph_id for PLAN nodes
-                aux_data=node.aux_data or {}  # CRITICAL FIX: Preserve aux_data including depends_on_indices
+                aux_data=node.aux_data or {},  # CRITICAL FIX: Preserve aux_data including depends_on_indices
+                result=node.result,  # Store actual result for dependency context
+                planned_sub_task_ids=node.planned_sub_task_ids or []  # For dependency resolution
             )
             self.records[record.task_id] = record
             logger.info(f"KnowledgeStore: Added/Updated record for {node.task_id}")
@@ -127,3 +133,7 @@ class KnowledgeStore(BaseModel):
             "status_breakdown": status_counts,
             "layers": list(set(record.layer for record in self.records.values() if record.layer is not None))
         }
+    
+    def get_record_by_task_id(self, task_id: str) -> Optional[TaskRecord]:
+        """Get a task record by ID (alias for get_record for v2 compatibility)."""
+        return self.get_record(task_id)

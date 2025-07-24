@@ -60,11 +60,13 @@ class ExecuteHandler(BaseNodeHandler):
         # Store input for tracing
         node.input_payload_dict = execution_context.model_dump()
         
-        # HITL review before execution
-        review_result = await self._review_execution(node, execution_context, context)
-        
-        if review_result["status"] != "approved":
-            raise ValueError(f"Execution not approved: {review_result['status']}")
+        # HITL review before execution (check config first)
+        hitl_before_execute = context.config.get("execution", {}).get("hitl_before_execute", False)
+        if hitl_before_execute:
+            review_result = await self._review_execution(node, execution_context, context)
+            
+            if review_result["status"] != "approved":
+                raise ValueError(f"Execution not approved: {review_result['status']}")
         
         # Get executor agent
         executor = await self._get_agent_for_node(node, context, "execute")
@@ -87,10 +89,14 @@ class ExecuteHandler(BaseNodeHandler):
         context: HandlerContext
     ) -> dict:
         """Review execution with HITL if enabled."""
-        return await context.hitl_service.review_execution(
-            node=node,
-            execution_context=execution_context
-        )
+        if context.hitl_service:
+            return await context.hitl_service.review_execution(
+                node=node,
+                execution_context=execution_context
+            )
+        else:
+            # No HITL service available - auto-approve
+            return {"status": "approved"}
     
     async def _process_result(
         self, 

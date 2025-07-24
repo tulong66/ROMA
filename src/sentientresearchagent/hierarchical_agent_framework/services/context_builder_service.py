@@ -12,8 +12,9 @@ from loguru import logger
 
 from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode, TaskType
 from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models import (
-    AgentTaskInput, ContextItem, ParentHierarchyContext
+    AgentTaskInput, ContextItem, ParentHierarchyContext, ParentContextNode
 )
+from .context_formatter import ContextFormatter, ContextFormat
 
 if TYPE_CHECKING:
     from sentientresearchagent.hierarchical_agent_framework.graph.task_graph import TaskGraph
@@ -34,11 +35,11 @@ class ContextType(Enum):
 class ContextConfig:
     """Configuration for context building."""
     max_context_length: int = 10000
-    include_parent_hierarchy: bool = True
+    include_parent_hierarchy: bool = False  # Disabled by default as it's redundant
     include_horizontal_dependencies: bool = True
-    include_similar_tasks: bool = True
+    include_similar_tasks: bool = False  # Disabled by default
     max_similar_tasks: int = 5
-    summarize_long_content: bool = True
+    summarize_long_content: bool = False  # Don't summarize - show full content
     target_summary_words: int = 150
 
 
@@ -128,6 +129,8 @@ class ContextBuilderService:
             
         except Exception as e:
             logger.error(f"Failed to build {context_type} context for {node.task_id}: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             # Return minimal context on error
             return self._build_minimal_context(node)
     
@@ -146,9 +149,9 @@ class ContextBuilderService:
         if self.config.include_parent_hierarchy and task_graph:
             parent_context = await self._build_parent_hierarchy(node, task_graph, knowledge_store)
         
-        # 2. Horizontal dependencies
+        # 2. Horizontal dependencies - pass task_graph for sibling access
         if self.config.include_horizontal_dependencies and knowledge_store:
-            dep_items = await self._get_dependency_context(node, knowledge_store)
+            dep_items = await self._get_dependency_context(node, knowledge_store, task_graph)
             context_items.extend(dep_items)
         
         # 3. Similar completed tasks
@@ -169,13 +172,30 @@ class ContextBuilderService:
         # Format context
         formatted_context = self._format_context(parent_context, context_items)
         
+        # Log what we're building
+        if context_items:
+            dep_count = sum(1 for item in context_items if item.content_type_description == "dependency_result")
+            other_count = len(context_items) - dep_count
+            logger.info(
+                f"Building context for {node.task_id}: "
+                f"{dep_count} dependency results, {other_count} other items"
+            )
+            # Log dependency details
+            for item in context_items:
+                if item.content_type_description == "dependency_result":
+                    logger.debug(f"  - Dependency from {item.source_task_id}: {item.source_task_goal[:50]}...")
+        else:
+            logger.info(f"Building context for {node.task_id}: No context items")
+        
+        logger.debug(f"Formatted context length: {len(formatted_context)}")
+        
         # Build final input
         return AgentTaskInput(
             current_task_id=node.task_id,
             current_goal=node.goal,
             current_task_type=str(node.task_type),
             parent_hierarchy_context=parent_context,
-            relevant_context_items=context_items if context_items else None,
+            relevant_context_items=context_items if context_items else [],
             formatted_full_context=formatted_context,
             overall_project_goal=task_graph.overall_project_goal if task_graph else None
         )
@@ -228,6 +248,7 @@ class ContextBuilderService:
             # Sort by relevance and recency
             context.relevant_context_items.sort(
                 key=lambda x: (
+                    x.content_type_description == "dependency_result",  # Prioritize dependency results
                     x.content_type_description == "prerequisite",
                     x.source_task_id.startswith("recent_")
                 ),
@@ -258,9 +279,9 @@ class ContextBuilderService:
         if task_graph:
             parent_context = await self._build_parent_hierarchy(node, task_graph, knowledge_store)
         
-        # Horizontal dependencies
+        # Horizontal dependencies - pass task_graph for sibling access
         if knowledge_store:
-            dep_items = await self._get_dependency_context(node, knowledge_store)
+            dep_items = await self._get_dependency_context(node, knowledge_store, task_graph)
             context_items.extend(dep_items)
         
         # Format context
@@ -271,7 +292,7 @@ class ContextBuilderService:
             current_goal=node.goal,
             current_task_type="AGGREGATE",
             parent_hierarchy_context=parent_context,
-            relevant_context_items=context_items if context_items else None,
+            relevant_context_items=context_items if context_items else [],
             formatted_full_context=formatted_context,
             overall_project_goal=task_graph.overall_project_goal if task_graph else None
         )
@@ -295,16 +316,16 @@ class ContextBuilderService:
                     formatted_context=f"Parent task: {parent.goal}"
                 )
         
-        formatted_context = f"Task: {node.goal}\nLayer: {node.layer}"
+        formatted_context = ""
         if parent_context:
-            formatted_context = f"{parent_context.formatted_context}\n{formatted_context}"
+            formatted_context = parent_context.formatted_context
         
         return AgentTaskInput(
             current_task_id=node.task_id,
             current_goal=node.goal,
             current_task_type=str(node.task_type),
             parent_hierarchy_context=parent_context,
-            relevant_context_items=None,
+            relevant_context_items=[],
             formatted_full_context=formatted_context,
             overall_project_goal=task_graph.overall_project_goal if task_graph else None
         )
@@ -382,21 +403,126 @@ class ContextBuilderService:
         hierarchy_parts.reverse()
         formatted = "\n".join(hierarchy_parts)
         
+        # Build parent chain
+        parent_chain = []
+        for i, part in enumerate(hierarchy_parts):
+            # Extract layer and goal from formatted string
+            if part.startswith("L"):
+                layer_str, goal = part.split(": ", 1)
+                layer = int(layer_str[1:])
+                parent_chain.append(ParentContextNode(
+                    task_id=f"parent_{i}",  # We don't have the actual IDs here
+                    goal=goal,
+                    layer=layer,
+                    task_type="UNKNOWN"  # We don't have this info here
+                ))
+        
+        # Determine current position
+        current_position = f"Layer {node.layer} task under: {parent.goal}"
+        
         return ParentHierarchyContext(
-            parent_goal=parent.goal,
-            parent_task_type=str(parent.task_type),
-            formatted_context=formatted
+            current_position=current_position,
+            parent_chain=parent_chain,
+            formatted_context=formatted,
+            priority_level="medium"  # Could be determined by logic
         )
     
     async def _get_dependency_context(
         self,
         node: TaskNode,
-        knowledge_store: "KnowledgeStore"
+        knowledge_store: "KnowledgeStore",
+        task_graph: Optional["TaskGraph"] = None
     ) -> List[ContextItem]:
         """Get context from dependencies."""
-        # In real implementation, would query knowledge store
-        # for completed prerequisite tasks
-        return []
+        logger.info(f"Getting dependency context for node {node.task_id}")
+        logger.info(f"Node aux_data: {node.aux_data}")
+        logger.info(f"Task graph provided: {task_graph is not None}")
+        
+        context_items = []
+        dependency_ids = set()
+        
+        # Method 1: Get dependencies from aux_data
+        depends_on_indices = node.aux_data.get('depends_on_indices', [])
+        logger.info(f"Node {node.task_id} has depends_on_indices: {depends_on_indices}")
+        if depends_on_indices and node.parent_node_id:
+            # First try to get from task_graph (more reliable for newly created nodes)
+            if task_graph:
+                parent_node = task_graph.get_node(node.parent_node_id)
+                if parent_node and parent_node.planned_sub_task_ids:
+                    logger.info(f"Parent node {parent_node.task_id} has planned_sub_task_ids: {parent_node.planned_sub_task_ids}")
+                    for dep_idx in depends_on_indices:
+                        if 0 <= dep_idx < len(parent_node.planned_sub_task_ids):
+                            dep_task_id = parent_node.planned_sub_task_ids[dep_idx]
+                            dependency_ids.add(dep_task_id)
+                            logger.info(f"Resolved dependency index {dep_idx} to task_id {dep_task_id}")
+            else:
+                # Fallback to knowledge store
+                parent_record = knowledge_store.get_record_by_task_id(node.parent_node_id)
+                if parent_record and hasattr(parent_record, 'planned_sub_task_ids'):
+                    for dep_idx in depends_on_indices:
+                        if 0 <= dep_idx < len(parent_record.planned_sub_task_ids):
+                            dep_task_id = parent_record.planned_sub_task_ids[dep_idx]
+                            dependency_ids.add(dep_task_id)
+        
+        # Method 2: Check for explicit dependency IDs in aux_data
+        if 'dependency_ids' in node.aux_data:
+            dependency_ids.update(node.aux_data['dependency_ids'])
+        
+        # Method 3: Look for sibling nodes that this task might depend on
+        # This is a heuristic - if the node goal mentions results from other tasks
+        if node.parent_node_id:
+            parent_record = knowledge_store.get_record_by_task_id(node.parent_node_id)
+            if parent_record and hasattr(parent_record, 'planned_sub_task_ids'):
+                # Check all sibling tasks that completed before this one
+                for sibling_id in parent_record.planned_sub_task_ids:
+                    if sibling_id != node.task_id:
+                        sibling_record = knowledge_store.get_record_by_task_id(sibling_id)
+                        if sibling_record and sibling_record.status == "DONE":
+                            # Check if this node's goal references the sibling
+                            if any(keyword in node.goal.lower() for keyword in ['based on', 'using', 'from', 'analyze the', 'synthesize']):
+                                dependency_ids.add(sibling_id)
+        
+        # Now retrieve context for all identified dependencies
+        logger.info(f"Node {node.task_id} has {len(dependency_ids)} dependencies: {dependency_ids}")
+        
+        for dep_task_id in dependency_ids:
+            dep_record = knowledge_store.get_record_by_task_id(dep_task_id)
+            logger.info(f"Checking dependency {dep_task_id}: found={dep_record is not None}, status={getattr(dep_record, 'status', 'NO_STATUS') if dep_record else None}, has output_content={hasattr(dep_record, 'output_content') if dep_record else False}")
+            
+            if dep_record and dep_record.status == "DONE":
+                # Get the actual result - check different possible fields
+                result_content = None
+                if hasattr(dep_record, 'result') and dep_record.result:
+                    result_content = dep_record.result
+                elif hasattr(dep_record, 'output_content') and dep_record.output_content:
+                    result_content = dep_record.output_content
+                elif hasattr(dep_record, 'output_summary') and dep_record.output_summary:
+                    result_content = dep_record.output_summary
+                elif hasattr(dep_record, 'aux_data') and dep_record.aux_data.get('full_result'):
+                    result_content = dep_record.aux_data['full_result']
+                
+                if result_content:
+                    # Create context item from dependency result
+                    context_item = ContextItem(
+                        content=result_content,
+                        source_task_id=dep_task_id,
+                        source_task_goal=dep_record.goal,
+                        content_type_description="dependency_result",
+                        relevance_score=1.0  # Dependencies are highly relevant
+                    )
+                    context_items.append(context_item)
+                    logger.info(f"Added dependency context from {dep_task_id} for node {node.task_id}")
+                else:
+                    logger.warning(f"Dependency {dep_task_id} is DONE but has no result content")
+        
+        if not context_items and dependency_ids:
+            logger.warning(f"Node {node.task_id} has dependencies {dependency_ids} but no context items were created")
+        elif not context_items and depends_on_indices:
+            logger.warning(f"Node {node.task_id} has depends_on_indices {depends_on_indices} but no dependencies were resolved")
+        elif not context_items:
+            logger.info(f"Node {node.task_id} has no dependencies to include in context")
+        
+        return context_items
     
     async def _get_similar_task_context(
         self,
@@ -423,45 +549,24 @@ class ContextBuilderService:
         parent_context: Optional[ParentHierarchyContext],
         context_items: List[ContextItem]
     ) -> str:
-        """Format context into a string."""
-        parts = []
-        
-        if parent_context:
-            parts.append("=== PARENT HIERARCHY ===")
-            parts.append(parent_context.formatted_context)
-            parts.append("")
-        
-        if context_items:
-            parts.append("=== RELEVANT CONTEXT ===")
-            for item in context_items:
-                parts.append(f"\nSource: {item.source_task_goal}")
-                parts.append(f"Type: {item.content_type_description}")
-                
-                # Summarize long content if needed
-                content = str(item.content)
-                if self.config.summarize_long_content and len(content) > 500:
-                    content = content[:500] + "..."
-                
-                parts.append(f"Content: {content}")
-                parts.append("---")
-        
-        formatted = "\n".join(parts)
-        
-        # Enforce max length
-        if len(formatted) > self.config.max_context_length:
-            formatted = formatted[:self.config.max_context_length] + "\n... [truncated]"
-        
-        return formatted
+        """Format context into a string using unified formatter."""
+        # Use unified formatter for consistent presentation
+        return ContextFormatter.format_context(
+            context_items=context_items,
+            format_type=ContextFormat.EXECUTION
+        )
+    
     
     def _build_minimal_context(self, node: TaskNode) -> AgentTaskInput:
         """Build minimal context as fallback."""
+        logger.warning(f"Using minimal context fallback for node {node.task_id}")
         return AgentTaskInput(
             current_task_id=node.task_id,
             current_goal=node.goal,
             current_task_type=str(node.task_type),
             parent_hierarchy_context=None,
-            relevant_context_items=None,
-            formatted_full_context=f"Task: {node.goal}",
+            relevant_context_items=[],
+            formatted_full_context="",  # Empty to avoid duplication
             overall_project_goal=None
         )
     

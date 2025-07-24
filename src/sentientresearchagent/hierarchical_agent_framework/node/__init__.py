@@ -13,7 +13,7 @@ from .hitl_coordinator import HITLCoordinator
 from .inode_handler import INodeHandler # Interface for node handlers
 
 # Imported from other HAF packages to be part of this package's convenient API
-from ..types import TaskStatus, TaskType, NodeType
+from sentientresearchagent.hierarchical_agent_framework.types import TaskStatus, TaskType, NodeType
 from ..context.agent_io_models import ReplanRequestDetails # Used by TaskNode
 
 # Node handlers themselves (from node_handlers.py) are often not directly exported

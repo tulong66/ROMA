@@ -11,6 +11,7 @@ from loguru import logger
 from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode, TaskStatus
 from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models import ContextItem
 from .base_handler import BaseNodeHandler, HandlerContext
+from sentientresearchagent.hierarchical_agent_framework.services.context_formatter import ContextFormatter, ContextFormat
 
 
 class AggregateHandler(BaseNodeHandler):
@@ -93,9 +94,12 @@ class AggregateHandler(BaseNodeHandler):
             return child_results
         
         # Get child nodes from task graph
-        # In real implementation, this would come from context.task_graph
-        # For now, we'll simulate
-        child_nodes = []  # Would be: context.task_graph.get_nodes_in_graph(node.sub_graph_id)
+        child_nodes = []
+        if context.task_graph:
+            child_nodes = context.task_graph.get_nodes_in_graph(node.sub_graph_id)
+        else:
+            logger.error(f"No task graph available in context for aggregation of {node.task_id}")
+            return child_results
         
         # Filter completed children
         completed_children = [
@@ -103,9 +107,11 @@ class AggregateHandler(BaseNodeHandler):
             if child.status in [TaskStatus.DONE, TaskStatus.FAILED]
         ]
         
-        # Filter redundant results (in real implementation)
-        # This would use DependencyChainTracker
-        non_redundant_children = completed_children  # Simplified
+        # Filter redundant results using smart dependency analysis
+        non_redundant_children = await self._filter_redundant_children(
+            completed_children, 
+            context
+        )
         
         logger.info(f"Collecting results from {len(non_redundant_children)} children "
                    f"(filtered from {len(completed_children)} completed)")
@@ -132,6 +138,85 @@ class AggregateHandler(BaseNodeHandler):
         
         return child_results
     
+    async def _filter_redundant_children(
+        self,
+        children: List[TaskNode],
+        context: HandlerContext
+    ) -> List[TaskNode]:
+        """
+        Filter out redundant children based on dependency analysis.
+        
+        If a child depends on all other children (directly or transitively),
+        we only need to include that child since it has already processed
+        all the information from its dependencies.
+        
+        Args:
+            children: List of completed child nodes
+            context: Handler context
+            
+        Returns:
+            Filtered list of non-redundant children
+        """
+        if len(children) <= 1:
+            return children
+        
+        # Build dependency map
+        dependency_map = {}
+        for child in children:
+            deps = set()
+            
+            # Get direct dependencies from aux_data
+            depends_on_indices = child.aux_data.get('depends_on_indices', [])
+            if depends_on_indices and child.parent_node_id:
+                # Map indices to actual task IDs
+                parent_node = None
+                if context.task_graph:
+                    parent_node = context.task_graph.get_node(child.parent_node_id)
+                
+                if parent_node and parent_node.planned_sub_task_ids:
+                    for dep_idx in depends_on_indices:
+                        if 0 <= dep_idx < len(parent_node.planned_sub_task_ids):
+                            dep_id = parent_node.planned_sub_task_ids[dep_idx]
+                            deps.add(dep_id)
+            
+            dependency_map[child.task_id] = deps
+        
+        # Compute transitive dependencies
+        def get_transitive_deps(task_id: str, visited: set = None) -> set:
+            if visited is None:
+                visited = set()
+            if task_id in visited:
+                return set()
+            visited.add(task_id)
+            
+            direct_deps = dependency_map.get(task_id, set())
+            all_deps = direct_deps.copy()
+            
+            for dep_id in direct_deps:
+                all_deps.update(get_transitive_deps(dep_id, visited))
+            
+            return all_deps
+        
+        # Check if any child depends on all others
+        result_children = []
+        child_ids = {child.task_id for child in children}
+        
+        for child in children:
+            transitive_deps = get_transitive_deps(child.task_id)
+            other_children = child_ids - {child.task_id}
+            
+            # If this child depends on all other children, it's comprehensive
+            if other_children.issubset(transitive_deps):
+                logger.info(
+                    f"Node {child.task_id} depends on all other siblings - "
+                    f"using only this node for aggregation"
+                )
+                return [child]  # Only include this comprehensive child
+        
+        # No comprehensive child found - include all
+        logger.info(f"No comprehensive child found - including all {len(children)} children")
+        return children
+    
     async def _process_child_content(
         self, 
         content: Any, 
@@ -147,30 +232,13 @@ class AggregateHandler(BaseNodeHandler):
             task_type: Child's task type
             
         Returns:
-            Processed content string
+            Processed content string - NO TRUNCATION
         """
         if content is None:
             return f"No output for: {goal}"
         
-        # Convert to string representation
-        if isinstance(content, str):
-            text = content
-        elif hasattr(content, 'model_dump'):
-            text = str(content.model_dump())
-        else:
-            text = str(content)
-        
-        # Apply smart sizing based on task type
-        max_length = {
-            "SEARCH": 2000,
-            "THINK": 1500,
-            "WRITE": 3000
-        }.get(task_type, 1000)
-        
-        if len(text) > max_length:
-            return text[:max_length] + "..."
-        
-        return text
+        # Use unified formatter to extract content - NO TRUNCATION
+        return ContextFormatter._extract_output(content)
     
     async def _build_aggregation_context(
         self,
@@ -206,40 +274,21 @@ class AggregateHandler(BaseNodeHandler):
                 # Just child results
                 base_context.relevant_context_items = child_results
             
-            # Update formatted context
-            formatted_parts = []
+            # Update formatted context using unified formatter
+            all_items = base_context.relevant_context_items or []
             
-            # Parent hierarchy first
-            if base_context.parent_hierarchy_context:
-                formatted_parts.append(base_context.parent_hierarchy_context.formatted_context)
-            
-            # Horizontal dependencies
-            horizontal_items = [
-                item for item in base_context.relevant_context_items 
-                if item not in child_results
-            ]
-            if horizontal_items:
-                formatted_parts.append("\n=== PREREQUISITE CONTEXT ===")
-                for item in horizontal_items:
-                    formatted_parts.extend([
-                        f"\nSource: {item.source_task_goal}",
-                        f"Type: {item.content_type_description}",
-                        f"Content: {str(item.content)}",
-                        "---"
-                    ])
-            
-            # Child results
+            # Collect status information for child results
+            statuses = {}
             if child_results:
-                formatted_parts.append("\n=== CHILD RESULTS ===")
-                for item in child_results:
-                    formatted_parts.extend([
-                        f"\nSource: {item.source_task_goal}",
-                        f"Type: {item.content_type_description}",
-                        f"Content: {str(item.content)}",
-                        "---"
-                    ])
+                for child in child_results:
+                    statuses[child.source_task_id] = 'DONE'  # We only include completed children
             
-            base_context.formatted_full_context = "\n".join(formatted_parts)
+            # Use unified formatter
+            base_context.formatted_full_context = ContextFormatter.format_context(
+                context_items=all_items,
+                format_type=ContextFormat.AGGREGATION,
+                additional_info={'statuses': statuses}
+            )
         
         return base_context
     

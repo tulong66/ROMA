@@ -58,20 +58,21 @@ class ReadyNodeHandler(BaseNodeHandler):
             reason="Starting node processing"
         )
         
-        # Check max planning depth
-        max_planning_layer = context.config.get("max_planning_layer", 5)
+        # Check max recursion depth
+        max_recursion_depth = context.config.get("execution", {}).get("max_recursion_depth", 5)
         
-        if node.layer >= max_planning_layer:
+        # If node is at max recursion depth, force execution (skip atomizer)
+        if node.layer >= max_recursion_depth:
             logger.info(
-                f"Node {node.task_id} at layer {node.layer} exceeds "
-                f"max planning layer {max_planning_layer} - forcing execution"
+                f"Node {node.task_id} at layer {node.layer} reached "
+                f"max recursion depth {max_recursion_depth} - forcing execution (skipping atomizer)"
             )
             node.node_type = NodeType.EXECUTE
             return await self._dispatch_to_execute(node, context)
         
         # Check if this is a root node that should be forced to plan
         is_root_node = self._is_root_node(node)
-        force_root_planning = context.config.get("force_root_node_planning", True)
+        force_root_planning = context.config.get("execution", {}).get("force_root_node_planning", True)
         
         if is_root_node and force_root_planning:
             logger.info(

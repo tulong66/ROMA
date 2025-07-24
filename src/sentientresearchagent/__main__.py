@@ -5,9 +5,7 @@ Usage:
     python -m sentientresearchagent
 """
 
-from .server import create_server
+from .server.main import main
 
 if __name__ == '__main__':
-    print("🚀 Starting Sentient Research Agent Server...")
-    server = create_server()
-    server.run() 
+    main() 

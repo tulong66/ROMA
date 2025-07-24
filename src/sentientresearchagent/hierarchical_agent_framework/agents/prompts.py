@@ -2,6 +2,7 @@
 # The detailed instructions for the agent should be in the agno.Agent's system_message.
 
 INPUT_PROMPT = """Current Task Goal: {input_goal}
+
 Context:
 {context_str}"""
 

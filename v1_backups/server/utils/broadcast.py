@@ -75,7 +75,6 @@ class BroadcastManager:
                     'current_project': None,
                     'timestamp': datetime.now().isoformat()
                 }
-                node_count = 0  # Set node_count for empty state
                 logger.debug("📡 Broadcasting empty state (no current project)")
             
             # CRITICAL FIX: Emit with project context

@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from sentientresearchagent.hierarchical_agent_framework.services.context_builder import ContextBuilderService
     from sentientresearchagent.hierarchical_agent_framework.services.hitl_service import HITLService
     from sentientresearchagent.hierarchical_agent_framework.tracing.manager import TraceManager
+    from sentientresearchagent.hierarchical_agent_framework.graph.task_graph import TaskGraph
 
 
 @dataclass
@@ -36,6 +37,7 @@ class HandlerContext:
     hitl_service: "HITLService"
     trace_manager: "TraceManager"
     config: Dict[str, Any]
+    task_graph: Optional["TaskGraph"] = None
     update_callback: Optional[callable] = None
 
 
@@ -314,7 +316,7 @@ class BaseNodeHandler(ABC):
             node=node,
             context_type=context_type,
             knowledge_store=context.knowledge_store,
-            task_graph=None  # Would be passed if needed
+            task_graph=context.task_graph  # Now properly passed
         )
     
     async def _handle_agent_result(
@@ -348,7 +350,7 @@ class BaseNodeHandler(ABC):
                 node.output_summary = f"Search completed: {result.output_text_with_citations[:100]}..."
             elif isinstance(result, str):
                 # Text result
-                node.output_summary = result[:200] + "..." if len(result) > 200 else result
+                node.output_summary = result  # No truncation
             else:
                 # Generic result
                 node.output_summary = f"Completed with {type(result).__name__}"

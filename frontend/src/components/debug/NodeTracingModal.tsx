@@ -233,7 +233,7 @@ const NodeTracingModal: React.FC<NodeTracingModalProps> = ({
                           ({message.content?.length?.toLocaleString() || 0} characters)
                         </span>
                       </div>
-                      <ScrollArea className="max-h-64 w-full">
+                      <ScrollArea className="h-64 w-full">
                         <pre className="text-xs whitespace-pre-wrap">{message.content}</pre>
                       </ScrollArea>
                     </div>
@@ -246,7 +246,7 @@ const NodeTracingModal: React.FC<NodeTracingModalProps> = ({
                 {stage.system_prompt ? (
                   <div>
                     <h4 className="font-medium mb-2">System Prompt:</h4>
-                    <ScrollArea className="max-h-48 w-full rounded border p-3 bg-muted/50">
+                    <ScrollArea className="h-48 w-full rounded border p-3 bg-muted/50">
                       <pre className="text-xs whitespace-pre-wrap">{stage.system_prompt}</pre>
                     </ScrollArea>
                   </div>
@@ -259,7 +259,7 @@ const NodeTracingModal: React.FC<NodeTracingModalProps> = ({
                 {stage.user_input ? (
                   <div>
                     <h4 className="font-medium mb-2">User Input:</h4>
-                    <ScrollArea className="max-h-48 w-full rounded border p-3 bg-muted/50">
+                    <ScrollArea className="h-48 w-full rounded border p-3 bg-muted/50">
                       <pre className="text-xs whitespace-pre-wrap">{stage.user_input}</pre>
                     </ScrollArea>
                   </div>
@@ -313,7 +313,7 @@ const NodeTracingModal: React.FC<NodeTracingModalProps> = ({
                   </div>
                 </div>
                 <div className="border rounded bg-muted/50">
-                  <ScrollArea className="max-h-[60vh] w-full p-3">
+                  <ScrollArea className="h-[50vh] w-full p-3">
                     <pre className="text-xs whitespace-pre-wrap font-mono leading-relaxed">
                       {stage.llm_response}
                     </pre>
@@ -367,7 +367,7 @@ const NodeTracingModal: React.FC<NodeTracingModalProps> = ({
                   </div>
                 </div>
                 <div className="border rounded bg-muted/50">
-                  <ScrollArea className="max-h-[60vh] w-full p-3">
+                  <ScrollArea className="h-[50vh] w-full p-3">
                     <pre className="text-xs whitespace-pre-wrap font-mono leading-relaxed">
                       {typeof stage.output_data === 'string' ? stage.output_data : JSON.stringify(stage.output_data, null, 2)}
                     </pre>
@@ -393,7 +393,7 @@ const NodeTracingModal: React.FC<NodeTracingModalProps> = ({
           <TabsContent value="context" className="mt-4">
             <div>
               <h4 className="font-medium mb-2">Input Context:</h4>
-              <ScrollArea className="max-h-[60vh] w-full rounded border p-3 bg-muted/50">
+              <ScrollArea className="h-[50vh] w-full rounded border p-3 bg-muted/50">
                 <pre className="text-xs whitespace-pre-wrap font-mono">
                   {stage.input_context ? JSON.stringify(stage.input_context, null, 2) : 'No context data available'}
                 </pre>
@@ -446,7 +446,7 @@ const NodeTracingModal: React.FC<NodeTracingModalProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-6xl max-h-[95vh] overflow-hidden">
+      <DialogContent className="max-w-6xl max-h-[95vh] flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Eye className="w-5 h-5" />
@@ -457,7 +457,7 @@ const NodeTracingModal: React.FC<NodeTracingModalProps> = ({
           </p>
         </DialogHeader>
         
-        <div className="flex-1 overflow-hidden min-h-[70vh]">
+        <div className="flex-1 overflow-auto min-h-[70vh] max-h-[80vh]">
           {loading && (
             <div className="flex items-center justify-center h-32">
               <div className="text-center">
@@ -482,9 +482,9 @@ const NodeTracingModal: React.FC<NodeTracingModalProps> = ({
           {trace && !loading && (
             <div className="flex h-full gap-4">
               {/* Stages List */}
-              <div className="w-1/3 border-r pr-4">
+              <div className="w-1/3 border-r pr-4 flex flex-col">
                 <h3 className="font-medium mb-3">Processing Stages</h3>
-                <ScrollArea className="h-full">
+                <ScrollArea className="flex-1 min-h-0">
                   <div className="space-y-2">
                     {getDeduplicatedStages(trace.stages).map((stage, index) => (
                       <Card 
@@ -518,9 +518,9 @@ const NodeTracingModal: React.FC<NodeTracingModalProps> = ({
               </div>
               
               {/* Stage Details */}
-              <div className="flex-1">
+              <div className="flex-1 flex flex-col overflow-hidden">
                 {selectedStage ? (
-                  <ScrollArea className="h-full">
+                  <ScrollArea className="flex-1 min-h-0">
                     {renderStageDetails(selectedStage)}
                   </ScrollArea>
                 ) : (

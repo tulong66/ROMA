@@ -4,7 +4,7 @@ from loguru import logger
 
 from sentientresearchagent.hierarchical_agent_framework.node.hitl_coordinator import HITLCoordinator
 from sentientresearchagent.hierarchical_agent_framework.node.inode_handler import INodeHandler
-from sentientresearchagent.hierarchical_agent_framework.node.node_handlers import AggregatingNodeHandler, NeedsReplanNodeHandler, ReadyExecuteHandler, ReadyNodeHandler, ReadyPlanHandler
+from sentientresearchagent.hierarchical_agent_framework.node_handlers import AggregateHandler as AggregatingNodeHandler, ReplanHandler as NeedsReplanNodeHandler, ReadyNodeHandler, HandlerContext
 from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode, TaskStatus, NodeType, TaskType
 from sentientresearchagent.hierarchical_agent_framework.context.knowledge_store import KnowledgeStore
 from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models import (
@@ -110,6 +110,7 @@ class NodeProcessor:
         self.node_atomizer = NodeAtomizer(self.hitl_coordinator)
 
         # Create the context object that handlers will use
+        # Create old-style ProcessorContext for compatibility
         self.processor_context = ProcessorContext(
             task_graph=self.task_graph,
             knowledge_store=self.knowledge_store,
@@ -123,13 +124,38 @@ class NodeProcessor:
             update_callback=self.update_callback
         )
 
-        # Instantiate handlers
-        _ready_plan_handler = ReadyPlanHandler()
-        _ready_execute_handler = ReadyExecuteHandler()
-
-        # Setup strategy mapping for handlers
-        self.handler_strategies: Dict[TaskStatus, INodeHandler] = {
-            TaskStatus.READY: ReadyNodeHandler(_ready_plan_handler, _ready_execute_handler),
+        # Create HandlerContext for v2 handlers
+        from sentientresearchagent.hierarchical_agent_framework.services import AgentSelector, ContextBuilderService
+        from sentientresearchagent.hierarchical_agent_framework.orchestration.state_transition_manager import StateTransitionManager
+        
+        # Create state transition manager if not available
+        state_manager = StateTransitionManager(self.task_graph, knowledge_store)
+        
+        # Create services needed by v2 handlers
+        agent_selector = AgentSelector(blueprint=active_blueprint)
+        context_builder = ContextBuilderService()
+        
+        # For now, we'll keep hitl_service as None since v2 architecture 
+        # doesn't provide a clean way to pass it. This is a limitation that
+        # needs to be addressed in the architecture
+        hitl_service = None
+        
+        self.handler_context = HandlerContext(
+            knowledge_store=knowledge_store,
+            agent_registry=agent_registry,
+            state_manager=state_manager,
+            agent_selector=agent_selector,
+            context_builder=context_builder,
+            hitl_service=hitl_service,
+            trace_manager=trace_manager,
+            config=config.to_dict() if hasattr(config, 'to_dict') else config,
+            task_graph=task_graph,
+            update_callback=update_callback
+        )
+        
+        # Setup strategy mapping for handlers (v2 handlers)
+        self.handler_strategies: Dict[TaskStatus, Any] = {
+            TaskStatus.READY: ReadyNodeHandler(),
             TaskStatus.AGGREGATING: AggregatingNodeHandler(),
             TaskStatus.NEEDS_REPLAN: NeedsReplanNodeHandler()
         }
@@ -154,7 +180,15 @@ class NodeProcessor:
 
         if handler:
             try:
-                await handler.handle(node, self.processor_context)
+                # Update HandlerContext with current state
+                self.handler_context.knowledge_store = knowledge_store
+                self.handler_context.task_graph = task_graph
+                # Note: HITLCoordinator is not the same as HITLService
+                # For now, we'll leave hitl_service as None since v2 handlers
+                # expect a different interface
+                
+                # Call v2 handler with HandlerContext
+                await handler.handle(node, self.handler_context)
             except Exception as e:
                 logger.exception(f"Node {node.task_id}: Unhandled exception in {handler.__class__.__name__}: {e}")
                 if node.status not in [TaskStatus.FAILED, TaskStatus.CANCELLED]:
@@ -162,6 +196,23 @@ class NodeProcessor:
         else:
             logger.warning(f"Node {node.task_id}: No specific handler for status {node.status.name}. Node will not be processed further in this cycle unless status changes.")
 
+        # Handle sub-node creation for PLAN_DONE nodes (v2 handlers can't access task_graph)
+        if node.status == TaskStatus.PLAN_DONE and node.result and hasattr(node.result, 'sub_tasks'):
+            logger.info(f"Node {node.task_id} completed planning - creating sub-nodes")
+            plan_output = node.result
+            if plan_output.sub_tasks:
+                # Use the sub_node_creator from processor context
+                created_nodes = self.sub_node_creator.create_sub_nodes(node, plan_output)
+                logger.info(f"Created {len(created_nodes)} sub-nodes for {node.task_id}")
+                
+                # Transition sub-nodes with no dependencies to READY
+                for sub_node in created_nodes:
+                    depends_on = sub_node.aux_data.get('depends_on_indices', [])
+                    if not depends_on:  # No dependencies
+                        sub_node.update_status(TaskStatus.READY, validate_transition=True)
+                        self.knowledge_store.add_or_update_record_from_node(sub_node)
+                        logger.info(f"Transitioned sub-node {sub_node.task_id} to READY (no dependencies)")
+        
         if node.status != original_status or node.result is not None or node.error is not None:
              logger.info(f"Node {node.task_id} status changed from {original_status} to {node.status} or has new results/errors. Updating knowledge store.")
         

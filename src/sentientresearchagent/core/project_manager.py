@@ -304,14 +304,16 @@ class ProjectExecutionContext:
             update_callback=self.update_callback
         )
         
-        # Create execution engine
+        # Create execution engine (v2 signature)
         self.execution_engine = ExecutionEngine(
             task_graph=self.task_graph,
             state_manager=self.state_manager,
             knowledge_store=self.knowledge_store,
-            hitl_coordinator=self.hitl_coordinator,
+            node_processor=self.node_processor,
+            agent_registry=self.node_processor.agent_registry,  # Get from node_processor
             config=self.config,
-            node_processor=self.node_processor
+            checkpoint_manager=None,  # Optional
+            websocket_handler=None   # Will be set later if needed
         )
     
     def get_components(self) -> Dict[str, Any]:

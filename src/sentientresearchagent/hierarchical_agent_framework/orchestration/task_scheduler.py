@@ -61,9 +61,9 @@ class TaskScheduler:
         """
         ready_nodes = []
         
-        # Get all nodes in READY status
+        # Get all nodes in READY or AGGREGATING status
         all_nodes = self.task_graph.get_all_nodes()
-        potential_ready = [node for node in all_nodes if node.status == TaskStatus.READY]
+        potential_ready = [node for node in all_nodes if node.status in [TaskStatus.READY, TaskStatus.AGGREGATING]]
         
         # Check each potential node
         for node in potential_ready:
@@ -130,14 +130,16 @@ class TaskScheduler:
         for node in all_nodes:
             if node.status == TaskStatus.PENDING:
                 if await self._can_transition_to_ready(node):
-                    # Update through state manager for consistency
+                    # Transition the node to READY
                     old_status = node.status
-                    await self.state_manager.update_ready_statuses()
+                    node.update_status(TaskStatus.READY, validate_transition=True)
                     
-                    # Check if transition happened
-                    if node.status == TaskStatus.READY:
-                        transitioned += 1
-                        logger.info(f"Node {node.task_id} transitioned from PENDING to READY")
+                    # Update in knowledge store if we have one
+                    # Note: TaskScheduler doesn't have direct access to knowledge store
+                    # This should be handled by the caller
+                    
+                    transitioned += 1
+                    logger.info(f"Node {node.task_id} transitioned from PENDING to READY")
         
         if transitioned > 0:
             logger.info(f"TaskScheduler: {transitioned} nodes transitioned to READY")
@@ -154,9 +156,13 @@ class TaskScheduler:
         Returns:
             True if node can be executed now
         """
-        # Node must be in READY status
-        if node.status != TaskStatus.READY:
+        # Node must be in READY or AGGREGATING status
+        if node.status not in [TaskStatus.READY, TaskStatus.AGGREGATING]:
             return False
+        
+        # AGGREGATING nodes are always executable (they've already checked children)
+        if node.status == TaskStatus.AGGREGATING:
+            return True
         
         # Check parent readiness
         if not await self._is_parent_ready(node):
@@ -206,6 +212,10 @@ class TaskScheduler:
         # Get node dependencies
         dependencies = await self._get_node_dependencies(node)
         
+        # Log dependencies for debugging
+        if dependencies:
+            logger.debug(f"Node {node.task_id} has dependencies: {dependencies}")
+        
         # Check each dependency
         for dep_id in dependencies:
             dep_node = self.task_graph.get_node(dep_id)
@@ -215,7 +225,12 @@ class TaskScheduler:
             
             # Dependency must be in terminal success state
             if dep_node.status != TaskStatus.DONE:
+                logger.debug(f"Node {node.task_id} waiting for dependency {dep_id} (status: {dep_node.status})")
                 return False
+        
+        # All dependencies satisfied
+        if dependencies:
+            logger.info(f"All dependencies satisfied for node {node.task_id}")
         
         return True
     
@@ -235,7 +250,19 @@ class TaskScheduler:
         
         dependencies = set()
         
-        # Find the graph containing this node
+        # Method 1: Check aux_data for depends_on_indices (more reliable for newly created nodes)
+        depends_on_indices = node.aux_data.get('depends_on_indices', [])
+        if depends_on_indices and node.parent_node_id:
+            # Get sibling nodes to resolve indices to IDs
+            parent = self.task_graph.get_node(node.parent_node_id)
+            if parent and parent.planned_sub_task_ids:
+                for dep_idx in depends_on_indices:
+                    if 0 <= dep_idx < len(parent.planned_sub_task_ids):
+                        dep_id = parent.planned_sub_task_ids[dep_idx]
+                        dependencies.add(dep_id)
+                        logger.debug(f"Found dependency {dep_id} for node {node.task_id} from aux_data")
+        
+        # Method 2: Find the graph containing this node and check graph edges
         container_graph_id = None
         for graph_id, graph in self.task_graph.graphs.items():
             if node.task_id in graph.nodes:
@@ -248,7 +275,9 @@ class TaskScheduler:
                 container_graph_id, 
                 node.task_id
             )
-            dependencies.update(pred.task_id for pred in predecessors)
+            for pred in predecessors:
+                dependencies.add(pred.task_id)
+                logger.debug(f"Found dependency {pred.task_id} for node {node.task_id} from graph")
         
         # Cache the result
         self._dependency_cache[node.task_id] = dependencies

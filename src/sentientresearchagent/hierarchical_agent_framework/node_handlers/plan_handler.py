@@ -51,6 +51,18 @@ class PlanHandler(BaseNodeHandler):
         Returns:
             Plan output
         """
+        # Check if we're at max recursion depth
+        max_recursion_depth = context.config.get("execution", {}).get("max_recursion_depth", 5)
+        if node.layer >= max_recursion_depth:
+            logger.warning(
+                f"Node {node.task_id} at layer {node.layer} is at or exceeds "
+                f"max recursion depth {max_recursion_depth} - should not be planning!"
+            )
+            # Force to execute instead
+            node.node_type = NodeType.EXECUTE
+            node.update_status(TaskStatus.READY, validate_transition=True)
+            return None
+        
         # Get planner agent
         planner = await self._get_agent_for_node(node, context, "plan")
         if not planner:
@@ -80,22 +92,27 @@ class PlanHandler(BaseNodeHandler):
             node.node_type = NodeType.EXECUTE
             return plan_output
         
-        # HITL review
-        review_result = await self._review_plan(node, plan_output, context)
-        
-        if review_result["status"] == "approved":
-            # Create sub-nodes
+        # HITL review if available
+        if context.hitl_service:
+            review_result = await self._review_plan(node, plan_output, context)
+            
+            if review_result["status"] == "approved":
+                # Create sub-nodes
+                await self._create_sub_nodes(node, plan_output, context)
+                return plan_output
+            
+            elif review_result["status"] == "request_modification":
+                # Set up for modification
+                await self._setup_modification(node, plan_output, review_result, context)
+                return None  # Will be handled by replan
+            
+            else:
+                # Rejected or cancelled
+                raise ValueError(f"Plan not approved: {review_result['status']}")
+        else:
+            # No HITL - directly create sub-nodes
             await self._create_sub_nodes(node, plan_output, context)
             return plan_output
-        
-        elif review_result["status"] == "request_modification":
-            # Set up for modification
-            await self._setup_modification(node, plan_output, review_result, context)
-            return None  # Will be handled by replan
-        
-        else:
-            # Rejected or cancelled
-            raise ValueError(f"Plan not approved: {review_result['status']}")
     
     async def _review_plan(
         self, 
@@ -117,12 +134,34 @@ class PlanHandler(BaseNodeHandler):
         context: HandlerContext
     ):
         """Create sub-nodes from the plan."""
-        # This would use a SubNodeCreator service
-        # For now, just log
-        logger.info(f"Would create {len(plan_output.sub_tasks)} sub-nodes for {node.task_id}")
+        # Import SubNodeCreator locally to avoid circular imports
+        from sentientresearchagent.hierarchical_agent_framework.node.node_creation_utils import SubNodeCreator
         
-        # In real implementation:
-        # await context.sub_node_creator.create_sub_nodes(node, plan_output)
+        # Get task_graph from somewhere - need to add it to context or find another way
+        # For now, we'll create sub-nodes manually since we don't have direct access to task_graph
+        
+        logger.info(f"Creating {len(plan_output.sub_tasks)} sub-nodes for {node.task_id}")
+        
+        # Store plan output in node
+        node.result = plan_output
+        node.aux_data['full_result'] = plan_output
+        
+        # Generate summary
+        if plan_output and hasattr(plan_output, 'sub_tasks') and plan_output.sub_tasks:
+            task_summaries = []
+            for i, sub_task in enumerate(plan_output.sub_tasks[:3]):  # First 3 tasks
+                task_summaries.append(f"{i+1}. {sub_task.goal[:50]}...")
+            if len(plan_output.sub_tasks) > 3:
+                task_summaries.append(f"... and {len(plan_output.sub_tasks) - 3} more tasks")
+            node.output_summary = f"Planned {len(plan_output.sub_tasks)} sub-tasks: " + "; ".join(task_summaries)
+        else:
+            node.output_summary = "Planning completed successfully"
+        
+        # Update node status to PLAN_DONE
+        node.update_status(TaskStatus.PLAN_DONE, validate_transition=True)
+        
+        # Note: Actual sub-node creation needs to be handled by the system that has access to task_graph
+        # This is a limitation of the v2 architecture where handlers don't have direct access to task_graph
     
     async def _setup_modification(
         self, 

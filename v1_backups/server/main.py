@@ -10,7 +10,7 @@ from typing import Optional
 
 from .app import create_app, create_socketio, register_routes
 from .services import ProjectService, ExecutionService
-from ..core.system_manager import SystemManagerV2 as SystemManager
+from ..core.system_manager import SystemManager
 from .utils import BroadcastManager
 from ..config import SentientConfig, auto_load_config
 from ..config import auto_load_config
@@ -213,25 +213,18 @@ def create_server(config: Optional[SentientConfig] = None) -> SentientServer:
     return SentientServer(config)
 
 
-def main():
-    """Main entry point for the server with CLI support."""
-    import argparse
-    parser = argparse.ArgumentParser(description='Sentient Research Agent Server')
-    parser.add_argument('--port', type=int, default=5000, help='Port to run server on')
-    parser.add_argument('--host', type=str, default='0.0.0.0', help='Host to bind to')
-    parser.add_argument('--debug', action='store_true', help='Enable debug mode')
-    parser.add_argument('--config', type=str, help='Path to configuration file')
-    args = parser.parse_args()
-    
-    # Load config if specified
-    config = None
-    if args.config:
-        from ..config import SentientConfig
-        config = SentientConfig.from_yaml(args.config)
-    
-    server = create_server(config) 
-    server.run(host=args.host, port=args.port, debug=args.debug)
+# For backward compatibility with the original server
+# This main() function now also benefits from the auto-loaded SentientConfig
+# DEPRECATED: Consider removing if direct module execution is not the primary way to start.
+# The __main__.py in the server package or visualization_server.py are preferred entry points.
+# def main():
+# """Main entry point for the server."""
+# server = create_server() 
+# server.run() 
 
 
-if __name__ == '__main__':
-    main() 
+# if __name__ == '__main__':
+# # This allows running the server module directly.
+# # Example: python -m src.sentientresearchagent.server
+# # (Assuming __main__.py in the server package calls this main function or similar)
+# main() 
