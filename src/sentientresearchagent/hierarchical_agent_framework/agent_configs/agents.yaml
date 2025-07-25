@@ -355,6 +355,115 @@ agents:
     enabled: true
 
   # =============================================================================
+  # CRYPTO ANALYTICS AGENTS
+  # =============================================================================
+
+  - name: "CryptoAnalyticsPlanner"
+    type: "planner"
+    adapter_class: "PlannerAdapter"
+    description: "Specialized planner for cryptocurrency and DeFi analytics with deep domain expertise"
+    model:
+      provider: "litellm"
+      model_id: "openai/o3-2025-04-16"
+      temperature: 0.35
+    agno_params:
+      reasoning: true
+    prompt_source: "prompts.planner_prompts.CRYPTO_ANALYTICS_PLANNER_SYSTEM_MESSAGE"
+    response_model: "PlanOutput"
+    registration:
+      action_keys:
+        - action_verb: "plan"
+          task_type: "WRITE"
+      named_keys: ["CryptoAnalyticsPlanner", "crypto_planner"]
+    enabled: true
+
+  - name: "CryptoSearchPlanner"
+    type: "planner"
+    adapter_class: "PlannerAdapter"
+    description: "Specialized planner for crypto-specific search tasks optimized for blockchain data retrieval"
+    model:
+      provider: "litellm"
+      model_id: "openai/o3-2025-04-16"
+      temperature: 0.35
+    agno_params:
+      reasoning: true
+    prompt_source: "prompts.planner_prompts.CRYPTO_SEARCH_PLANNER_SYSTEM_MESSAGE"
+    response_model: "PlanOutput"
+    registration:
+      action_keys:
+        - action_verb: "plan"
+          task_type: "SEARCH"
+      named_keys: ["CryptoSearchPlanner", "crypto_search_planner"]
+    enabled: true
+
+  - name: "CryptoMarketAnalyzer"
+    type: "executor"
+    adapter_class: "ExecutorAdapter"
+    description: "Advanced crypto market analyst for technical analysis and on-chain metrics"
+    model:
+      provider: "litellm"
+      model_id: "openai/o3-2025-04-16"
+    agno_params:
+      reasoning: true
+    prompt_source: "prompts.executor_prompts.CRYPTO_MARKET_ANALYZER_SYSTEM_MESSAGE"
+    tools: 
+      - name: "PythonTools"
+        params:
+          save_and_run: false
+      - "ReasoningTools"
+    registration:
+      action_keys:
+        - action_verb: "execute"
+          task_type: "THINK"
+      named_keys: ["CryptoMarketAnalyzer", "crypto_analyzer"]
+    enabled: true
+
+  - name: "CryptoResearchExecutor"
+    type: "executor"
+    adapter_class: "ExecutorAdapter"
+    description: "Comprehensive crypto research executor for deep blockchain and DeFi analysis"
+    model:
+      provider: "litellm"
+      model_id: "openrouter/google/gemini-2.5-pro"
+    agno_params:
+      reasoning: true
+    prompt_source: "prompts.executor_prompts.CRYPTO_RESEARCH_EXECUTOR_SYSTEM_MESSAGE"
+    registration:
+      action_keys:
+        - action_verb: "execute"
+          task_type: "WRITE"
+      named_keys: ["CryptoResearchExecutor", "crypto_writer"]
+    enabled: true
+
+  - name: "CryptoAnalyticsAggregator"
+    type: "aggregator"
+    adapter_class: "AggregatorAdapter"
+    description: "Specialized aggregator for crypto data synthesis and market insights"
+    model:
+      provider: "litellm"
+      model_id: "openrouter/google/gemini-2.5-pro"
+    agno_params:
+      reasoning: true
+    prompt_source: "prompts.aggregator_prompts.CRYPTO_ANALYTICS_AGGREGATOR_SYSTEM_MESSAGE"
+    registration:
+      named_keys: ["CryptoAnalyticsAggregator", "crypto_aggregator"]
+    enabled: true
+
+  - name: "CryptoRootAggregator"
+    type: "aggregator"
+    adapter_class: "AggregatorAdapter"
+    description: "Master aggregator for executive-level crypto research synthesis and strategic insights"
+    model:
+      provider: "litellm"
+      model_id: "openrouter/google/gemini-2.5-pro"
+    agno_params:
+      reasoning: true
+    prompt_source: "prompts.aggregator_prompts.CRYPTO_ROOT_AGGREGATOR_SYSTEM_MESSAGE"
+    registration:
+      named_keys: ["CryptoRootAggregator", "crypto_root_aggregator"]
+    enabled: true
+
+  # =============================================================================
   # ATOMIZER AGENTS - Determine if tasks need further breakdown
   # =============================================================================
 

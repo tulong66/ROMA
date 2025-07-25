@@ -127,9 +127,52 @@ DEFAULT_GENERAL_AGENT_BLUEPRINT = AgentBlueprint(
     default_node_agent_name_prefix="GeneralTaskSolver"
 )
 
+DEFAULT_CRYPTO_ANALYTICS_BLUEPRINT = AgentBlueprint(
+    name="crypto_analytics_agent",
+    description="A specialized agent for cryptocurrency and DeFi analytics with real-time market intelligence",
+    
+    # Root-specific planner for crypto analysis decomposition
+    root_planner_adapter_name="CryptoAnalyticsPlanner",
+    
+    # Root-specific aggregator for executive crypto insights
+    root_aggregator_adapter_name="CryptoRootAggregator",
+    
+    # Task-specific planners for crypto sub-tasks
+    planner_adapter_names={
+        TaskType.SEARCH: "CryptoSearchPlanner",      # Optimized for crypto data retrieval
+        TaskType.WRITE: "CryptoAnalyticsPlanner",    # Crypto report generation
+        TaskType.THINK: "CryptoAnalyticsPlanner",    # Market analysis and strategy
+    },
+    
+    # Task-specific executors
+    executor_adapter_names={
+        TaskType.SEARCH: "OpenAICustomSearcher",     # Real-time crypto data search
+        TaskType.THINK: "CryptoMarketAnalyzer",      # Technical and on-chain analysis
+        TaskType.WRITE: "CryptoResearchExecutor",    # Comprehensive crypto reports
+    },
+    
+    # Task-specific aggregators
+    aggregator_adapter_names={
+        TaskType.SEARCH: "CryptoAnalyticsAggregator",
+        TaskType.THINK: "CryptoAnalyticsAggregator",
+        TaskType.WRITE: "CryptoAnalyticsAggregator",
+    },
+    
+    # Single agents for other actions
+    atomizer_adapter_name="DefaultAtomizer",
+    aggregator_adapter_name="CryptoAnalyticsAggregator",  # Crypto-specific fallback
+    plan_modifier_adapter_name="PlanModifier",
+    
+    # Fallbacks
+    default_planner_adapter_name="CryptoAnalyticsPlanner",
+    default_executor_adapter_name="CryptoMarketAnalyzer",
+    default_node_agent_name_prefix="CryptoAnalytics"
+)
+
 AVAILABLE_AGENT_BLUEPRINTS: List[AgentBlueprint] = [
     DEFAULT_DEEP_RESEARCH_BLUEPRINT,
     DEFAULT_GENERAL_AGENT_BLUEPRINT,
+    DEFAULT_CRYPTO_ANALYTICS_BLUEPRINT,
 ]
 
 def get_blueprint_by_name(profile_name: str) -> Optional[AgentBlueprint]:

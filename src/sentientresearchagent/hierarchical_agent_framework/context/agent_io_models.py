@@ -1,5 +1,5 @@
-from pydantic import BaseModel, Field
-from typing import List, Any, Optional, Dict
+from pydantic import BaseModel, Field, validator
+from typing import List, Any, Optional, Dict, Union
 
 # Import reasoning types from agno for reasoning-enabled agents
 try:
