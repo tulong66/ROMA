@@ -322,20 +322,9 @@ def _create_project_config(config_data):
         max_retries=llm_data.get('max_retries', 3)
     )
     
-    # Create execution config
+    # Create execution config using centralized method for consistency
     exec_data = config_data.get('execution', {})
-    execution_config = ExecutionConfig(
-        max_concurrent_nodes=exec_data.get('max_concurrent_nodes', 3),
-        max_execution_steps=exec_data.get('max_execution_steps', 250),
-        max_recursion_depth=exec_data.get('max_recursion_depth', 5),
-        enable_hitl=exec_data.get('enable_hitl', True),
-        hitl_root_plan_only=exec_data.get('hitl_root_plan_only', True),
-        hitl_timeout_seconds=exec_data.get('hitl_timeout_seconds', 300),
-        hitl_after_plan_generation=exec_data.get('hitl_after_plan_generation', True),
-        hitl_after_modified_plan=exec_data.get('hitl_after_modified_plan', True),
-        hitl_after_atomizer=exec_data.get('hitl_after_atomizer', False),
-        hitl_before_execute=exec_data.get('hitl_before_execute', False)
-    )
+    execution_config = ExecutionConfig.create_with_overrides(overrides=exec_data)
     
     # Create cache config
     cache_data = config_data.get('cache', {})
@@ -504,3 +493,47 @@ def _generate_html_report(results_package):
     
     filename = f"project-report-{project['id']}-{datetime.now().strftime('%Y%m%d')}.html"
     return content, filename, 'text/html'
+
+    # Configuration endpoints for debugging and validation
+    @app.route('/api/config/execution', methods=['GET'])
+    def get_execution_config():
+        """Get current execution configuration for debugging and frontend display."""
+        try:
+            from ...config import auto_load_config
+            config = auto_load_config()
+            
+            return jsonify({
+                "execution_config": config.execution.to_frontend_dict(),
+                "config_source": "Loaded from YAML + environment variables",
+                "validation": {
+                    "timeout_seconds": config.execution.node_execution_timeout_seconds,
+                    "max_concurrent": config.execution.max_concurrent_nodes,
+                    "hitl_enabled": config.execution.enable_hitl,
+                    "hitl_timeout": config.execution.hitl_timeout_seconds
+                }
+            })
+        except Exception as e:
+            logger.error(f"Get execution config error: {e}")
+            return jsonify({"error": str(e)}), 500
+    
+    @app.route('/api/config/validate', methods=['POST'])
+    def validate_config():
+        """Validate a configuration before applying it."""
+        try:
+            is_valid, error_msg, data = RequestValidator.validate_json_required(['config'])
+            if not is_valid:
+                return jsonify({"error": error_msg}), 400
+            
+            config_data = data['config']
+            
+            # Validate using our centralized method
+            try:
+                if 'execution' in config_data:
+                    ExecutionConfig.create_with_overrides(config_data['execution'])
+                return jsonify({"valid": True, "message": "Configuration is valid"})
+            except Exception as e:
+                return jsonify({"valid": False, "error": str(e)}), 400
+                
+        except Exception as e:
+            logger.error(f"Validate config error: {e}")
+            return jsonify({"error": str(e)}), 500

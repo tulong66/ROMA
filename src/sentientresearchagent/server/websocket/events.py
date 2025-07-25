@@ -277,7 +277,7 @@ def register_websocket_events(socketio, project_service, execution_service):
                 logger.warning("Auto-save request missing project_id")
                 return
 
-            logger.info(f"💾 Auto-saving project data for: {project_id}")
+            logger.debug(f"💾 Auto-saving project data for: {project_id}")
 
             # THE FIX: Get the authoritative state from the server, don't trust the client's data.
             project_data = project_service.get_project_display_data(project_id)
@@ -303,7 +303,7 @@ def register_websocket_events(socketio, project_service, execution_service):
             }
             project_service.save_project_results(project_id, results_package)
             
-            logger.info(f"✅ Auto-saved project using server-side state: {project_id}")
+            logger.debug(f"✅ Auto-saved project using server-side state: {project_id}")
             
         except Exception as e:
             logger.error(f"Auto-save error: {e}")

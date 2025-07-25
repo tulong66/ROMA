@@ -18,12 +18,12 @@ cache:
 
 # Execution Framework
 execution:
-  max_concurrent_nodes: 2  # Reduced to minimize rate limiting
+  max_concurrent_nodes: 3  # Increased for better throughput
   max_execution_steps: 500  # More steps for deep reasoning
   rate_limit_rpm: 30  # Reduced from 60 to avoid Gemini rate limits
   enable_hitl: true
-  hitl_timeout_seconds: 600.0  # 10 minutes for human review
-  node_execution_timeout_seconds: 900.0  # 15 minutes max for overall task execution
+  hitl_timeout_seconds: 1200.0  # 10 minutes for human review
+  node_execution_timeout_seconds: 2400.0  # 40 minutes max for overall task execution
   
   # Enhanced timeout strategy with escalation
   timeout_strategy:
@@ -58,6 +58,20 @@ logging:
   file_path: "sentient.log"  # Single log file
   file_rotation: "10 MB"     # Rotate by size
   file_retention: 3          # Keep only 3 files (must be number, not string)
+  
+  # Filter noisy logs to separate files or suppress them
+  module_levels:
+    # Suppress or redirect noisy components
+    "sentientresearchagent.server.services.broadcast_service": "WARNING"  # Only warnings and errors
+    "sentientresearchagent.server.services.project_service": "WARNING"    # Reduce auto-save noise
+    "sentientresearchagent.core.project_manager": "WARNING"              # Reduce save/broadcast noise
+    "sentientresearchagent.hierarchical_agent_framework.graph.graph_serializer": "WARNING"  # Reduce serialization noise
+    
+    # Keep important execution flow at INFO level
+    "sentientresearchagent.hierarchical_agent_framework.orchestration": "INFO"
+    "sentientresearchagent.hierarchical_agent_framework.graph.cycle_manager": "INFO"
+    "sentientresearchagent.hierarchical_agent_framework.node": "INFO"
+    "sentientresearchagent.hierarchical_agent_framework.node_handlers": "INFO"
 
 # Environment
 environment: "research"

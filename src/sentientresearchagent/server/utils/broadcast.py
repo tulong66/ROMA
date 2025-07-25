@@ -59,11 +59,11 @@ class BroadcastManager:
                 node_count = len(data.get('all_nodes', {}))
                 logger.debug(f"📡 Broadcasting project {current_project.id}: {node_count} nodes")
                 
-                # AGGRESSIVE DEBUGGING
-                logger.info(f"🚨 BROADCAST DEBUG - Project: {current_project.id}, Nodes: {node_count}")
+                # AGGRESSIVE DEBUGGING (reduced to debug level)
+                logger.debug(f"🚨 BROADCAST DEBUG - Project: {current_project.id}, Nodes: {node_count}")
                 if data.get('all_nodes'):
                     first_few_nodes = list(data['all_nodes'].keys())[:3]
-                    logger.info(f"🚨 BROADCAST DEBUG - First nodes: {first_few_nodes}")
+                    logger.debug(f"🚨 BROADCAST DEBUG - First nodes: {first_few_nodes}")
             else:
                 # No current project - send empty state
                 data = {
@@ -82,10 +82,10 @@ class BroadcastManager:
             emit_time = datetime.now()
             self.socketio.emit('task_graph_update', data)
             
-            # Log broadcast event with timing and node details
-            logger.info(f"📡 BROADCAST EVENT [{emit_time.strftime('%H:%M:%S.%f')[:-3]}] "
-                       f"Project: {current_project.id if current_project else 'None'} | "
-                       f"Nodes: {node_count} | Event: task_graph_update")
+            # Log broadcast event with timing and node details (debug level to reduce noise)
+            logger.debug(f"📡 BROADCAST EVENT [{emit_time.strftime('%H:%M:%S.%f')[:-3]}] "
+                        f"Project: {current_project.id if current_project else 'None'} | "
+                        f"Nodes: {node_count} | Event: task_graph_update")
             
             # Log node state distribution for debugging
             if data.get('all_nodes'):
@@ -99,7 +99,8 @@ class BroadcastManager:
             if current_project:
                 try:
                     self.project_service.save_project_state_async(current_project.id, data)
-                    logger.debug(f"💾 Auto-saved project state during broadcast: {current_project.id}")
+                    # Reduce auto-save noise further - only log if verbose debug enabled
+                    # logger.debug(f"💾 Auto-saved project state during broadcast: {current_project.id}")
                 except Exception as e:
                     logger.warning(f"Failed to save during broadcast: {e}")
             

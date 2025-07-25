@@ -121,6 +121,7 @@ class StateManager:
         
         logger.debug(f"StateManager.can_aggregate: Node {node.task_id} has sub_graph_id: {node.sub_graph_id}. Fetching sub-graph nodes.")
         sub_graph_nodes = self.task_graph.get_nodes_in_graph(node.sub_graph_id)
+        logger.info(f"🔍 AGGREGATION DEBUG - Node {node.task_id} sub_graph_id: {node.sub_graph_id}, found {len(sub_graph_nodes)} children")
 
         if not sub_graph_nodes:
             # If a plan resulted in no sub-tasks, it could be considered ready to "aggregate" nothing.
@@ -133,7 +134,11 @@ class StateManager:
         if all_sub_finished:
             logger.info(f"Node {node.task_id} can AGGREGATE: All {len(sub_graph_nodes)} sub-tasks in '{node.sub_graph_id}' are finished.")
         else:
-            logger.info(f"Node {node.task_id} cannot AGGREGATE: Not all sub-tasks in '{node.sub_graph_id}' are finished.")
+            logger.debug(f"⏳ AGGREGATION WAITING - Node {node.task_id} cannot AGGREGATE yet: Not all sub-tasks in '{node.sub_graph_id}' are finished.")
+            # Enhanced debugging: log each sub-task status
+            for sn in sub_graph_nodes:
+                terminal_status = is_terminal_status(sn.status)
+                logger.debug(f"  ⏳ Sub-task {sn.task_id}: status={sn.status.name}, is_terminal={terminal_status}")
             
         return all_sub_finished
 

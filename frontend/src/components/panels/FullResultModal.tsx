@@ -176,12 +176,14 @@ const getTypeColor = (type: FormattedData['type']) => {
 
 const AdvancedMarkdownViewerComponent: React.FC<{ content: string }> = ({ content }) => {
   return (
-    <AdvancedMarkdownViewer 
-      content={content}
-      maxHeight="max-h-[60vh]"
-      title="Markdown Result"
-      showControls={true}
-    />
+    <div className="overflow-auto">
+      <AdvancedMarkdownViewer 
+        content={content}
+        maxHeight="none"
+        title="Markdown Result"
+        showControls={true}
+      />
+    </div>
   )
 }
 
@@ -232,7 +234,7 @@ const JsonViewer: React.FC<{ content: string }> = ({ content }) => {
         </Button>
       </div>
       <pre 
-        className="text-xs font-mono bg-muted/30 p-4 rounded-lg overflow-auto max-h-96 border"
+        className="text-xs font-mono bg-muted/30 p-4 rounded-lg overflow-auto border"
         dangerouslySetInnerHTML={{ __html: highlightJson(displayContent) }}
       />
     </div>
@@ -281,7 +283,7 @@ const TextViewer: React.FC<{ content: string; type: FormattedData['type'] }> = (
       )}
       
       <pre 
-        className="text-xs font-mono bg-muted/30 p-4 rounded-lg overflow-auto max-h-96 border whitespace-pre-wrap"
+        className="text-xs font-mono bg-muted/30 p-4 rounded-lg overflow-auto border whitespace-pre-wrap"
         dangerouslySetInnerHTML={{ __html: highlightedContent }}
       />
     </div>
@@ -358,7 +360,7 @@ const FullResultModal: React.FC<FullResultModalProps> = ({ isOpen, onClose, node
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-6xl max-h-[90vh] flex flex-col">
+      <DialogContent className="max-w-6xl max-h-[90vh] flex flex-col overflow-hidden">
         <DialogHeader>
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
@@ -382,10 +384,8 @@ const FullResultModal: React.FC<FullResultModalProps> = ({ isOpen, onClose, node
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 overflow-hidden">
-          <div className="h-full overflow-auto">
-            {renderContent()}
-          </div>
+        <div className="flex-1 overflow-y-auto overflow-x-auto min-h-0 p-4">
+          {renderContent()}
         </div>
 
         <DialogFooter className="flex-shrink-0">

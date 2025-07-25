@@ -207,7 +207,7 @@ class NodeProcessor:
                 
                 # Transition sub-nodes with no dependencies to READY
                 for sub_node in created_nodes:
-                    depends_on = sub_node.aux_data.get('depends_on_indices', [])
+                    depends_on = sub_node.aux_data.get('depends_on_indices', []) if sub_node.aux_data is not None else []
                     if not depends_on:  # No dependencies
                         sub_node.update_status(TaskStatus.READY, validate_transition=True)
                         self.knowledge_store.add_or_update_record_from_node(sub_node)

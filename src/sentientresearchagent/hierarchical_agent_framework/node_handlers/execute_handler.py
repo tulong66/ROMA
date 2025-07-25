@@ -158,7 +158,7 @@ class ExecuteHandler(BaseNodeHandler):
         )
         
         # Store execution metadata
-        if hasattr(executor := node.aux_data.get('executor'), 'get_model_info'):
+        if hasattr(executor := (node.aux_data.get('executor') if node.aux_data is not None else None), 'get_model_info'):
             node.aux_data['execution_details'] = {
                 'model_info': executor.get_model_info(),
                 'execution_time': node.timestamp_updated

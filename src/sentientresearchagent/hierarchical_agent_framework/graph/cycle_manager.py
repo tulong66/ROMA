@@ -197,8 +197,28 @@ class CycleManager:
         nodes_for_plan_done_update = task_graph.get_all_nodes()
         made_plan_done_transition = False
         logger.debug("CycleManager: Checking for PLAN_DONE transitions.")
-        for node in nodes_for_plan_done_update:
-            if node.status == TaskStatus.PLAN_DONE:
+        
+        # Keep checking PLAN_DONE nodes until no more transitions are possible
+        # This handles race conditions where subtasks complete asynchronously
+        max_iterations = 10  # Prevent infinite loops
+        iteration = 0
+        
+        while iteration < max_iterations:
+            iteration += 1
+            any_transition_this_iteration = False
+            plan_done_nodes = [n for n in task_graph.get_all_nodes() if n.status == TaskStatus.PLAN_DONE]
+            
+            if not plan_done_nodes:
+                logger.debug(f"CycleManager: No PLAN_DONE nodes remaining after {iteration-1} iterations")
+                break
+                
+            logger.debug(f"CycleManager: PLAN_DONE iteration {iteration}: checking {len(plan_done_nodes)} nodes")
+            
+            for node in plan_done_nodes:
+                if node.status != TaskStatus.PLAN_DONE:
+                    # Node status changed during this iteration, skip
+                    continue
+                    
                 # ENHANCED: Check if this node was converted to EXECUTE type during planning
                 if node.node_type == NodeType.EXECUTE:
                     # A PLAN node that becomes EXECUTE is an atomic task
@@ -208,6 +228,7 @@ class CycleManager:
                         logger.info(f"  CycleManager Transition: Node {node.task_id} was atomic. Transitioning PLAN_DONE -> DONE.")
                         processed_in_step = True
                         made_plan_done_transition = True
+                        any_transition_this_iteration = True
                 # Also check if this was originally an EXECUTE node that somehow got planned
                 elif hasattr(node, 'aux_data') and node.aux_data.get('was_executed_as_atomic'):
                     if await _atomic_transition_if_eligible(node, TaskStatus.PLAN_DONE, TaskStatus.DONE,
@@ -216,6 +237,7 @@ class CycleManager:
                         logger.warning(f"  CycleManager: Node {node.task_id} was already executed as atomic but reached PLAN_DONE. Transitioning directly to DONE.")
                         processed_in_step = True
                         made_plan_done_transition = True
+                        any_transition_this_iteration = True
                 elif state_manager.can_aggregate(node):
                     children_failed = False
                     if node.sub_graph_id:
@@ -228,11 +250,13 @@ class CycleManager:
                                                                lambda: True,  # Already checked children_failed
                                                                knowledge_store, update_callback):
                             logger.info(f"  CycleManager Transition: Node {node.task_id} PLAN_DONE -> NEEDS_REPLAN (due to failed children, Goal: '{node.goal[:30]}...')")
+                            any_transition_this_iteration = True
                     else:
                         if await _atomic_transition_if_eligible(node, TaskStatus.PLAN_DONE, TaskStatus.AGGREGATING,
                                                                lambda: True,  # Already checked can_aggregate
                                                                knowledge_store, update_callback):
                             logger.info(f"  CycleManager Transition: Node {node.task_id} PLAN_DONE -> AGGREGATING (Goal: '{node.goal[:30]}...')")
+                            any_transition_this_iteration = True
                     processed_in_step = True
                     made_plan_done_transition = True
                 else:
@@ -246,6 +270,14 @@ class CycleManager:
                             logger.debug(f"  Blocking sub-tasks for {node.task_id}:")
                             for inc in incomplete[:5]:  # Show first 5
                                 logger.debug(f"    - {inc.task_id}: {inc.status.name} (goal: '{inc.goal[:30]}...')")
+            
+            # If no transitions occurred this iteration, break (no point in re-checking)
+            if not any_transition_this_iteration:
+                logger.debug(f"CycleManager: No PLAN_DONE transitions in iteration {iteration}, stopping re-evaluation")
+                break
+        
+        if iteration >= max_iterations:
+            logger.warning(f"CycleManager: PLAN_DONE re-evaluation hit max iterations ({max_iterations})")
         
         if made_plan_done_transition:
             return True # Indicate processing occurred

@@ -87,8 +87,8 @@ def create_socketio(app: Flask) -> SocketIO:
         app,
         cors_allowed_origins="*", # This could also come from main_config.web_server.cors_allowed_origins
         async_mode='threading', # Example: could be configurable
-        logger=True,            # Example: could be configurable via main_config.logging or main_config.web_server
-        engineio_logger=True    # Example: could be configurable
+        logger=False,           # Disabled to reduce log noise
+        engineio_logger=False   # Disabled to reduce log noise
     )
     
     return socketio

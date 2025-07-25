@@ -1,6 +1,34 @@
 from pydantic import BaseModel, Field
 from typing import List, Any, Optional, Dict
 
+# Import reasoning types from agno for reasoning-enabled agents
+try:
+    from agno.reasoning.step import ReasoningStep
+    REASONING_AVAILABLE = True
+except ImportError:
+    REASONING_AVAILABLE = False
+    # Define minimal fallback types if agno is not available
+    class ReasoningStep(BaseModel):
+        title: Optional[str] = None
+        action: Optional[str] = None
+        result: Optional[str] = None
+        reasoning: Optional[Union[str, Dict[str, Any]]] = None  # Allow both string and structured reasoning
+        
+        @validator('reasoning', pre=True)
+        def process_reasoning(cls, v):
+            """Convert structured reasoning to string if needed."""
+            if isinstance(v, dict):
+                # Convert structured reasoning to readable string
+                parts = []
+                if 'necessity' in v:
+                    parts.append(f"Necessity: {v['necessity']}")
+                if 'assumptions' in v and v['assumptions'] != 'N/A':
+                    parts.append(f"Assumptions: {v['assumptions']}")
+                if 'approach' in v:
+                    parts.append(f"Approach: {v['approach']}")
+                return " | ".join(parts) if parts else str(v)
+            return v
+
 # --- Plan Output Schemas (used by Planner Agents and NodeProcessor) ---
 class SubTask(BaseModel):
     """Schema for a single sub-task planned by a Planner agent."""
@@ -16,6 +44,9 @@ class PlanOutput(BaseModel):
     """Output schema for a Planner agent, detailing the sub-tasks."""
     sub_tasks: List[SubTask] = Field(..., description="List of planned sub-tasks.")
     # Could add overall_plan_summary or other metadata from the planner
+    
+    # Optional reasoning steps for reasoning-enabled agents
+    reasoning_steps: Optional[List[ReasoningStep]] = Field(default=None, description="Reasoning steps if agent has reasoning enabled")
 
 # --- Atomizer Output Schema ---
 class AtomizerOutput(BaseModel):
@@ -25,6 +56,9 @@ class AtomizerOutput(BaseModel):
     # Optionally, the atomizer could also suggest a task_type or agent_name if it changes fundamentally
     # suggested_task_type: Optional[str] = None
     # suggested_agent_name: Optional[str] = None
+    
+    # Optional reasoning steps for reasoning-enabled agents
+    reasoning_steps: Optional[List[ReasoningStep]] = Field(default=None, description="Reasoning steps if agent has reasoning enabled")
 
 
 # --- Context Structure for Agents ---
@@ -94,6 +128,9 @@ class WebSearchResultsOutput(BaseModel):
     # or adjust this model to expect 'href' and 'body'.
     # For now, let's assume the agent can format it to 'title', 'link', 'snippet'.
     results: List[Dict[str, str]] = Field(..., description="A list of search results, each ideally with 'title', 'link', and 'snippet'.")
+    
+    # Optional reasoning steps for reasoning-enabled agents
+    reasoning_steps: Optional[List[ReasoningStep]] = Field(default=None, description="Reasoning steps if agent has reasoning enabled")
 
 class AnnotationURLCitationModel(BaseModel):
     """Represents a URL citation annotation from the OpenAI web_search_preview tool."""
@@ -112,6 +149,9 @@ class CustomSearcherOutput(BaseModel):
     output_text_with_citations: str = Field(..., description="The main textual answer from the OpenAI model, including any inline citations.")
     text_content: Optional[str] = Field(None, description="The textual answer parsed from the nested structure (e.g., response.output[1].content[0].text), if available.")
     annotations: List[AnnotationURLCitationModel] = Field(default_factory=list, description="A list of URL annotations, if available from the nested structure.")
+    
+    # Optional reasoning steps for reasoning-enabled agents
+    reasoning_steps: Optional[List[ReasoningStep]] = Field(default=None, description="Reasoning steps if agent has reasoning enabled")
 
     def __str__(self) -> str:
         # Prioritize the main output text for string conversion
@@ -122,6 +162,9 @@ class ExecutorOutput(BaseModel):
     """A generic wrapper for any executor agent's output."""
     result: Any = Field(..., description="The direct output from the executor agent (e.g., text, a Pydantic model like WebSearchResultsOutput).")
     replan_request: Optional['ReplanRequestDetails'] = Field(None, description="If the agent determines the plan is flawed, it can request a replan by providing details here.")
+    
+    # Optional reasoning steps for reasoning-enabled agents
+    reasoning_steps: Optional[List[ReasoningStep]] = Field(default=None, description="Reasoning steps if agent has reasoning enabled")
 
 
 # --- New Planner Input Schemas (for the enhanced PLANNER_SYSTEM_MESSAGE) ---

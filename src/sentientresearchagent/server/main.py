@@ -186,6 +186,10 @@ class SentientServer:
         logger.info("        -d '{\"topic\": \"quantum computing applications\"}'")
         
         try:
+            # Disable Flask's request logging to reduce noise
+            import logging
+            logging.getLogger('werkzeug').setLevel(logging.ERROR)
+            
             self.socketio.run(
                 self.app, 
                 debug=debug, 

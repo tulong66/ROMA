@@ -308,6 +308,10 @@ class ProjectService:
                 except Exception as e:
                     logger.warning(f"Failed to manually serialize node {node_id}: {e}")
                     # Create minimal node representation with safe attribute access
+                    aux_data = getattr(node, 'aux_data', None)
+                    if aux_data is None:
+                        aux_data = {}
+                    
                     data['all_nodes'][node_id] = {
                         'task_id': node_id,
                         'goal': getattr(node, 'goal', 'Unknown goal'),
@@ -320,7 +324,7 @@ class ProjectService:
                         'task_type': str(getattr(node, 'task_type', None)) if hasattr(node, 'task_type') and node.task_type else None,
                         'node_type': str(getattr(node, 'node_type', None)) if hasattr(node, 'node_type') and node.node_type else None,
                         'output_summary': getattr(node, 'output_summary', None),
-                        'aux_data': getattr(node, 'aux_data', {})
+                        'aux_data': aux_data
                     }
         
         # Manually serialize graphs
@@ -600,7 +604,7 @@ class ProjectService:
             True if successful, False otherwise
         """
         try:
-            logger.info(f"🚨 LOAD DEBUG - Starting load for project: {project_id}")
+            logger.debug(f"🚨 LOAD DEBUG - Starting load for project: {project_id}")
             
             # Get or create project-specific execution context
             project_components = self.get_or_create_project_graph(project_id)
@@ -609,18 +613,18 @@ class ProjectService:
                 logger.error(f"🚨 LOAD DEBUG - Failed to get or create project components for {project_id}")
                 return False
             
-            logger.info(f"🚨 LOAD DEBUG - Project graph created/retrieved: {project_components is not None}")
+            logger.debug(f"🚨 LOAD DEBUG - Project graph created/retrieved: {project_components is not None}")
             
             # Load saved state into the project's task graph
             project_state = self.project_manager.load_project_state(project_id)
             project = self.project_manager.get_project(project_id)
             
-            logger.info(f"🚨 LOAD DEBUG - Project state loaded: {project_state is not None}")
-            logger.info(f"🚨 LOAD DEBUG - Project metadata loaded: {project is not None}")
+            logger.debug(f"🚨 LOAD DEBUG - Project state loaded: {project_state is not None}")
+            logger.debug(f"🚨 LOAD DEBUG - Project metadata loaded: {project is not None}")
             
             if project_state:
                 node_count = len(project_state.get('all_nodes', {}))
-                logger.info(f"🚨 LOAD DEBUG - Project state contains {node_count} nodes")
+                logger.debug(f"🚨 LOAD DEBUG - Project state contains {node_count} nodes")
                 
                 # Get the task graph from the components
                 project_task_graph = project_components.get('task_graph')
@@ -657,12 +661,12 @@ class ProjectService:
                             logger.debug(f"🚨 LOAD DEBUG - Node data that failed: {node_data}")
                             failed_nodes += 1
                     
-                    logger.info(f"🚨 LOAD DEBUG - Node deserialization: {successful_nodes} successful, {failed_nodes} failed")
+                    logger.debug(f"🚨 LOAD DEBUG - Node deserialization: {successful_nodes} successful, {failed_nodes} failed")
                 
                 # Reconstruct graphs
                 if 'graphs' in project_state:
                     self._reconstruct_graphs(project_task_graph, project_state['graphs'])
-                    logger.info(f"🚨 LOAD DEBUG - Reconstructed {len(project_state['graphs'])} graphs")
+                    logger.debug(f"🚨 LOAD DEBUG - Reconstructed {len(project_state['graphs'])} graphs")
                 
                 # Set project goal
                 if 'overall_project_goal' in project_state:
@@ -679,9 +683,9 @@ class ProjectService:
                 project_task_graph = project_components.get('task_graph')
                 if project_task_graph:
                     project_task_graph.overall_project_goal = project.goal
-                    logger.info(f"🚨 LOAD DEBUG - No saved state, only set goal from metadata")
+                    logger.debug(f"🚨 LOAD DEBUG - No saved state, only set goal from metadata")
             
-            logger.info(f"✅ LOAD DEBUG - Loaded project {project_id}: {len(project_components.get('task_graph').nodes)} nodes")
+            logger.debug(f"✅ LOAD DEBUG - Loaded project {project_id}: {len(project_components.get('task_graph').nodes)} nodes")
             return True
             
         except Exception as e:
@@ -717,7 +721,7 @@ class ProjectService:
                     project_task_graph.overall_project_goal = display_graph.overall_project_goal
                     project_task_graph.root_graph_id = display_graph.root_graph_id
                 
-                logger.info(f"💾 Saved state for project {current_project.id}")
+                logger.debug(f"💾 Saved state for project {current_project.id}")
             except Exception as e:
                 logger.error(f"Failed to save current project state: {e}")
                 traceback.print_exc()
@@ -747,19 +751,7 @@ class ProjectService:
                 "timeout": config.llm.timeout,
                 "max_retries": config.llm.max_retries
             },
-            "execution": {
-                "max_concurrent_nodes": config.execution.max_concurrent_nodes,
-                "max_execution_steps": config.execution.max_execution_steps,
-                "max_recursion_depth": getattr(config.execution, 'max_recursion_depth', 5),
-                "task_timeout_seconds": getattr(config.execution, 'task_timeout_seconds', 300),
-                "enable_hitl": config.execution.enable_hitl,
-                "hitl_root_plan_only": config.execution.hitl_root_plan_only,
-                "hitl_timeout_seconds": config.execution.hitl_timeout_seconds,
-                "hitl_after_plan_generation": config.execution.hitl_after_plan_generation,
-                "hitl_after_modified_plan": config.execution.hitl_after_modified_plan,
-                "hitl_after_atomizer": config.execution.hitl_after_atomizer,
-                "hitl_before_execute": config.execution.hitl_before_execute
-            },
+            "execution": config.execution.to_frontend_dict(),
             "cache": {
                 "enabled": config.cache.enabled,
                 "ttl_seconds": config.cache.ttl_seconds,
@@ -854,11 +846,11 @@ class ProjectService:
                     prepared_data['aux_data'][field] = prepared_data[field]
                     logger.debug(f"🔄 Moved {field} to aux_data for node {prepared_data.get('task_id', 'unknown')}")
             
-            # AGGRESSIVE DEBUGGING
-            has_full_result = bool(prepared_data['aux_data'].get('full_result'))
-            has_execution_details = bool(prepared_data['aux_data'].get('execution_details'))
-            logger.debug(f"🔄 PREP DEBUG - Node {prepared_data.get('task_id', 'unknown')}: "
-                        f"has_full_result={has_full_result}, has_execution_details={has_execution_details}")
+            # AGGRESSIVE DEBUGGING (moved to more verbose debug level)
+            # has_full_result = bool(prepared_data['aux_data'].get('full_result'))
+            # has_execution_details = bool(prepared_data['aux_data'].get('execution_details'))
+            # logger.debug(f"🔄 PREP DEBUG - Node {prepared_data.get('task_id', 'unknown')}: "
+            #             f"has_full_result={has_full_result}, has_execution_details={has_execution_details}")
             
             return prepared_data
             
@@ -1013,7 +1005,7 @@ class ProjectService:
             with open(results_file, 'w') as f:
                 json.dump(results_package, f, indent=2, default=str)
             
-            logger.info(f"💾 Saved results for project {project_id}")
+            logger.debug(f"💾 Saved results for project {project_id}")
             return True
             
         except Exception as e:
@@ -1039,7 +1031,7 @@ class ProjectService:
             with open(results_file, 'r') as f:
                 results_package = json.load(f)
             
-            logger.info(f"📂 Loaded saved results for project {project_id}")
+            logger.debug(f"📂 Loaded saved results for project {project_id}")
             return results_package
             
         except Exception as e:
@@ -1078,7 +1070,7 @@ class ProjectService:
                     }
                     
                     self.save_project_results(current_project_id, results_package)
-                    logger.info(f"🔄 Auto-saved project {current_project_id}")
+                    logger.debug(f"🔄 Auto-saved project {current_project_id}")
         
         except Exception as e:
             logger.warning(f"Failed to auto-save current project: {e}")

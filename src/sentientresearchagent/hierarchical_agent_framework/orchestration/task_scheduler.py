@@ -251,7 +251,7 @@ class TaskScheduler:
         dependencies = set()
         
         # Method 1: Check aux_data for depends_on_indices (more reliable for newly created nodes)
-        depends_on_indices = node.aux_data.get('depends_on_indices', [])
+        depends_on_indices = node.aux_data.get('depends_on_indices', []) if node.aux_data is not None else []
         if depends_on_indices and node.parent_node_id:
             # Get sibling nodes to resolve indices to IDs
             parent = self.task_graph.get_node(node.parent_node_id)

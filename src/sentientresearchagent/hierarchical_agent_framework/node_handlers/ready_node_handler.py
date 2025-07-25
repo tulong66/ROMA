@@ -51,12 +51,8 @@ class ReadyNodeHandler(BaseNodeHandler):
         Returns:
             Result from sub-handler
         """
-        # Transition to RUNNING early
-        await context.state_manager.transition_node(
-            node,
-            TaskStatus.RUNNING,
-            reason="Starting node processing"
-        )
+        # Don't transition to RUNNING here - let sub-handlers do it
+        # to avoid duplicate transitions
         
         # Check max recursion depth
         max_recursion_depth = context.config.get("execution", {}).get("max_recursion_depth", 5)

@@ -69,17 +69,17 @@ class CacheConfig(BaseModel):
 
 class ExecutionConfig(BaseModel):
     """Configuration for task execution."""
-    max_concurrent_nodes: int = 5
+    max_concurrent_nodes: int = 3  # Updated to match YAML default
     max_retries: int = 3
     retry_delay_seconds: float = 5.0
-    rate_limit_rpm: int = 60  # requests per minute
-    max_execution_steps: int = 250
+    rate_limit_rpm: int = 30  # Updated to match YAML default  
+    max_execution_steps: int = 500  # Updated to match YAML default
     max_recursion_depth: int = 5  # NEW: Maximum recursion depth for task decomposition
-    node_execution_timeout_seconds: float = 600.0  # 10 minutes default timeout for overall execution
+    node_execution_timeout_seconds: float = 2400.0  # Updated to match YAML default (40 minutes)
     
     # HITL (Human-in-the-Loop) Configuration - Centralized
     enable_hitl: bool = True  # Master HITL switch
-    hitl_timeout_seconds: float = 300.0  # 5 minutes
+    hitl_timeout_seconds: float = 1200.0  # 20 minutes - Updated to match YAML
     
     # CHANGED: Default to root plan only - review only the initial high-level plan
     hitl_root_plan_only: bool = True  # Only review root node's initial plan
@@ -100,6 +100,72 @@ class ExecutionConfig(BaseModel):
         if v > 20:
             logger.warning(f'High concurrency ({v}) may overwhelm LLM APIs')
         return v
+    
+    @classmethod
+    def create_with_overrides(cls, overrides: dict = None, base_config: 'ExecutionConfig' = None) -> 'ExecutionConfig':
+        """
+        Create ExecutionConfig with consistent defaults and optional overrides.
+        
+        This ensures all ExecutionConfig instances have the same baseline values
+        regardless of where they're created in the codebase.
+        
+        Args:
+            overrides: Dict of values to override defaults
+            base_config: Existing config to use as base (optional)
+            
+        Returns:
+            ExecutionConfig with consistent defaults
+        """
+        # Start with either base config or class defaults
+        if base_config:
+            base_values = base_config.dict()
+        else:
+            base_values = {
+                'max_concurrent_nodes': 3,
+                'max_retries': 3,
+                'retry_delay_seconds': 5.0,
+                'rate_limit_rpm': 30,
+                'max_execution_steps': 500,
+                'max_recursion_depth': 5,
+                'node_execution_timeout_seconds': 2400.0,
+                'enable_hitl': True,
+                'hitl_timeout_seconds': 1200.0,  # 20 minutes
+                'hitl_root_plan_only': True,
+                'force_root_node_planning': True,
+                'hitl_after_plan_generation': True,
+                'hitl_after_modified_plan': True,
+                'hitl_after_atomizer': False,
+                'hitl_before_execute': False
+            }
+        
+        # Apply overrides
+        if overrides:
+            base_values.update(overrides)
+            
+        return cls(**base_values)
+    
+    def to_frontend_dict(self) -> dict:
+        """
+        Convert ExecutionConfig to frontend-friendly dictionary.
+        
+        This ensures the frontend receives all configuration options
+        in a consistent format regardless of how they were set.
+        """
+        return {
+            'max_concurrent_nodes': self.max_concurrent_nodes,
+            'max_execution_steps': self.max_execution_steps,
+            'max_recursion_depth': self.max_recursion_depth,
+            'node_execution_timeout_seconds': self.node_execution_timeout_seconds,
+            'rate_limit_rpm': self.rate_limit_rpm,
+            'enable_hitl': self.enable_hitl,
+            'hitl_timeout_seconds': self.hitl_timeout_seconds,
+            'hitl_root_plan_only': self.hitl_root_plan_only,
+            'force_root_node_planning': self.force_root_node_planning,
+            'hitl_after_plan_generation': self.hitl_after_plan_generation,
+            'hitl_after_modified_plan': self.hitl_after_modified_plan,
+            'hitl_after_atomizer': self.hitl_after_atomizer,
+            'hitl_before_execute': self.hitl_before_execute
+        }
     
     @validator('max_recursion_depth')
     def validate_recursion_depth(cls, v):
@@ -240,6 +306,9 @@ class SentientConfig(BaseModel):
                 data = {}
                 
             logger.info(f"Loaded configuration from {path}")
+            # DEBUG: Log timeout value being loaded
+            if 'execution' in data and 'node_execution_timeout_seconds' in data['execution']:
+                logger.info(f"🔧 CONFIG DEBUG: Loading node_execution_timeout_seconds = {data['execution']['node_execution_timeout_seconds']}")
             return cls(**data)
         except yaml.YAMLError as e:
             logger.error(f"Invalid YAML in configuration file {path}: {e}")
@@ -272,6 +341,8 @@ class SentientConfig(BaseModel):
             f"{prefix}CACHE_TTL": ("cache", "ttl_seconds"),
             f"{prefix}MAX_CONCURRENT": ("execution", "max_concurrent_nodes"),
             f"{prefix}MAX_STEPS": ("execution", "max_execution_steps"),
+            f"{prefix}EXECUTION_TIMEOUT": ("execution", "node_execution_timeout_seconds"),
+            f"{prefix}HITL_TIMEOUT": ("execution", "hitl_timeout_seconds"),
             f"{prefix}ENABLE_HITL": ("execution", "enable_hitl"),
             f"{prefix}LOG_LEVEL": ("logging", "level"),
             f"{prefix}LOG_FILE": ("logging", "file_path"),
@@ -455,7 +526,10 @@ def load_config(
     # Merge with file config
     if config_file:
         file_config = SentientConfig.from_yaml(config_file)
+        logger.info(f"🔧 CONFIG DEBUG: Before merge - timeout = {config.execution.node_execution_timeout_seconds}")
+        logger.info(f"🔧 CONFIG DEBUG: File config - timeout = {file_config.execution.node_execution_timeout_seconds}")
         config = config.merge_with(file_config)
+        logger.info(f"🔧 CONFIG DEBUG: After merge - timeout = {config.execution.node_execution_timeout_seconds}")
     
     # Validate and setup
     missing_keys = config.validate_api_keys()

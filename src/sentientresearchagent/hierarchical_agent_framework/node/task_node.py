@@ -65,6 +65,10 @@ class TaskNode(BaseModel):
         arbitrary_types_allowed = True  # Allow non-pydantic types like threading.RLock
 
     def __init__(self, **data):
+        # Ensure aux_data is never None - fix for deserialization issues
+        if 'aux_data' not in data or data['aux_data'] is None:
+            data['aux_data'] = {}
+        
         super().__init__(**data)
         # Initialize the lock after the object is created
         object.__setattr__(self, '_status_lock', threading.RLock())
@@ -120,6 +124,20 @@ class TaskNode(BaseModel):
                 
                 if self.status in [TaskStatus.DONE, TaskStatus.FAILED, TaskStatus.NEEDS_REPLAN, TaskStatus.CANCELLED]:
                     self.timestamp_completed = datetime.now()
+                    
+                    # IMMEDIATE AGGREGATION TRIGGER: If this node just completed and has a parent,
+                    # notify the system to check if parent can aggregate immediately
+                    if self.status == TaskStatus.DONE and self.parent_node_id:
+                        # Store a hint for immediate parent aggregation check
+                        # This will be picked up by the execution engine to trigger immediate cycle
+                        if not hasattr(self, 'aux_data') or self.aux_data is None:
+                            self.aux_data = {}
+                        self.aux_data['trigger_parent_aggregation_check'] = {
+                            'parent_id': self.parent_node_id,
+                            'completion_time': datetime.now().isoformat(),
+                            'child_id': self.task_id
+                        }
+                        logger.info(f"🚀 IMMEDIATE AGGREGATION TRIGGER: Node {self.task_id} completion may allow parent {self.parent_node_id} to aggregate")
                 
                 # Comprehensive logging for state transitions
                 transition_time = datetime.now()

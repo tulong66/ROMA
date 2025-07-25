@@ -363,7 +363,10 @@ class ReadyPlanHandler(INodeHandler):
             except Exception as e:
                 logger.warning(f"Error generating meaningful plan summary for {node.task_id}: {e}")
                 node.output_summary = f"Generated plan with {len(plan_output.sub_tasks)} sub-tasks for goal: {node.goal[:100]}..."
-            node.update_status(TaskStatus.PLAN_DONE)
+            
+            # Only update status if not already PLAN_DONE (prevents double transitions)
+            if node.status != TaskStatus.PLAN_DONE:
+                node.update_status(TaskStatus.PLAN_DONE)
             
             # Trigger update callback after planning completes
             if context.update_callback:
@@ -1115,7 +1118,10 @@ class NeedsReplanNodeHandler(INodeHandler):
             node.aux_data.pop('original_plan_for_modification', None) 
             node.aux_data.pop('user_modification_instructions', None)
             node.replan_reason = None 
-            node.update_status(TaskStatus.PLAN_DONE) 
+            
+            # Only update status if not already PLAN_DONE (prevents double transitions)
+            if node.status != TaskStatus.PLAN_DONE:
+                node.update_status(TaskStatus.PLAN_DONE)
             logger.success(f"    NeedsReplanNodeHandler: Node {node.task_id} replanning complete. Status: {node.status.name}")
         finally:
             if node.agent_name != agent_name_at_entry:

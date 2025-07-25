@@ -55,11 +55,12 @@ class GraphSerializer:
         model_info = None
         execution_details = None
         
-        if node_obj.aux_data and "execution_details" in node_obj.aux_data:
+        # Fix: Check if aux_data is not None before accessing it
+        if node_obj.aux_data is not None and "execution_details" in node_obj.aux_data:
             execution_details = node_obj.aux_data["execution_details"]
             model_info = execution_details.get("model_info", {})
 
-        if processed_result is None and node_obj.aux_data and "full_result" in node_obj.aux_data:
+        if processed_result is None and node_obj.aux_data is not None and "full_result" in node_obj.aux_data:
             processed_result = node_obj.aux_data["full_result"]
 
         model_display = "Not processed"
@@ -102,7 +103,8 @@ class GraphSerializer:
             "execution_details": execution_details,
             
             # CRITICAL FIX: Include aux_data for frontend access, but process Pydantic models
-            "aux_data": self._process_aux_data(node_obj.aux_data)
+            # Handle case where aux_data might be None
+            "aux_data": self._process_aux_data(node_obj.aux_data if node_obj.aux_data is not None else {})
         }
 
     def _process_aux_data(self, aux_data: Dict[str, Any]) -> Dict[str, Any]:

@@ -197,6 +197,11 @@ class ExecutionOrchestrator:
         import time
         start_time = time.time()
         
+        logger.info("=" * 80)
+        logger.info("🚀 EXECUTION FLOW STARTED")
+        logger.info(f"⏱️ EXECUTION TIMEOUT: {self.config.execution.node_execution_timeout_seconds} seconds")
+        logger.info("=" * 80)
+        
         for step in range(max_steps):
             self._execution_stats["steps_executed"] += 1
             
@@ -206,38 +211,77 @@ class ExecutionOrchestrator:
                 logger.error(f"Execution timeout after {elapsed_time:.2f}s")
                 return {"error": f"Execution timeout after {elapsed_time:.2f}s"}
             
-            logger.info(f"Execution step {step + 1}/{max_steps} (elapsed: {elapsed_time:.2f}s)")
+            # Log step header with node summary
+            all_nodes = self.task_graph.get_all_nodes()
+            status_summary = {}
+            for node in all_nodes:
+                status_name = node.status.name
+                status_summary[status_name] = status_summary.get(status_name, 0) + 1
+            
+            logger.info(f"\n📍 Step {step + 1}/{max_steps} | Time: {elapsed_time:.1f}s | Nodes: {status_summary}")
             
             # Update node readiness (transitions PENDING to READY when dependencies satisfied)
             transitioned = await self.task_scheduler.update_node_readiness()
             if transitioned > 0:
-                logger.info(f"Transitioned {transitioned} nodes from PENDING to READY")
+                logger.info(f"✅ PENDING → READY: {transitioned} nodes transitioned")
                 # Update knowledge store for all newly ready nodes
                 for node in self.task_graph.get_all_nodes():
                     if node.status == TaskStatus.READY:
                         self.knowledge_store.add_or_update_record_from_node(node)
             
             # Check for nodes ready to aggregate (PLAN_DONE -> AGGREGATING)
-            aggregated = 0
+            # Keep checking until no more transitions are possible (handles async subtask completion)
+            aggregated_total = 0
+            max_aggregate_iterations = 5
+            
+            for agg_iter in range(max_aggregate_iterations):
+                aggregated_this_iter = 0
+                all_nodes = self.task_graph.get_all_nodes()
+                plan_done_nodes = [n for n in all_nodes if n.status == TaskStatus.PLAN_DONE]
+                
+                if not plan_done_nodes:
+                    break
+                    
+                for node in plan_done_nodes:
+                    if self.state_manager.can_aggregate(node):
+                        # Transition to AGGREGATING
+                        try:
+                            node.update_status(TaskStatus.AGGREGATING, validate_transition=True)
+                            self.knowledge_store.add_or_update_record_from_node(node)
+                            aggregated_this_iter += 1
+                            logger.info(f"✅ PLAN_DONE → AGGREGATING: {node.task_id} (all subtasks complete)")
+                        except Exception as e:
+                            logger.warning(f"Failed to transition {node.task_id} to AGGREGATING: {e}")
+                
+                aggregated_total += aggregated_this_iter
+                
+                # If no transitions this iteration, stop checking
+                if aggregated_this_iter == 0:
+                    break
+                    
+                # Small delay to allow async operations to complete
+                await asyncio.sleep(0.05)
+            
+            if aggregated_total > 0:
+                logger.info(f"📊 Aggregation: {aggregated_total} nodes ready to aggregate results")
+            
+            # IMPROVED CONCURRENCY: Get currently running nodes and available slots
             all_nodes = self.task_graph.get_all_nodes()
-            for node in all_nodes:
-                if node.status == TaskStatus.PLAN_DONE and self.state_manager.can_aggregate(node):
-                    # Transition to AGGREGATING
-                    node.update_status(TaskStatus.AGGREGATING, validate_transition=True)
-                    self.knowledge_store.add_or_update_record_from_node(node)
-                    aggregated += 1
-                    logger.info(f"Node {node.task_id} ready to aggregate - transitioned to AGGREGATING")
+            running_nodes = [n for n in all_nodes if n.status == TaskStatus.RUNNING]
+            max_concurrent = getattr(self.config.execution, 'max_concurrent_nodes', 2)
+            available_slots = max_concurrent - len(running_nodes)
             
-            if aggregated > 0:
-                logger.info(f"Transitioned {aggregated} nodes from PLAN_DONE to AGGREGATING")
+            logger.debug(f"🔄 CONCURRENCY: {len(running_nodes)} running, {available_slots} slots available (max: {max_concurrent})")
             
-            # Get next tasks to execute
+            # Get next tasks to execute (only as many as we have slots for)
             ready_nodes = await self.task_scheduler.get_ready_nodes()
             
             if not ready_nodes:
                 # Check if execution is complete
                 if await self._is_execution_complete():
-                    logger.info("Execution complete - no more tasks")
+                    logger.info("=" * 80)
+                    logger.info("✅ EXECUTION COMPLETE - All tasks finished")
+                    logger.info("=" * 80)
                     break
                 
                 # Check for deadlock
@@ -256,9 +300,24 @@ class ExecutionOrchestrator:
                     await asyncio.sleep(0.1)
                     continue
             
-            # Process ready nodes
-            processed_count = await self._process_nodes(ready_nodes)
+            # Limit nodes to process based on available slots
+            nodes_to_process = ready_nodes[:available_slots] if available_slots > 0 else []
+            
+            if not nodes_to_process:
+                # All slots filled, wait briefly for nodes to complete
+                logger.debug(f"🔄 CONCURRENCY: All {max_concurrent} slots occupied, waiting for completion")
+                await asyncio.sleep(0.1)
+                continue
+            
+            # Process ready nodes (only up to available slots)
+            processed_count = await self._process_nodes(nodes_to_process)
             self._execution_stats["nodes_processed"] += processed_count
+            
+            # IMMEDIATE AGGREGATION CHECK: Check if any nodes completed and triggered parent aggregation
+            if processed_count > 0:
+                immediate_aggregation_count = await self._check_immediate_aggregation_triggers()
+                if immediate_aggregation_count > 0:
+                    logger.info(f"🚀 IMMEDIATE AGGREGATION: {immediate_aggregation_count} parents checked due to child completion")
             
             # Clear dependency cache after processing nodes (graph may have changed)
             if processed_count > 0:
@@ -313,6 +372,50 @@ class ExecutionOrchestrator:
         
         return processed
     
+    async def _check_immediate_aggregation_triggers(self) -> int:
+        """
+        Check for immediate aggregation triggers from recently completed child nodes.
+        This provides faster response than waiting for the next cycle iteration.
+        
+        Returns:
+            Number of parent nodes checked for immediate aggregation
+        """
+        checked_parents = 0
+        
+        # Get all nodes and check for aggregation triggers
+        all_nodes = self.task_graph.get_all_nodes()
+        
+        for node in all_nodes:
+            # Check if this node has an aggregation trigger in its aux_data
+            if (hasattr(node, 'aux_data') and node.aux_data and 
+                'trigger_parent_aggregation_check' in node.aux_data):
+                
+                trigger_info = node.aux_data['trigger_parent_aggregation_check']
+                parent_id = trigger_info.get('parent_id')
+                child_id = trigger_info.get('child_id')
+                
+                if parent_id:
+                    parent_node = self.task_graph.get_node(parent_id)
+                    if parent_node and parent_node.status == TaskStatus.PLAN_DONE:
+                        logger.info(f"🔍 IMMEDIATE CHECK: Child {child_id} completed, checking if parent {parent_id} can aggregate")
+                        
+                        # Check if parent can now aggregate
+                        if self.state_manager.can_aggregate(parent_node):
+                            try:
+                                parent_node.update_status(TaskStatus.AGGREGATING, validate_transition=True)
+                                self.knowledge_store.add_or_update_record_from_node(parent_node)
+                                logger.info(f"✅ IMMEDIATE AGGREGATION: Parent {parent_id} transitioned to AGGREGATING due to child {child_id} completion")
+                                checked_parents += 1
+                            except Exception as e:
+                                logger.warning(f"Failed immediate aggregation transition for {parent_id}: {e}")
+                        else:
+                            logger.debug(f"Parent {parent_id} not ready to aggregate yet (other children still running)")
+                    
+                    # Clear the trigger to avoid duplicate processing
+                    del node.aux_data['trigger_parent_aggregation_check']
+        
+        return checked_parents
+    
     async def _process_single_node(self, node: TaskNode) -> bool:
         """
         Process a single node with error recovery.
@@ -352,7 +455,18 @@ class ExecutionOrchestrator:
     async def _is_execution_complete(self) -> bool:
         """Check if the execution is complete."""
         active_nodes = await self.task_scheduler.get_active_nodes()
-        return len(active_nodes) == 0
+        
+        # Also check for PLAN_DONE nodes that might transition to AGGREGATING
+        all_nodes = self.task_graph.get_all_nodes()
+        plan_done_nodes = [n for n in all_nodes if n.status == TaskStatus.PLAN_DONE]
+        
+        # If there are PLAN_DONE nodes, check if any could potentially aggregate
+        for node in plan_done_nodes:
+            if self.state_manager.can_aggregate(node):
+                # This node can still progress
+                return False
+                
+        return len(active_nodes) == 0 and len(plan_done_nodes) == 0
     
     async def _attempt_deadlock_recovery(self, deadlock_info: Dict[str, Any]) -> Dict[str, Any]:
         """

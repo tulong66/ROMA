@@ -310,10 +310,20 @@ class ContextBuilderService:
         if task_graph and node.parent_node_id:
             parent = task_graph.get_node(node.parent_node_id)
             if parent:
+                # Build proper parent chain
+                parent_chain = [ParentContextNode(
+                    task_id=parent.task_id,
+                    goal=parent.goal,
+                    layer=parent.layer,
+                    task_type=str(parent.task_type)
+                )]
+                
+                # Properly format all required fields
                 parent_context = ParentHierarchyContext(
-                    parent_goal=parent.goal,
-                    parent_task_type=str(parent.task_type),
-                    formatted_context=f"Parent task: {parent.goal}"
+                    current_position=f"Subtask of layer {parent.layer} task: {parent.goal}",
+                    parent_chain=parent_chain,
+                    formatted_context=f"Parent task: {parent.goal}",
+                    priority_level="medium"
                 )
         
         formatted_context = ""
@@ -442,7 +452,7 @@ class ContextBuilderService:
         dependency_ids = set()
         
         # Method 1: Get dependencies from aux_data
-        depends_on_indices = node.aux_data.get('depends_on_indices', [])
+        depends_on_indices = node.aux_data.get('depends_on_indices', []) if node.aux_data is not None else []
         logger.info(f"Node {node.task_id} has depends_on_indices: {depends_on_indices}")
         if depends_on_indices and node.parent_node_id:
             # First try to get from task_graph (more reliable for newly created nodes)
@@ -465,7 +475,7 @@ class ContextBuilderService:
                             dependency_ids.add(dep_task_id)
         
         # Method 2: Check for explicit dependency IDs in aux_data
-        if 'dependency_ids' in node.aux_data:
+        if node.aux_data is not None and 'dependency_ids' in node.aux_data:
             dependency_ids.update(node.aux_data['dependency_ids'])
         
         # Method 3: Look for sibling nodes that this task might depend on
@@ -498,7 +508,7 @@ class ContextBuilderService:
                     result_content = dep_record.output_content
                 elif hasattr(dep_record, 'output_summary') and dep_record.output_summary:
                     result_content = dep_record.output_summary
-                elif hasattr(dep_record, 'aux_data') and dep_record.aux_data.get('full_result'):
+                elif hasattr(dep_record, 'aux_data') and dep_record.aux_data is not None and dep_record.aux_data.get('full_result'):
                     result_content = dep_record.aux_data['full_result']
                 
                 if result_content:

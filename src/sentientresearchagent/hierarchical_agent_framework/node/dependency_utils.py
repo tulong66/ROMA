@@ -32,7 +32,7 @@ class DependencyChainTracker:
         transitive_deps = set()
         
         # Get direct dependencies from aux_data
-        direct_dep_indices = node.aux_data.get('depends_on_indices', [])
+        direct_dep_indices = node.aux_data.get('depends_on_indices', []) if node.aux_data is not None else []
         
         if direct_dep_indices and node.parent_node_id:
             # Get parent node to resolve indices to actual task IDs
