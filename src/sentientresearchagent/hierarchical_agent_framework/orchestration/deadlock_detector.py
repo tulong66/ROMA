@@ -367,19 +367,48 @@ class DeadlockDetector:
             node = active_nodes[0]
             
             # Check if node has been running for too long
-            # This would need timestamp tracking in real implementation
-            return DeadlockInfo(
-                is_deadlocked=True,
-                pattern=DeadlockPattern.SINGLE_NODE_HANG,
-                affected_nodes=[node.task_id],
-                reason="Single node stuck in RUNNING state",
-                diagnostics={
-                    "node": node.task_id,
-                    "goal": node.goal,
-                    "type": f"{node.task_type}/{node.node_type}"
-                },
-                suggested_recovery="Force node to NEEDS_REPLAN or FAILED"
-            )
+            import time
+            current_time = time.time()
+            
+            # Get node start time from timestamp_updated or use a reasonable default
+            node_start_time = getattr(node, 'timestamp_updated', None)
+            if node_start_time:
+                # Convert to timestamp if it's a datetime
+                if hasattr(node_start_time, 'timestamp'):
+                    node_start_time = node_start_time.timestamp()
+                elif isinstance(node_start_time, str):
+                    # Try to parse ISO format
+                    try:
+                        from datetime import datetime
+                        dt = datetime.fromisoformat(node_start_time.replace('Z', '+00:00'))
+                        node_start_time = dt.timestamp()
+                    except:
+                        node_start_time = current_time
+            else:
+                # If no timestamp, assume it just started
+                node_start_time = current_time
+            
+            # Calculate how long the node has been running
+            running_duration = current_time - node_start_time
+            
+            # Only consider it hanging if it's been running for more than 120 seconds
+            # This gives plenty of time for LLM calls which can take 60+ seconds for complex tasks
+            if running_duration > 120.0:
+                return DeadlockInfo(
+                    is_deadlocked=True,
+                    pattern=DeadlockPattern.SINGLE_NODE_HANG,
+                    affected_nodes=[node.task_id],
+                    reason=f"Single node stuck in RUNNING state for {running_duration:.1f}s (timeout: 120s)",
+                    diagnostics={
+                        "node": node.task_id,
+                        "goal": node.goal,
+                        "type": f"{node.task_type}/{node.node_type}",
+                        "running_duration": running_duration
+                    },
+                    suggested_recovery="Force node to NEEDS_REPLAN or FAILED"
+                )
+            else:
+                logger.debug(f"Single node {node.task_id} has been running for {running_duration:.1f}s (not hanging yet)")
         
         return None
     

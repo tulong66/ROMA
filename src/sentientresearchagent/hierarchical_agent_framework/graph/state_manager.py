@@ -134,8 +134,15 @@ class StateManager:
         if all_sub_finished:
             logger.info(f"Node {node.task_id} can AGGREGATE: All {len(sub_graph_nodes)} sub-tasks in '{node.sub_graph_id}' are finished.")
         else:
-            logger.debug(f"⏳ AGGREGATION WAITING - Node {node.task_id} cannot AGGREGATE yet: Not all sub-tasks in '{node.sub_graph_id}' are finished.")
-            # Enhanced debugging: log each sub-task status
+            # Enhanced debugging: show which specific nodes are blocking aggregation
+            incomplete_nodes = []
+            for sn in sub_graph_nodes:
+                if not is_terminal_status(sn.status):
+                    incomplete_nodes.append(f"{sn.task_id}:{sn.status.name}")
+            
+            logger.warning(f"⏳ AGGREGATION BLOCKED - Node {node.task_id} cannot AGGREGATE: {len(incomplete_nodes)}/{len(sub_graph_nodes)} children incomplete: {', '.join(incomplete_nodes)}")
+            
+            # Log each sub-task status for debugging
             for sn in sub_graph_nodes:
                 terminal_status = is_terminal_status(sn.status)
                 logger.debug(f"  ⏳ Sub-task {sn.task_id}: status={sn.status.name}, is_terminal={terminal_status}")

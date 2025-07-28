@@ -58,7 +58,8 @@ class GraphSerializer:
         # Fix: Check if aux_data is not None before accessing it
         if node_obj.aux_data is not None and "execution_details" in node_obj.aux_data:
             execution_details = node_obj.aux_data["execution_details"]
-            model_info = execution_details.get("model_info", {})
+            if execution_details is not None:
+                model_info = execution_details.get("model_info", {})
 
         if processed_result is None and node_obj.aux_data is not None and "full_result" in node_obj.aux_data:
             processed_result = node_obj.aux_data["full_result"]

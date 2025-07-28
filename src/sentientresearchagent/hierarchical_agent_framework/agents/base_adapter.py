@@ -457,6 +457,9 @@ Ensure your output is a valid JSON conforming to the PlanOutput schema, containi
 
         # Execute agent with proper response capture
         async def execute_agent():
+            # Get stage name in local scope to avoid closure issues
+            local_stage_name = self._get_stage_name(node)
+            
             if not hasattr(self.agno_agent, 'arun'):
                 raise AgentExecutionError(
                     agent_name=self.agent_name,
@@ -466,7 +469,25 @@ Ensure your output is a valid JSON conforming to the PlanOutput schema, containi
                 )
 
             try:
+                # Time the LLM call
+                llm_start_time = asyncio.get_event_loop().time()
+                logger.info(f"🚀 LLM CALL START: {self.agent_name} for node {node.task_id}")
+                
                 run_response_obj = await self.agno_agent.arun(user_message_string)
+                
+                llm_end_time = asyncio.get_event_loop().time()
+                llm_duration = llm_end_time - llm_start_time
+                logger.info(f"✅ LLM CALL COMPLETE: {self.agent_name} for node {node.task_id} - Duration: {llm_duration:.2f}s")
+                
+                # Store timing in trace
+                if trace_manager:
+                    trace_manager.update_stage(
+                        node_id=node.task_id,
+                        stage_name=local_stage_name,
+                        llm_call_duration_seconds=llm_duration,
+                        llm_call_start_time=llm_start_time,
+                        llm_call_end_time=llm_end_time
+                    )
                 
                 actual_content_data = None
                 raw_response = None
@@ -480,20 +501,19 @@ Ensure your output is a valid JSON conforming to the PlanOutput schema, containi
                         actual_content_data = content_attr
                         
                     # Store raw response for tracing - NO TRUNCATION for aggregation or execution
-                    stage_name = self._get_stage_name(node)
-                    if stage_name in ['aggregation', 'execution']:
+                    if local_stage_name in ['aggregation', 'execution']:
                         # For aggregation and execution, store the COMPLETE response - this is what users need to see
                         raw_response = str(actual_content_data)
-                        logger.info(f"🔍 {stage_name.upper()}: Storing FULL response ({len(raw_response)} characters) for tracing")
+                        logger.info(f"🔍 {local_stage_name.upper()}: Storing FULL response ({len(raw_response)} characters) for tracing")
                     else:
                         # For other stages (planning, atomization), limit to prevent memory issues
                         full_response = str(actual_content_data)
                         if len(full_response) > 5000:  # Increased from 2000 to 5000 for better debugging
                             raw_response = full_response[:5000] + f"... [Response truncated from {len(full_response)} characters for memory efficiency]"
-                            logger.info(f"🔍 {stage_name.upper()}: Truncated response from {len(full_response)} to 5000 characters for tracing")
+                            logger.info(f"🔍 {local_stage_name.upper()}: Truncated response from {len(full_response)} to 5000 characters for tracing")
                         else:
                             raw_response = full_response
-                            logger.info(f"🔍 {stage_name.upper()}: Storing full response ({len(raw_response)} characters) for tracing")
+                            logger.info(f"🔍 {local_stage_name.upper()}: Storing full response ({len(raw_response)} characters) for tracing")
                 else:
                     logger.warning(f"Agno agent '{self.agent_name}' RunResponse object has no 'content' attribute for node {node.task_id}.")
                 
@@ -501,7 +521,7 @@ Ensure your output is a valid JSON conforming to the PlanOutput schema, containi
                 if raw_response:
                     trace_manager.update_stage(
                         node_id=node.task_id,
-                        stage_name=stage_name,
+                        stage_name=local_stage_name,
                         llm_response=raw_response
                     )
                 
@@ -529,7 +549,7 @@ Ensure your output is a valid JSON conforming to the PlanOutput schema, containi
             result = await ErrorRecovery.retry_with_backoff(
                 func=execute_agent,
                 max_retries=3,
-                base_delay=5.0,
+                base_delay=2.0,
                 exceptions=(AgentRateLimitError, AgentTimeoutError, AgentExecutionError)
             )
             

@@ -18,12 +18,27 @@ cache:
 
 # Execution Framework
 execution:
-  max_concurrent_nodes: 3  # Increased for better throughput
+  max_concurrent_nodes: 10  # Increased from 3 for better parallelization
+  max_parallel_nodes: 8     # New: Maximum nodes to process in parallel batches
   max_execution_steps: 500  # More steps for deep reasoning
   rate_limit_rpm: 30  # Reduced from 60 to avoid Gemini rate limits
   enable_hitl: true
   hitl_timeout_seconds: 1200.0  # 10 minutes for human review
   node_execution_timeout_seconds: 2400.0  # 40 minutes max for overall task execution
+  
+  # New: State management optimization
+  state_batch_size: 50      # Batch size for state updates
+  state_batch_timeout_ms: 100  # Max time before flushing state batch
+  enable_state_compression: true  # Compress large state objects
+  
+  # New: WebSocket optimization
+  ws_batch_size: 50         # Batch size for WebSocket messages
+  ws_batch_timeout_ms: 100  # Max time before sending WebSocket batch
+  enable_ws_compression: true  # Compress WebSocket payloads
+  enable_diff_updates: true    # Send differential updates only
+  
+  # Immediate slot filling for better concurrency
+  enable_immediate_slot_fill: true  # Fill slots as soon as they become available
   
   # Enhanced timeout strategy with escalation
   timeout_strategy:

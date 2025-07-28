@@ -95,7 +95,8 @@ const ProjectConfigPanel: React.FC<ProjectConfigPanelProps> = ({
       ...config,
       profile: {
         name: profileName,
-        displayName: profileName === 'deep_research_agent' ? 'Deep Research Agent' : 'General Agent'
+        displayName: profileName === 'crypto_analytics_agent' ? 'Crypto Analytics Agent' : 
+                     profileName === 'deep_research_agent' ? 'Deep Research Agent' : 'General Agent'
       }
     })
   }
@@ -172,7 +173,7 @@ const ProjectConfigPanel: React.FC<ProjectConfigPanelProps> = ({
 
         <TabsContent value="profile" className="space-y-6">
           <ProjectProfileSelector
-            selectedProfile={config.profile?.name || 'deep_research_agent'}
+            selectedProfile={config.profile?.name || 'crypto_analytics_agent'}
             onProfileChange={handleProfileChange}
           />
         </TabsContent>
@@ -197,7 +198,7 @@ const ProjectConfigPanel: React.FC<ProjectConfigPanelProps> = ({
                     type="number"
                     min="1"
                     max="10"
-                    value={config.execution?.max_recursion_depth || 5}
+                    value={config.execution?.max_recursion_depth || 2}
                     onChange={(e) => updateConfig('execution', 'max_recursion_depth', parseInt(e.target.value))}
                   />
                   <p className="text-sm text-muted-foreground">
@@ -212,7 +213,7 @@ const ProjectConfigPanel: React.FC<ProjectConfigPanelProps> = ({
                     type="number"
                     min="1"
                     max="20"
-                    value={config.execution?.max_concurrent_nodes || 3}
+                    value={config.execution?.max_concurrent_nodes || 6}
                     onChange={(e) => updateConfig('execution', 'max_concurrent_nodes', parseInt(e.target.value))}
                   />
                   <p className="text-sm text-muted-foreground">

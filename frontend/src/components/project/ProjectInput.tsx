@@ -25,8 +25,8 @@ const ProjectInput: React.FC = () => {
   // Default configuration
   const [config, setConfig] = useState<ProjectConfig>({
     profile: {
-      name: 'deep_research_agent',
-      displayName: 'Deep Research Agent'
+      name: 'crypto_analytics_agent',
+      displayName: 'Crypto Analytics Agent'
     },
     llm: {
       provider: 'openai',
@@ -36,7 +36,7 @@ const ProjectInput: React.FC = () => {
       max_retries: 3
     },
     execution: {
-      max_concurrent_nodes: 3,
+      max_concurrent_nodes: 6,
       max_execution_steps: 250,
       max_recursion_depth: 2,
       task_timeout_seconds: 300,

@@ -88,8 +88,7 @@ class PlanHandler(BaseNodeHandler):
         
         # Handle empty plan
         if not plan_output.sub_tasks:
-            logger.info(f"Planner returned empty plan for {node.task_id} - treating as atomic")
-            node.node_type = NodeType.EXECUTE
+            logger.info(f"Planner returned empty plan for {node.task_id} - will create empty sub-graph")
             return plan_output
         
         # HITL review if available
@@ -203,12 +202,16 @@ class PlanHandler(BaseNodeHandler):
         else:
             # Empty plan or modification requested
             if node.status != TaskStatus.NEEDS_REPLAN:
-                # Treat as atomic if not going to replan
-                node.node_type = NodeType.EXECUTE
+                # Create empty sub-graph for aggregation to work
+                empty_graph_id = f"{node.task_id}_empty_graph"
+                context.task_graph.add_graph(empty_graph_id)
+                node.sub_graph_id = empty_graph_id
+                
+                # Keep as PLAN node so it can aggregate
                 await context.state_manager.transition_node(
                     node,
                     TaskStatus.PLAN_DONE,
-                    reason="Empty plan - treating as atomic"
+                    reason="Empty plan - no subtasks to execute"
                 )
         
         # Call parent post-process

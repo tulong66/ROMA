@@ -73,9 +73,9 @@ const ProjectSidebar: React.FC = () => {
       max_retries: 3
     },
     execution: {
-      max_concurrent_nodes: 3,
+      max_concurrent_nodes: 6,
       max_execution_steps: 250,
-      max_recursion_depth: 3,
+      max_recursion_depth: 2,
       task_timeout_seconds: 300,
       enable_hitl: true,
       hitl_root_plan_only: true,

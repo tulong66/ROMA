@@ -15,6 +15,7 @@ import asyncio
 
 from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode, TaskStatus, TaskType, NodeType
 from sentientresearchagent.exceptions import SentientError
+from .batched_state_manager import BatchedStateManager
 
 if TYPE_CHECKING:
     from sentientresearchagent.hierarchical_agent_framework.graph.task_graph import TaskGraph
@@ -99,6 +100,22 @@ class ExecutionOrchestrator:
             "checkpoints_created": 0
         }
         
+        # Dynamic concurrency management
+        self._current_concurrency = config.execution.max_concurrent_nodes
+        self._rate_limit_errors = 0
+        self._last_rate_limit_time = None
+        self._processing_times = []  # Track recent processing times
+        self._concurrency_lock = asyncio.Lock()
+        
+        # Initialize batched state manager
+        self.batched_state_manager = BatchedStateManager(
+            knowledge_store=knowledge_store,
+            task_graph=task_graph,
+            batch_size=getattr(config.execution, 'state_batch_size', 50),
+            batch_timeout_ms=getattr(config.execution, 'state_batch_timeout_ms', 100),
+            enable_compression=getattr(config.execution, 'enable_state_compression', True)
+        )
+        
         logger.info("ExecutionOrchestrator initialized")
     
     async def execute(
@@ -138,6 +155,9 @@ class ExecutionOrchestrator:
             
             # Finalize execution
             final_result = await self._finalize_execution(result)
+            
+            # Ensure all state updates are flushed
+            await self.batched_state_manager.flush_all()
             
             logger.info(f"Execution {self._execution_id} completed")
             return final_result
@@ -186,7 +206,7 @@ class ExecutionOrchestrator:
     
     async def _execution_loop(self, max_steps: int) -> Dict[str, Any]:
         """
-        Main execution loop.
+        Main execution loop with improved slot-filling mechanism.
         
         Args:
             max_steps: Maximum number of steps to execute
@@ -202,143 +222,339 @@ class ExecutionOrchestrator:
         logger.info(f"⏱️ EXECUTION TIMEOUT: {self.config.execution.node_execution_timeout_seconds} seconds")
         logger.info("=" * 80)
         
-        for step in range(max_steps):
-            self._execution_stats["steps_executed"] += 1
+        # Queue to track completed nodes
+        completed_queue = asyncio.Queue()
+        active_tasks = {}  # Track active processing tasks
+        
+        # Start the immediate-fill processor if enabled
+        immediate_fill_task = None
+        use_immediate_fill = getattr(self.config.execution, 'enable_immediate_slot_fill', True)
+        
+        if use_immediate_fill:
+            max_concurrent = self._get_dynamic_concurrency()
+            immediate_fill_task = asyncio.create_task(self._process_nodes_immediate_fill(max_concurrent))
+            logger.info("🚀 IMMEDIATE SLOT FILL: Enabled - nodes will start as soon as slots become available")
+        else:
+            logger.info("📦 BATCH PROCESSING: Using traditional batch-based node processing")
+        
+        try:
+            step = 0
+            last_activity_time = time.time()
+            iterations_without_work = 0  # Track consecutive iterations with no work
             
-            # Check timeout
-            elapsed_time = time.time() - start_time
-            if elapsed_time > self.config.execution.node_execution_timeout_seconds:
-                logger.error(f"Execution timeout after {elapsed_time:.2f}s")
-                return {"error": f"Execution timeout after {elapsed_time:.2f}s"}
-            
-            # Log step header with node summary
-            all_nodes = self.task_graph.get_all_nodes()
-            status_summary = {}
-            for node in all_nodes:
-                status_name = node.status.name
-                status_summary[status_name] = status_summary.get(status_name, 0) + 1
-            
-            logger.info(f"\n📍 Step {step + 1}/{max_steps} | Time: {elapsed_time:.1f}s | Nodes: {status_summary}")
-            
-            # Update node readiness (transitions PENDING to READY when dependencies satisfied)
-            transitioned = await self.task_scheduler.update_node_readiness()
-            if transitioned > 0:
-                logger.info(f"✅ PENDING → READY: {transitioned} nodes transitioned")
-                # Update knowledge store for all newly ready nodes
-                for node in self.task_graph.get_all_nodes():
-                    if node.status == TaskStatus.READY:
-                        self.knowledge_store.add_or_update_record_from_node(node)
-            
-            # Check for nodes ready to aggregate (PLAN_DONE -> AGGREGATING)
-            # Keep checking until no more transitions are possible (handles async subtask completion)
-            aggregated_total = 0
-            max_aggregate_iterations = 5
-            
-            for agg_iter in range(max_aggregate_iterations):
-                aggregated_this_iter = 0
-                all_nodes = self.task_graph.get_all_nodes()
-                plan_done_nodes = [n for n in all_nodes if n.status == TaskStatus.PLAN_DONE]
+            while step < max_steps:
+                # Check timeout
+                elapsed_time = time.time() - start_time
+                if elapsed_time > self.config.execution.node_execution_timeout_seconds:
+                    logger.error(f"Execution timeout after {elapsed_time:.2f}s")
+                    return {"error": f"Execution timeout after {elapsed_time:.2f}s"}
                 
-                if not plan_done_nodes:
-                    break
+                # Track if we did any meaningful work this iteration
+                did_work = False
+                
+                # Log status periodically, not every iteration
+                if step % 10 == 0 or step == 0:
+                    all_nodes = self.task_graph.get_all_nodes()
+                    status_summary = {}
+                    node_details = []
+                    for node in all_nodes:
+                        status_name = node.status.name
+                        status_summary[status_name] = status_summary.get(status_name, 0) + 1
+                        if node.status in [TaskStatus.READY, TaskStatus.PENDING]:
+                            node_details.append(f"{node.task_id}:{node.status.name}")
                     
-                for node in plan_done_nodes:
-                    if self.state_manager.can_aggregate(node):
-                        # Transition to AGGREGATING
+                    logger.info(f"\n📍 Step {step + 1}/{max_steps} | Time: {elapsed_time:.1f}s | Nodes: {status_summary}")
+                    if node_details and step % 50 == 0:  # Log details less frequently
+                        logger.debug(f"Non-executing nodes: {', '.join(node_details)}")
+                
+                # Update node readiness (transitions PENDING to READY when dependencies satisfied)
+                transitioned = await self.task_scheduler.update_node_readiness()
+                if transitioned > 0:
+                    did_work = True
+                    logger.info(f"✅ PENDING → READY: {transitioned} nodes transitioned")
+                    # Batch update knowledge store for all newly ready nodes
+                    ready_nodes_to_update = []
+                    for node in self.task_graph.get_all_nodes():
+                        if node.status == TaskStatus.READY:
+                            ready_nodes_to_update.append(node)
+                    
+                    # Use batched update
+                    for node in ready_nodes_to_update:
+                        await self.batched_state_manager.update_node_state(node)
+                
+                # Check for nodes ready to aggregate (PLAN_DONE -> AGGREGATING)
+                # Keep checking until no more transitions are possible (handles async subtask completion)
+                aggregated_total = 0
+                max_aggregate_iterations = 5
+                
+                # Track stuck nodes to prevent infinite loops
+                if not hasattr(self, '_stuck_aggregation_nodes'):
+                    self._stuck_aggregation_nodes = {}
+                
+                for agg_iter in range(max_aggregate_iterations):
+                    aggregated_this_iter = 0
+                    all_nodes = self.task_graph.get_all_nodes()
+                    plan_done_nodes = [n for n in all_nodes if n.status == TaskStatus.PLAN_DONE]
+                    
+                    if not plan_done_nodes:
+                        break
+                        
+                    for node in plan_done_nodes:
+                        # Track how long this node has been stuck in PLAN_DONE
+                        node_key = node.task_id
+                        current_time = time.time()
+                        
+                        if node_key not in self._stuck_aggregation_nodes:
+                            self._stuck_aggregation_nodes[node_key] = current_time
+                        
+                        stuck_duration = current_time - self._stuck_aggregation_nodes[node_key]
+                        
+                        # If stuck for more than 5 minutes, force transition or log detailed debug info
+                        if stuck_duration > 300:  # 5 minutes
+                            logger.error(f"🚨 INFINITE LOOP DETECTED: Node {node.task_id} stuck in PLAN_DONE for {stuck_duration:.1f}s")
+                            # Force check with detailed logging
+                            can_agg = self.state_manager.can_aggregate(node)
+                            if not can_agg:
+                                logger.error(f"🚨 Node {node.task_id} permanently blocked from aggregation - considering forced completion")
+                                continue
+                        
+                        if self.state_manager.can_aggregate(node):
+                            # Remove from stuck tracking since it can now progress
+                            if node_key in self._stuck_aggregation_nodes:
+                                del self._stuck_aggregation_nodes[node_key]
+                                
+                            # Transition to AGGREGATING  
+                            try:
+                                node.update_status(TaskStatus.AGGREGATING, validate_transition=True)
+                                await self.batched_state_manager.update_node_state(node)
+                                aggregated_this_iter += 1
+                                logger.info(f"✅ PLAN_DONE → AGGREGATING: {node.task_id} (all subtasks complete)")
+                            except Exception as e:
+                                logger.warning(f"Failed to transition {node.task_id} to AGGREGATING: {e}")
+                    
+                    aggregated_total += aggregated_this_iter
+                    
+                    # If no transitions this iteration, stop checking
+                    if aggregated_this_iter == 0:
+                        break
+                        
+                    # Small delay to allow async operations to complete
+                    await asyncio.sleep(0.05)
+                
+                if aggregated_total > 0:
+                    did_work = True
+                    logger.info(f"📊 Aggregation: {aggregated_total} nodes ready to aggregate results")
+                
+                if use_immediate_fill:
+                    # Immediate-fill mode: processor handles node execution
+                    # Main loop focuses on state management and monitoring
+                    
+                    # Check if the immediate-fill task is still running
+                    if immediate_fill_task and immediate_fill_task.done():
+                        # Check if it completed normally or with error
                         try:
-                            node.update_status(TaskStatus.AGGREGATING, validate_transition=True)
-                            self.knowledge_store.add_or_update_record_from_node(node)
-                            aggregated_this_iter += 1
-                            logger.info(f"✅ PLAN_DONE → AGGREGATING: {node.task_id} (all subtasks complete)")
+                            await immediate_fill_task
+                            logger.info("✅ Immediate-fill processor completed successfully")
+                            break
                         except Exception as e:
-                            logger.warning(f"Failed to transition {node.task_id} to AGGREGATING: {e}")
-                
-                aggregated_total += aggregated_this_iter
-                
-                # If no transitions this iteration, stop checking
-                if aggregated_this_iter == 0:
-                    break
-                    
-                # Small delay to allow async operations to complete
-                await asyncio.sleep(0.05)
-            
-            if aggregated_total > 0:
-                logger.info(f"📊 Aggregation: {aggregated_total} nodes ready to aggregate results")
-            
-            # IMPROVED CONCURRENCY: Get currently running nodes and available slots
-            all_nodes = self.task_graph.get_all_nodes()
-            running_nodes = [n for n in all_nodes if n.status == TaskStatus.RUNNING]
-            max_concurrent = getattr(self.config.execution, 'max_concurrent_nodes', 2)
-            available_slots = max_concurrent - len(running_nodes)
-            
-            logger.debug(f"🔄 CONCURRENCY: {len(running_nodes)} running, {available_slots} slots available (max: {max_concurrent})")
-            
-            # Get next tasks to execute (only as many as we have slots for)
-            ready_nodes = await self.task_scheduler.get_ready_nodes()
-            
-            if not ready_nodes:
-                # Check if execution is complete
-                if await self._is_execution_complete():
-                    logger.info("=" * 80)
-                    logger.info("✅ EXECUTION COMPLETE - All tasks finished")
-                    logger.info("=" * 80)
-                    break
-                
-                # Check for deadlock
-                deadlock_info = await self.deadlock_detector.detect_deadlock()
-                if deadlock_info["is_deadlocked"]:
-                    # Try recovery
-                    recovery_result = await self._attempt_deadlock_recovery(deadlock_info)
-                    if not recovery_result["recovered"]:
-                        logger.error(f"Deadlock detected and recovery failed: {deadlock_info['reason']}")
-                        return {"error": f"Deadlock: {deadlock_info['reason']}"}
-                    else:
-                        logger.info(f"Recovered from deadlock: {recovery_result['action']}")
-                        continue
+                            logger.error(f"❌ Immediate-fill processor failed: {e}")
+                            return {"error": f"Immediate-fill processor failed: {e}"}
                 else:
-                    # No tasks ready but not deadlocked - wait briefly
-                    await asyncio.sleep(0.1)
-                    continue
+                    # Traditional batch processing mode
+                    all_nodes = self.task_graph.get_all_nodes()
+                    running_nodes = [n for n in all_nodes if n.status == TaskStatus.RUNNING]
+                    max_concurrent = self._get_dynamic_concurrency()
+                    available_slots = max_concurrent - len(running_nodes)
+                    
+                    logger.debug(f"🔄 CONCURRENCY: {len(running_nodes)} running, {available_slots} slots available")
+                    
+                    # Get ready nodes and process them
+                    if available_slots > 0:
+                        ready_nodes = await self.task_scheduler.get_ready_nodes(max_nodes=available_slots)
+                        if ready_nodes:
+                            logger.info(f"📦 BATCH PROCESSING: {len(ready_nodes)} nodes")
+                            processed_count = await self._process_nodes(ready_nodes)
+                            self._execution_stats["nodes_processed"] += processed_count
+                            
+                            # Clear dependency cache
+                            if processed_count > 0:
+                                did_work = True
+                                self.task_scheduler.clear_dependency_cache()
+                    
+                    # Check if execution is complete
+                    if await self._is_execution_complete():
+                        logger.info("✅ EXECUTION COMPLETE")
+                        break
+                    
+                    # Small delay for batch mode
+                    await asyncio.sleep(0.2)
             
-            # Limit nodes to process based on available slots
-            nodes_to_process = ready_nodes[:available_slots] if available_slots > 0 else []
-            
-            if not nodes_to_process:
-                # All slots filled, wait briefly for nodes to complete
-                logger.debug(f"🔄 CONCURRENCY: All {max_concurrent} slots occupied, waiting for completion")
-                await asyncio.sleep(0.1)
-                continue
-            
-            # Process ready nodes (only up to available slots)
-            processed_count = await self._process_nodes(nodes_to_process)
-            self._execution_stats["nodes_processed"] += processed_count
-            
-            # IMMEDIATE AGGREGATION CHECK: Check if any nodes completed and triggered parent aggregation
-            if processed_count > 0:
+                # Check for immediate aggregation triggers
                 immediate_aggregation_count = await self._check_immediate_aggregation_triggers()
                 if immediate_aggregation_count > 0:
+                    did_work = True
                     logger.info(f"🚀 IMMEDIATE AGGREGATION: {immediate_aggregation_count} parents checked due to child completion")
-            
-            # Clear dependency cache after processing nodes (graph may have changed)
-            if processed_count > 0:
-                self.task_scheduler.clear_dependency_cache()
-            
-            # Create checkpoint if needed
-            if self.checkpoint_manager and self.checkpoint_manager.should_checkpoint():
-                await self._create_checkpoint(step)
+                
+                # Check for deadlock periodically
+                if step % 50 == 0:  # Check every 50 steps (5 seconds)
+                    deadlock_info = await self.deadlock_detector.detect_deadlock()
+                    if deadlock_info["is_deadlocked"]:
+                        # Try recovery
+                        recovery_result = await self._attempt_deadlock_recovery(deadlock_info)
+                        if not recovery_result["recovered"]:
+                            logger.error(f"Deadlock detected and recovery failed: {deadlock_info['reason']}")
+                            if immediate_fill_task:
+                                immediate_fill_task.cancel()
+                            return {"error": f"Deadlock: {deadlock_info['reason']}"}
+                        else:
+                            logger.info(f"Recovered from deadlock: {recovery_result['action']}")
+                
+                # In immediate-fill mode, wait longer since the processor handles execution
+                if use_immediate_fill:
+                    # Wait for either completion or significant time to pass
+                    await asyncio.sleep(1.0)  # Check status every second
+                else:
+                    # Traditional mode - shorter delay
+                    await asyncio.sleep(0.1)
+                
+                # Create checkpoint if needed
+                if self.checkpoint_manager and self.checkpoint_manager.should_checkpoint():
+                    await self._create_checkpoint(step)
+                
+                # Only increment step if we did meaningful work
+                if did_work:
+                    step += 1
+                    self._execution_stats["steps_executed"] = step
+                    last_activity_time = time.time()
+                    iterations_without_work = 0  # Reset counter
+                    logger.debug(f"✅ Step {step}: Work completed")
+                else:
+                    # No work done - track consecutive iterations without work
+                    iterations_without_work += 1
+                    
+                    # Check if we're stuck
+                    time_since_activity = time.time() - last_activity_time
+                    
+                    # Log warnings at appropriate intervals
+                    if iterations_without_work == 100:  # 10 seconds of waiting
+                        logger.info(f"⏳ Waiting for nodes to complete... ({time_since_activity:.1f}s since last activity)")
+                    elif iterations_without_work == 300:  # 30 seconds
+                        logger.warning(f"⚠️ Long wait detected: {time_since_activity:.1f}s since last activity")
+                    elif iterations_without_work > 600:  # 60 seconds
+                        # Check if we have any running nodes
+                        all_nodes = self.task_graph.get_all_nodes()
+                        running_nodes = [n for n in all_nodes if n.status == TaskStatus.RUNNING]
+                        if running_nodes:
+                            logger.info(f"🔄 Still waiting for {len(running_nodes)} running nodes to complete")
+                            # Reset the counter to avoid spam
+                            iterations_without_work = 100
+                        else:
+                            logger.error(f"❌ No activity for {time_since_activity:.1f}s with no running nodes - system may be stuck")
+                            break
         
-        # Check if we hit max steps
-        if step >= max_steps - 1:
-            active_nodes = await self.task_scheduler.get_active_nodes()
-            if active_nodes:
-                logger.warning(f"Reached max steps with {len(active_nodes)} active nodes")
-                return {"error": f"Reached max steps ({max_steps}) with active nodes remaining"}
+            # Check if we hit max steps
+            if step >= max_steps:
+                if immediate_fill_task:
+                    immediate_fill_task.cancel()
+                active_nodes = await self.task_scheduler.get_active_nodes()
+                if active_nodes:
+                    logger.warning(f"Reached max steps ({max_steps}) with {len(active_nodes)} active nodes")
+                    # Provide more details about the active nodes
+                    for node in active_nodes[:5]:  # Show up to 5 nodes
+                        logger.warning(f"  - {node.task_id}: {node.status.name} - {node.goal[:50]}...")
+                    return {"error": f"Reached max steps ({max_steps}) with {len(active_nodes)} active nodes remaining"}
+            
+            # Check if execution completed successfully
+            if await self._is_execution_complete():
+                logger.info(f"✅ Execution completed successfully after {step} steps")
+                return {"success": True}
+            
+            # If we exited due to no activity
+            logger.warning(f"Execution loop exited after {step} steps")
+            return {"success": True}
+            
+        finally:
+            # Ensure the immediate-fill task is cancelled if still running
+            if immediate_fill_task and not immediate_fill_task.done():
+                immediate_fill_task.cancel()
+                try:
+                    await immediate_fill_task
+                except asyncio.CancelledError:
+                    logger.info("Immediate-fill processor cancelled")
+    
+    async def _process_nodes_immediate_fill(self, max_concurrent: int) -> None:
+        """
+        Process nodes with immediate slot filling - as soon as one finishes, another starts.
+        This runs continuously in the background during execution.
         
-        return {"success": True}
+        Args:
+            max_concurrent: Maximum number of concurrent nodes
+        """
+        semaphore = asyncio.Semaphore(max_concurrent)
+        active_tasks = set()
+        processed_count = 0
+        
+        async def process_node_with_tracking(node: TaskNode) -> None:
+            """Process a node and track its completion."""
+            try:
+                async with semaphore:
+                    logger.info(f"🟢 SLOT ACQUIRED: Starting node {node.task_id} immediately")
+                    start_time = asyncio.get_event_loop().time()
+                    
+                    success = await self._process_single_node(node)
+                    
+                    duration = asyncio.get_event_loop().time() - start_time
+                    if success:
+                        logger.info(f"✅ SLOT FREED: Node {node.task_id} completed in {duration:.2f}s - slot now available")
+                        self._execution_stats["nodes_processed"] += 1
+                    else:
+                        logger.warning(f"❌ SLOT FREED: Node {node.task_id} failed after {duration:.2f}s - slot now available")
+                    
+                    return success
+            except Exception as e:
+                logger.error(f"❌ SLOT FREED: Node {node.task_id} errored: {e} - slot now available")
+                return False
+        
+        while True:
+            # Try to fill any available slots immediately
+            available_slots = max_concurrent - len(active_tasks)
+            
+            if available_slots > 0:
+                # Get nodes to fill available slots
+                ready_nodes = await self.task_scheduler.get_ready_nodes(max_nodes=available_slots)
+                
+                if ready_nodes:
+                    logger.info(f"🔥 IMMEDIATE FILL: Found {len(ready_nodes)} nodes to fill {available_slots} available slots")
+                    
+                    # Start processing immediately without waiting
+                    for node in ready_nodes:
+                        task = asyncio.create_task(process_node_with_tracking(node))
+                        active_tasks.add(task)
+                        processed_count += 1
+                    
+                    # Clear dependency cache since graph may have changed
+                    self.task_scheduler.clear_dependency_cache()
+                
+                elif await self._is_execution_complete() and len(active_tasks) == 0:
+                    # No more work and no active tasks
+                    logger.info(f"✅ Immediate fill processor completed. Total nodes processed: {processed_count}")
+                    break
+            
+            # Wait for any task to complete (this frees up a slot)
+            if active_tasks:
+                done, pending = await asyncio.wait(active_tasks, return_when=asyncio.FIRST_COMPLETED)
+                active_tasks = pending
+                
+                # Log slot availability
+                if done:
+                    logger.info(f"🔄 SLOTS UPDATE: {len(done)} task(s) completed, {len(pending)} still running, {max_concurrent - len(pending)} slots now available")
+            else:
+                # No active tasks, wait a bit before checking for new work
+                await asyncio.sleep(0.1)
     
     async def _process_nodes(self, nodes: list[TaskNode]) -> int:
         """
-        Process a batch of nodes.
+        Process a batch of nodes with true parallel execution.
         
         Args:
             nodes: Nodes to process
@@ -348,27 +564,42 @@ class ExecutionOrchestrator:
         """
         processed = 0
         
-        # Process nodes concurrently with controlled parallelism
-        max_parallel = getattr(self.config.execution, 'max_parallel_nodes', self.config.execution.max_concurrent_nodes)
+        # Get parallel processing configuration - use dynamic concurrency
+        max_parallel = getattr(self.config.execution, 'max_parallel_nodes', self._get_dynamic_concurrency())
         
-        for i in range(0, len(nodes), max_parallel):
-            batch = nodes[i:i + max_parallel]
-            
-            # Create processing tasks
-            tasks = []
-            for node in batch:
-                task = self._process_single_node(node)
-                tasks.append(task)
-            
-            # Wait for batch to complete
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-            
-            # Count successful processings
-            for result in results:
-                if not isinstance(result, Exception):
-                    processed += 1
-                else:
-                    logger.error(f"Node processing failed: {result}")
+        # Create semaphore to limit concurrent processing
+        semaphore = asyncio.Semaphore(max_parallel)
+        
+        async def process_with_semaphore(node: TaskNode) -> bool:
+            """Process a node with semaphore control."""
+            async with semaphore:
+                return await self._process_single_node(node)
+        
+        # Sort nodes by priority (layer, then creation time)
+        sorted_nodes = sorted(nodes, key=lambda n: (n.layer, n.timestamp_created))
+        
+        # Create all tasks immediately for true parallel execution
+        tasks = []
+        for node in sorted_nodes:
+            # Create task without awaiting - allows immediate parallel execution
+            task = asyncio.create_task(process_with_semaphore(node))
+            tasks.append(task)
+        
+        # Wait for all tasks to complete
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Count successful processings and log failures
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                logger.error(f"Node {sorted_nodes[i].task_id} processing failed: {result}")
+            else:
+                processed += 1
+        
+        # Log processing stats
+        if processed < len(nodes):
+            logger.warning(f"Processed {processed}/{len(nodes)} nodes successfully")
+        else:
+            logger.info(f"Successfully processed all {processed} nodes in parallel")
         
         return processed
     
@@ -418,7 +649,7 @@ class ExecutionOrchestrator:
     
     async def _process_single_node(self, node: TaskNode) -> bool:
         """
-        Process a single node with error recovery.
+        Process a single node with error recovery and performance tracking.
         
         Args:
             node: Node to process
@@ -426,6 +657,8 @@ class ExecutionOrchestrator:
         Returns:
             True if successful, False otherwise
         """
+        start_time = asyncio.get_event_loop().time()
+        
         try:
             # Process the node
             await self.node_processor.process_node(
@@ -433,10 +666,20 @@ class ExecutionOrchestrator:
                 self.task_graph, 
                 self.knowledge_store
             )
+            
+            # Track successful processing time
+            processing_time = asyncio.get_event_loop().time() - start_time
+            self._processing_times.append(processing_time)
+            
+            logger.debug(f"Node {node.task_id} processed in {processing_time:.2f}s")
             return True
             
         except Exception as e:
             logger.error(f"Error processing node {node.task_id}: {e}")
+            
+            # Check for rate limit errors and adjust concurrency
+            if "rate limit" in str(e).lower():
+                await self._adjust_concurrency(e)
             
             # Attempt recovery
             recovery_strategy = self.recovery_manager.get_strategy_for_error(e)
@@ -445,11 +688,15 @@ class ExecutionOrchestrator:
                 if recovery_result.recovered:
                     self._execution_stats["errors_recovered"] += 1
                     logger.info(f"Recovered from error in node {node.task_id}: {recovery_result.action}")
+                    
+                    # Track recovery time
+                    processing_time = asyncio.get_event_loop().time() - start_time
+                    self._processing_times.append(processing_time)
                     return True
             
             # Recovery failed - mark node as failed
             node.fail_with_error(e, {"recovery_attempted": True})
-            self.knowledge_store.add_or_update_record_from_node(node)
+            await self.batched_state_manager.update_node_state(node, immediate=True)  # Immediate for failures
             return False
     
     async def _is_execution_complete(self) -> bool:
@@ -604,4 +851,57 @@ class ExecutionOrchestrator:
     
     def get_execution_stats(self) -> Dict[str, Any]:
         """Get current execution statistics."""
-        return self._execution_stats.copy()
+        stats = self._execution_stats.copy()
+        stats["current_concurrency"] = self._current_concurrency
+        stats["rate_limit_errors"] = self._rate_limit_errors
+        return stats
+    
+    async def _adjust_concurrency(self, error: Optional[Exception] = None) -> None:
+        """
+        Dynamically adjust concurrency based on system performance and errors.
+        
+        Args:
+            error: Optional error that triggered adjustment
+        """
+        async with self._concurrency_lock:
+            max_concurrency = self.config.execution.max_concurrent_nodes
+            min_concurrency = max(1, max_concurrency // 4)
+            
+            if error and "rate limit" in str(error).lower():
+                # Rate limit error - reduce concurrency
+                self._rate_limit_errors += 1
+                self._last_rate_limit_time = asyncio.get_event_loop().time()
+                
+                # Exponential backoff for concurrency
+                new_concurrency = max(min_concurrency, self._current_concurrency // 2)
+                if new_concurrency < self._current_concurrency:
+                    logger.warning(f"Rate limit detected - reducing concurrency from {self._current_concurrency} to {new_concurrency}")
+                    self._current_concurrency = new_concurrency
+            
+            elif self._last_rate_limit_time:
+                # Check if we can increase concurrency again
+                time_since_rate_limit = asyncio.get_event_loop().time() - self._last_rate_limit_time
+                if time_since_rate_limit > 60:  # 1 minute cooldown
+                    # Gradually increase concurrency
+                    new_concurrency = min(max_concurrency, self._current_concurrency + 1)
+                    if new_concurrency > self._current_concurrency:
+                        logger.info(f"No recent rate limits - increasing concurrency from {self._current_concurrency} to {new_concurrency}")
+                        self._current_concurrency = new_concurrency
+                        
+            # Adjust based on processing times
+            if len(self._processing_times) >= 10:
+                avg_time = sum(self._processing_times) / len(self._processing_times)
+                
+                # If processing is very fast, we might be able to handle more
+                if avg_time < 1.0 and self._rate_limit_errors == 0:
+                    new_concurrency = min(max_concurrency, self._current_concurrency + 1)
+                    if new_concurrency > self._current_concurrency:
+                        logger.info(f"Fast processing detected - increasing concurrency to {new_concurrency}")
+                        self._current_concurrency = new_concurrency
+                
+                # Keep only recent times
+                self._processing_times = self._processing_times[-20:]
+    
+    def _get_dynamic_concurrency(self) -> int:
+        """Get current dynamic concurrency limit."""
+        return self._current_concurrency

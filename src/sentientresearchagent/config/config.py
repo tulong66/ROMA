@@ -69,13 +69,28 @@ class CacheConfig(BaseModel):
 
 class ExecutionConfig(BaseModel):
     """Configuration for task execution."""
-    max_concurrent_nodes: int = 3  # Updated to match YAML default
+    max_concurrent_nodes: int = 10  # Increased for better parallelization
+    max_parallel_nodes: int = 8     # Maximum nodes to process in parallel batches
     max_retries: int = 3
     retry_delay_seconds: float = 5.0
     rate_limit_rpm: int = 30  # Updated to match YAML default  
     max_execution_steps: int = 500  # Updated to match YAML default
     max_recursion_depth: int = 5  # NEW: Maximum recursion depth for task decomposition
     node_execution_timeout_seconds: float = 2400.0  # Updated to match YAML default (40 minutes)
+    
+    # State management optimization
+    state_batch_size: int = 50      # Batch size for state updates
+    state_batch_timeout_ms: int = 100  # Max time before flushing state batch
+    enable_state_compression: bool = True  # Compress large state objects
+    
+    # WebSocket optimization  
+    ws_batch_size: int = 50         # Batch size for WebSocket messages
+    ws_batch_timeout_ms: int = 100  # Max time before sending WebSocket batch
+    enable_ws_compression: bool = True  # Compress WebSocket payloads
+    enable_diff_updates: bool = True    # Send differential updates only
+    
+    # Immediate slot filling for better concurrency
+    enable_immediate_slot_fill: bool = True  # Fill slots as soon as they become available
     
     # HITL (Human-in-the-Loop) Configuration - Centralized
     enable_hitl: bool = True  # Master HITL switch
@@ -121,13 +136,22 @@ class ExecutionConfig(BaseModel):
             base_values = base_config.dict()
         else:
             base_values = {
-                'max_concurrent_nodes': 3,
+                'max_concurrent_nodes': 10,
+                'max_parallel_nodes': 8,
                 'max_retries': 3,
                 'retry_delay_seconds': 5.0,
                 'rate_limit_rpm': 30,
                 'max_execution_steps': 500,
                 'max_recursion_depth': 5,
                 'node_execution_timeout_seconds': 2400.0,
+                'state_batch_size': 50,
+                'state_batch_timeout_ms': 100,
+                'enable_state_compression': True,
+                'ws_batch_size': 50,
+                'ws_batch_timeout_ms': 100,
+                'enable_ws_compression': True,
+                'enable_diff_updates': True,
+                'enable_immediate_slot_fill': True,
                 'enable_hitl': True,
                 'hitl_timeout_seconds': 1200.0,  # 20 minutes
                 'hitl_root_plan_only': True,
@@ -153,10 +177,18 @@ class ExecutionConfig(BaseModel):
         """
         return {
             'max_concurrent_nodes': self.max_concurrent_nodes,
+            'max_parallel_nodes': self.max_parallel_nodes,
             'max_execution_steps': self.max_execution_steps,
             'max_recursion_depth': self.max_recursion_depth,
             'node_execution_timeout_seconds': self.node_execution_timeout_seconds,
             'rate_limit_rpm': self.rate_limit_rpm,
+            'state_batch_size': self.state_batch_size,
+            'state_batch_timeout_ms': self.state_batch_timeout_ms,
+            'enable_state_compression': self.enable_state_compression,
+            'ws_batch_size': self.ws_batch_size,
+            'ws_batch_timeout_ms': self.ws_batch_timeout_ms,
+            'enable_ws_compression': self.enable_ws_compression,
+            'enable_diff_updates': self.enable_diff_updates,
             'enable_hitl': self.enable_hitl,
             'hitl_timeout_seconds': self.hitl_timeout_seconds,
             'hitl_root_plan_only': self.hitl_root_plan_only,
