@@ -92,6 +92,10 @@ class ExecutionEngine:
         from sentientresearchagent.hierarchical_agent_framework.tracing.manager import TraceManager
         trace_manager = TraceManager(project_id="default")
         
+        # Create node processor config from main config
+        from sentientresearchagent.framework_entry import create_node_processor_config_from_main_config
+        node_config = create_node_processor_config_from_main_config(config) if hasattr(config, 'execution') else config
+        
         self.handler_context = HandlerContext(
             knowledge_store=knowledge_store,
             agent_registry=agent_registry,
@@ -100,7 +104,7 @@ class ExecutionEngine:
             context_builder=self.context_builder_service,
             hitl_service=self.hitl_service,
             trace_manager=trace_manager,
-            config=config.to_dict() if hasattr(config, 'to_dict') else config,
+            config=node_config.dict() if hasattr(node_config, 'dict') else node_config,
             update_callback=None
         )
         

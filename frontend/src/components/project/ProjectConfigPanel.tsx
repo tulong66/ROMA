@@ -45,6 +45,8 @@ export interface ProjectConfig {
     hitl_before_execute: boolean
     max_replan_attempts?: number
     execution_timeout?: number
+    skip_atomization?: boolean
+    force_root_node_planning?: boolean
   }
   
   // Cache Configuration
@@ -102,7 +104,8 @@ const ProjectConfigPanel: React.FC<ProjectConfigPanelProps> = ({
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-6">
+    <TooltipProvider>
+      <div className="max-w-4xl mx-auto p-6">
       <div className="mb-6">
         <h2 className="text-2xl font-bold mb-2">Project Configuration</h2>
         <p className="text-muted-foreground">
@@ -330,6 +333,65 @@ const ProjectConfigPanel: React.FC<ProjectConfigPanelProps> = ({
                   </div>
                 )}
               </div>
+
+              <Separator />
+
+              {/* Atomization Controls */}
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label className="text-base font-medium flex items-center gap-2">
+                    <Target className="h-4 w-4" />
+                    Atomization & Planning
+                  </Label>
+                  <p className="text-sm text-muted-foreground">
+                    Control how tasks are decomposed and atomized
+                  </p>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="skip_atomization">Skip Atomization</Label>
+                      <p className="text-sm text-muted-foreground">
+                        Bypass atomizer and use hierarchy/depth rules
+                      </p>
+                    </div>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Switch
+                          id="skip_atomization"
+                          checked={config.execution?.skip_atomization || false}
+                          onCheckedChange={(checked) => updateConfig('execution', 'skip_atomization', checked)}
+                        />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        When enabled, tasks use max_recursion_depth rules instead of atomizer decisions
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="force_root_node_planning">Force Root Planning</Label>
+                      <p className="text-sm text-muted-foreground">
+                        Always plan root nodes (skip root atomization)
+                      </p>
+                    </div>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Switch
+                          id="force_root_node_planning"
+                          checked={config.execution?.force_root_node_planning || true}
+                          onCheckedChange={(checked) => updateConfig('execution', 'force_root_node_planning', checked)}
+                        />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        Ensures complex top-level questions always get decomposed
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -430,7 +492,8 @@ const ProjectConfigPanel: React.FC<ProjectConfigPanelProps> = ({
           )}
         </Button>
       </div>
-    </div>
+      </div>
+    </TooltipProvider>
   )
 }
 

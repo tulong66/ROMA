@@ -37,6 +37,21 @@ class NodeAtomizer:
         """
         logger.info(f"    🐛 DEBUG: atomize_node called for {node.task_id}")
         
+        # NEW: Check if atomization should be skipped entirely
+        skip_atomization = getattr(context.config, 'skip_atomization', False)
+        logger.info(f"    🐛 DEBUG: skip_atomization = {skip_atomization}, context.config type = {type(context.config)}")
+        if skip_atomization:
+            logger.info(f"🚫 ATOMIZATION SKIPPED: Node {node.task_id} - skip_atomization is enabled")
+            
+            # Use hierarchy/depth-based rules instead
+            max_recursion_depth = getattr(context.config, 'max_planning_layer', 5)
+            if node.layer >= max_recursion_depth:
+                logger.info(f"🎯 DEPTH RULE APPLIED: Node {node.task_id} at layer {node.layer} >= max_depth {max_recursion_depth} - forcing EXECUTE")
+                return NodeType.EXECUTE
+            else:
+                logger.info(f"🎯 DEPTH RULE APPLIED: Node {node.task_id} at layer {node.layer} < max_depth {max_recursion_depth} - defaulting to PLAN")
+                return NodeType.PLAN
+        
         # Start tracing for atomization stage
         stage = context.trace_manager.start_stage(
             node_id=node.task_id,

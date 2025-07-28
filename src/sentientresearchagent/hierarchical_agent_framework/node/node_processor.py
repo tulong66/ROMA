@@ -148,7 +148,7 @@ class NodeProcessor:
             context_builder=context_builder,
             hitl_service=hitl_service,
             trace_manager=trace_manager,
-            config=config.to_dict() if hasattr(config, 'to_dict') else config,
+            config=config.dict() if hasattr(config, 'dict') else config,
             task_graph=task_graph,
             update_callback=update_callback
         )

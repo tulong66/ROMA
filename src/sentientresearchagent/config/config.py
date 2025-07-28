@@ -102,6 +102,9 @@ class ExecutionConfig(BaseModel):
     # NEW: Force root nodes to always plan (skip atomizer)
     force_root_node_planning: bool = True  # Ensures complex top-level questions get decomposed
     
+    # NEW: Skip atomization entirely - forces hierarchy/depth-based execution decisions
+    skip_atomization: bool = False  # When True, bypasses atomizer and uses max_depth rules
+    
     # Specific HITL Checkpoints (when enable_hitl is True and hitl_root_plan_only is False)
     hitl_after_plan_generation: bool = True   # Review plans after generation
     hitl_after_modified_plan: bool = True     # Review modified plans
@@ -156,6 +159,7 @@ class ExecutionConfig(BaseModel):
                 'hitl_timeout_seconds': 1200.0,  # 20 minutes
                 'hitl_root_plan_only': True,
                 'force_root_node_planning': True,
+                'skip_atomization': False,
                 'hitl_after_plan_generation': True,
                 'hitl_after_modified_plan': True,
                 'hitl_after_atomizer': False,
@@ -193,6 +197,7 @@ class ExecutionConfig(BaseModel):
             'hitl_timeout_seconds': self.hitl_timeout_seconds,
             'hitl_root_plan_only': self.hitl_root_plan_only,
             'force_root_node_planning': self.force_root_node_planning,
+            'skip_atomization': self.skip_atomization,
             'hitl_after_plan_generation': self.hitl_after_plan_generation,
             'hitl_after_modified_plan': self.hitl_after_modified_plan,
             'hitl_after_atomizer': self.hitl_after_atomizer,

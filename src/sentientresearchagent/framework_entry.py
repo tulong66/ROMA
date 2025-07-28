@@ -102,6 +102,10 @@ def create_node_processor_config_from_main_config(main_config: "SentientConfig")
     # Set max_planning_layer from max_recursion_depth
     node_config.max_planning_layer = getattr(main_config.execution, 'max_recursion_depth', 5)
     
+    # Set skip_atomization from main config
+    node_config.skip_atomization = getattr(main_config.execution, 'skip_atomization', False)
+    logger.info(f"🐛 NodeProcessorConfig: skip_atomization = {node_config.skip_atomization}, max_planning_layer = {node_config.max_planning_layer}")
+    
     # Map centralized config to NodeProcessorConfig
     if main_config.execution.enable_hitl:
         if main_config.execution.hitl_root_plan_only:
@@ -132,13 +136,17 @@ def create_node_processor_config_from_main_config(main_config: "SentientConfig")
     # NEW: Store the force_root_node_planning flag
     node_config.force_root_node_planning = getattr(main_config.execution, 'force_root_node_planning', True)
     
+    # NEW: Store the skip_atomization flag
+    node_config.skip_atomization = getattr(main_config.execution, 'skip_atomization', False)
+    
     logger.debug(f"NodeProcessorConfig created: max_planning_layer={node_config.max_planning_layer}, "
                 f"plan_gen={node_config.enable_hitl_after_plan_generation}, "
                 f"modified_plan={node_config.enable_hitl_after_modified_plan}, "
                 f"atomizer={node_config.enable_hitl_after_atomizer}, "
                 f"before_exec={node_config.enable_hitl_before_execute}, "
                 f"root_only={getattr(node_config, 'hitl_root_plan_only', False)}, "
-                f"force_root_planning={getattr(node_config, 'force_root_node_planning', True)}")
+                f"force_root_planning={getattr(node_config, 'force_root_node_planning', True)}, "
+                f"skip_atomization={getattr(node_config, 'skip_atomization', False)}")
     
     return node_config
 
@@ -162,11 +170,11 @@ class SentientAgent:
         self.task_graph = self.system_manager.task_graph
         self.knowledge_store = self.system_manager.knowledge_store
         self.state_manager = self.system_manager.state_manager
-        self.hitl_coordinator = self.system_manager.hitl_coordinator
+        self.hitl_coordinator = getattr(self.system_manager, 'hitl_coordinator', None) or getattr(self.system_manager, 'hitl_service', None)
         self.node_processor = self.system_manager.node_processor
-        self.execution_engine = self.system_manager.execution_engine # This comes from system_manager
-        self.cache_manager = self.system_manager.cache_manager
-        self.error_handler = self.system_manager.error_handler
+        self.execution_engine = getattr(self.system_manager, 'execution_engine', None) or getattr(self.system_manager, 'execution_orchestrator', None)
+        self.cache_manager = getattr(self.system_manager, 'cache_manager', None)
+        self.error_handler = getattr(self.system_manager, 'error_handler', None)
         
         # THE FIX: Add a lock to the agent instance to serialize executions
         self._execution_lock = Lock()
@@ -201,20 +209,42 @@ class SentientAgent:
             raise ImportError("Framework components not available. Please check installation.")
         
         # MODIFIED: Import SystemManager locally within the factory method
-        from .core.system_manager import SystemManager as ConcreteSystemManager
+        from .core.system_manager import SystemManagerV2 as ConcreteSystemManager
 
         config = load_unified_config(config_path)
-        # ... (apply config_kwargs and HITL overrides to config object) ...
+        
+        # Apply config_overrides if provided
+        if 'config_overrides' in config_kwargs:
+            overrides = config_kwargs.pop('config_overrides')
+            if isinstance(overrides, dict):
+                for section, values in overrides.items():
+                    if hasattr(config, section) and isinstance(values, dict):
+                        for key, value in values.items():
+                            if hasattr(getattr(config, section), key):
+                                setattr(getattr(config, section), key, value)
+                                logger.debug(f"Applied config override: {section}.{key} = {value}")
+        
+        # Apply any remaining config_kwargs and HITL overrides
+        if enable_hitl_override is not None:
+            config.execution.enable_hitl = enable_hitl_override
+        if hitl_root_plan_only_override is not None:
+            config.execution.hitl_root_plan_only = hitl_root_plan_only_override
         
         system_manager = ConcreteSystemManager(config=config) # Use locally imported SystemManager
         
         if not system_manager.get_current_profile():
             system_manager.initialize_with_profile(default_profile_name)
+            profile_name = default_profile_name
         else:
             active_profile = system_manager.get_current_profile()
             system_manager.initialize_with_profile(active_profile)
+            profile_name = active_profile
 
-        return cls(system_manager=system_manager)
+        # Check if this is LightweightSentientAgent which requires profile_name
+        if cls.__name__ == 'LightweightSentientAgent':
+            return cls(profile_name=profile_name, system_manager=system_manager)
+        else:
+            return cls(system_manager=system_manager)
     
     def execute(self, goal: str, **options) -> Dict[str, Any]:
         """
@@ -560,15 +590,33 @@ class ProfiledSentientAgent(SentientAgent): # MODIFIED: Inherits from refactored
         enable_hitl_override: Optional[bool] = None,
         hitl_root_plan_only_override: Optional[bool] = None,
         config_path: Optional[Union[str, Path]] = None,
+        system_manager: Optional["SystemManager"] = None,
         **config_kwargs
     ) -> "ProfiledSentientAgent":
         """
         Factory method to create a ProfiledSentientAgent with a specific profile.
+        
+        Args:
+            profile_name: Name of the agent profile to use
+            enable_hitl_override: Override HITL enable setting
+            hitl_root_plan_only_override: Override HITL root plan only setting
+            config_path: Path to configuration file
+            system_manager: Optional existing SystemManager instance to use
+            **config_kwargs: Additional configuration overrides
         """
         logger.info(f"🤖 Creating ProfiledSentientAgent with profile: {profile_name}")
         
+        # If system_manager is provided, use it directly
+        if system_manager is not None:
+            logger.info(f"Using provided SystemManager instance")
+            # Ensure the profile is initialized
+            if system_manager.get_current_profile() != profile_name:
+                system_manager.initialize_with_profile(profile_name)
+            return cls(profile_name=profile_name, system_manager=system_manager)
+        
+        # Otherwise create a new one
         # MODIFIED: Import SystemManager locally
-        from .core.system_manager import SystemManager as ConcreteSystemManager
+        from .core.system_manager import SystemManagerV2 as ConcreteSystemManager
         
         config = load_unified_config(config_path)
         
@@ -622,6 +670,290 @@ class ProfiledSentientAgent(SentientAgent): # MODIFIED: Inherits from refactored
         except Exception as e:
             logger.error(f"Failed to get profile info for '{self.profile_name}' via SystemManager: {e}")
             return {"error": str(e), "profile_name": self.profile_name, "source": "ProfiledSentientAgent_fallback"}
+
+
+class LightweightSentientAgent(SentientAgent):
+    """
+    Lightweight version of SentientAgent optimized for speed and server-to-server usage.
+    
+    This class provides the same interface as ProfiledSentientAgent but removes:
+    - WebSocket broadcasting overhead
+    - Real-time UI updates
+    - Heavy serialization for visualization
+    - Frequent state saves
+    
+    Ideal for FastAPI endpoints and programmatic usage where UI features aren't needed.
+    """
+    
+    def __init__(self, profile_name: str, system_manager: "SystemManager"):
+        """
+        Initialize the LightweightSentientAgent.
+        
+        Args:
+            profile_name: The name of the profile this agent is configured for.
+            system_manager: A SystemManager instance, expected to be configured with profile_name.
+        """
+        self.profile_name = profile_name
+        super().__init__(system_manager=system_manager)
+        
+        # Disable broadcasting and real-time updates for performance
+        self._disable_broadcasting()
+        
+        # Verification step
+        if self.system_manager.get_current_profile() != self.profile_name:
+            logger.warning(
+                f"LightweightSentientAgent for '{self.profile_name}' was initialized, "
+                f"but its SystemManager has profile '{self.system_manager.get_current_profile()}' active. "
+                f"Re-applying profile."
+            )
+            try:
+                self.system_manager.initialize_with_profile(self.profile_name)
+            except Exception as e:
+                logger.error(f"Failed to re-apply profile '{self.profile_name}' during LightweightSentientAgent init: {e}")
+    
+    def _disable_broadcasting(self):
+        """Disable broadcasting and real-time updates for performance."""
+        # Override any broadcast callbacks to no-op functions
+        if hasattr(self.system_manager, 'broadcast_manager'):
+            self.system_manager.broadcast_manager = None
+            logger.debug("Disabled broadcast manager for lightweight execution")
+    
+    async def execute(self, goal: str, max_steps: int = 50, save_state: bool = False, **options) -> Dict[str, Any]:
+        """
+        Execute a goal with lightweight processing (no UI overhead).
+        
+        Args:
+            goal: The high-level goal to achieve
+            max_steps: Maximum execution steps (reduced default for lightweight usage)
+            save_state: Whether to save execution state (disabled by default for performance)
+            **options: Additional execution options (enable_hitl, hitl_root_plan_only, etc.)
+            
+        Returns:
+            Dictionary with execution results in minimal format
+        """
+        execution_id = str(uuid.uuid4())[:8]
+        start_time = datetime.now()
+        
+        logger.info(f"[{execution_id}] 🚀 LightweightSentientAgent executing: '{goal[:50]}...'")
+        
+        try:
+            # Apply configuration overrides if provided
+            config_changed = False
+            original_execution_config = None
+            
+            # List of execution config options that can be overridden
+            execution_overrides = {}
+            for key in ['max_concurrent_nodes', 'skip_atomization', 'max_recursion_depth', 
+                       'enable_hitl', 'hitl_root_plan_only', 'force_root_node_planning']:
+                if key in options:
+                    execution_overrides[key] = options[key]
+            
+            if execution_overrides:
+                config_changed = True
+                # Store original config for restoration
+                original_execution_config = self.config.execution.dict()
+                
+                # Apply execution overrides
+                for key, value in execution_overrides.items():
+                    if hasattr(self.config.execution, key):
+                        setattr(self.config.execution, key, value)
+                        logger.debug(f"[{execution_id}] Override applied: {key} = {value}")
+                
+                # Update system manager config
+                self.system_manager.config = self.config
+                
+                # Update node processor config if HITL settings, max_recursion_depth, or skip_atomization changed
+                if any(key.startswith('hitl') or key in ['enable_hitl', 'max_recursion_depth', 'skip_atomization'] for key in execution_overrides):
+                    new_node_config = create_node_processor_config_from_main_config(self.config)
+                    self.node_processor.node_processor_config = new_node_config
+                    if self.hitl_coordinator:
+                        self.hitl_coordinator.config = new_node_config
+                    # Also update ExecutionEngine's handler context if available
+                    if hasattr(self.execution_engine, 'handler_context'):
+                        self.execution_engine.handler_context.config = new_node_config.dict()
+                        logger.info(f"[{execution_id}] 🐛 Updated ExecutionEngine handler context config")
+                    
+                    # Update the orchestrator's node processor if it's different
+                    if hasattr(self.execution_engine, 'node_processor') and self.execution_engine.node_processor != self.node_processor:
+                        logger.warning(f"[{execution_id}] 🐛 ExecutionEngine has different NodeProcessor instance!")
+                        # Update the orchestrator's node processor config
+                        self.execution_engine.node_processor.node_processor_config = new_node_config
+                        # Also update its handler context if it exists
+                        if hasattr(self.execution_engine.node_processor, 'handler_context'):
+                            self.execution_engine.node_processor.handler_context.config = new_node_config.dict()
+                            logger.info(f"[{execution_id}] 🐛 Updated ExecutionEngine's NodeProcessor handler context")
+                    
+                    logger.info(f"[{execution_id}] 🐛 Updated NodeProcessorConfig: max_planning_layer = {new_node_config.max_planning_layer}, skip_atomization = {new_node_config.skip_atomization}")
+                
+                logger.info(f"[{execution_id}] Config overrides applied: {list(execution_overrides.keys())}")
+            
+            try:
+                # Run the lightweight execution
+                execution_result = await self._run_lightweight_execution(goal, max_steps)
+                
+                # Extract minimal results (no heavy serialization)
+                final_output = self._extract_lightweight_result()
+                execution_time = (datetime.now() - start_time).total_seconds()
+                node_count = len(self.task_graph.nodes)
+                
+                result = {
+                    'execution_id': execution_id,
+                    'goal': goal,
+                    'status': 'completed',
+                    'final_result': final_output,  # Match expected key name
+                    'execution_time': execution_time,
+                    'execution_stats': {
+                        'steps_completed': max_steps,  # Will be updated if we track actual steps
+                        'total_execution_time': execution_time
+                    },
+                    'node_count': node_count,
+                    'lightweight': True,  # Marker for lightweight execution
+                    'framework_result': execution_result
+                }
+                
+                # Only save state if explicitly requested (performance optimization)
+                if save_state:
+                    self._save_execution_state(execution_id, result)
+                
+                logger.info(f"[{execution_id}] ✅ Lightweight execution completed: {node_count} nodes, {execution_time:.2f}s")
+                return result
+                
+            finally:
+                # Restore original configuration if it was changed
+                if config_changed and original_execution_config:
+                    # Restore execution config from stored dict
+                    for key, value in original_execution_config.items():
+                        if hasattr(self.config.execution, key):
+                            setattr(self.config.execution, key, value)
+                    
+                    # Update system manager config
+                    self.system_manager.config = self.config
+                    
+                    # Recreate node processor config with restored settings
+                    restored_node_config = create_node_processor_config_from_main_config(self.config)
+                    self.node_processor.node_processor_config = restored_node_config
+                    if self.hitl_coordinator:
+                        self.hitl_coordinator.config = restored_node_config
+                    
+                    logger.debug(f"[{execution_id}] Configuration restored: max_planning_layer = {restored_node_config.max_planning_layer}")
+        
+        except Exception as e:
+            execution_time = (datetime.now() - start_time).total_seconds()
+            logger.error(f"[{execution_id}] ❌ Lightweight execution failed: {e}")
+            
+            return {
+                'execution_id': execution_id,
+                'goal': goal,
+                'status': 'failed',
+                'error': str(e),
+                'execution_time': execution_time,
+                'node_count': len(self.task_graph.nodes) if self.task_graph else 0,
+                'lightweight': True,
+                'framework_result': None
+            }
+    
+    async def _run_lightweight_execution(self, goal: str, max_steps: int):
+        """Run lightweight execution without UI overhead."""
+        async with self._execution_lock:
+            # Clear previous state
+            logger.debug("Lightweight execution: Clearing previous state")
+            self.task_graph.nodes.clear()
+            self.task_graph.graphs.clear()
+            self.task_graph.root_graph_id = None
+            self.task_graph.overall_project_goal = None
+            
+            if hasattr(self.knowledge_store, 'clear_all_records'):
+                self.knowledge_store.clear_all_records()
+            
+            if not self.execution_engine:
+                raise SentientError("ExecutionEngine not initialized properly.")
+            
+            # Use the ExecutionOrchestrator execute method
+            return await self.execution_engine.execute(
+                root_goal=goal,
+                max_steps=max_steps
+            )
+    
+    def _extract_lightweight_result(self) -> Optional[str]:
+        """Extract final result without heavy serialization."""
+        try:
+            # Get root node result efficiently
+            if hasattr(self.task_graph, 'nodes') and self.task_graph.nodes:
+                for node in self.task_graph.nodes.values():
+                    if hasattr(node, 'layer') and node.layer == 0 and node.result:
+                        if hasattr(node.result, 'output_text'):
+                            return node.result.output_text
+                        elif hasattr(node.result, 'full_result'):
+                            return str(node.result.full_result)
+                        else:
+                            return str(node.result)
+            return None
+        except Exception as e:
+            logger.warning(f"Failed to extract lightweight result: {e}")
+            return None
+    
+    @classmethod
+    def create_with_profile(
+        cls, 
+        profile_name: str = "general_agent",
+        enable_hitl_override: Optional[bool] = None,
+        hitl_root_plan_only_override: Optional[bool] = None, 
+        config_path: Optional[Union[str, Path]] = None,
+        **config_kwargs
+    ) -> "LightweightSentientAgent":
+        """
+        Create a LightweightSentientAgent with a specific profile.
+        
+        Args:
+            profile_name: Agent profile to use
+            enable_hitl_override: Override HITL setting (typically False for lightweight usage)
+            hitl_root_plan_only_override: Override root-only HITL setting
+            config_path: Optional config file path
+            **config_kwargs: Additional config overrides
+            
+        Returns:
+            LightweightSentientAgent instance
+        """
+        logger.info(f"🏃‍♂️ Creating LightweightSentientAgent with profile: {profile_name}")
+        
+        # Import SystemManager locally
+        from .core.system_manager import SystemManagerV2 as ConcreteSystemManager
+        
+        config = load_unified_config(config_path)
+        
+        # Apply overrides with defaults optimized for lightweight usage
+        if enable_hitl_override is not None:
+            config.execution.enable_hitl = enable_hitl_override
+        else:
+            # Default to False for lightweight usage unless explicitly enabled
+            config.execution.enable_hitl = False
+            
+        if hitl_root_plan_only_override is not None:
+            config.execution.hitl_root_plan_only = hitl_root_plan_only_override
+        
+        # Apply other config overrides
+        for key, value in config_kwargs.items():
+            if hasattr(config.execution, key):
+                setattr(config.execution, key, value)
+                logger.info(f"Config Override: 'execution.{key}' set to {value}")
+            elif hasattr(config, key):
+                setattr(config, key, value)
+                logger.info(f"Config Override: '{key}' set to {value}")
+        
+        # Create system manager with lightweight optimizations
+        system_manager = ConcreteSystemManager(config=config)
+        
+        try:
+            system_manager.initialize_with_profile(profile_name)
+            logger.info(f"SystemManager initialized with profile: {profile_name}")
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize SystemManager with profile '{profile_name}': {e}")
+            raise SentientError(f"Failed to create lightweight agent with profile {profile_name}: {e}") from e
+        
+        agent = cls(profile_name=profile_name, system_manager=system_manager)
+        
+        logger.info(f"✅ LightweightSentientAgent created successfully with profile: {profile_name}")
+        return agent
 
 
 # Convenience functions - ensure they align with new create methods

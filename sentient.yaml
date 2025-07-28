@@ -22,7 +22,7 @@ execution:
   max_parallel_nodes: 8     # New: Maximum nodes to process in parallel batches
   max_execution_steps: 500  # More steps for deep reasoning
   rate_limit_rpm: 30  # Reduced from 60 to avoid Gemini rate limits
-  enable_hitl: true
+  enable_hitl: false
   hitl_timeout_seconds: 1200.0  # 10 minutes for human review
   node_execution_timeout_seconds: 2400.0  # 40 minutes max for overall task execution
   
@@ -54,14 +54,17 @@ execution:
     enable_aggressive_recovery: true
   
   # CHANGED: Default to root plan only - only review the initial high-level plan
-  hitl_root_plan_only: true  # Set to true to only review root node's plan
+  hitl_root_plan_only: false  # Set to true to only review root node's plan
   
   # NEW: Force root nodes to always plan (skip atomizer) - prevents atomic classification of complex queries
   force_root_node_planning: true  # Set to false to allow atomizer to decide for root nodes
   
+  # NEW: Skip atomization entirely - forces hierarchy/depth-based execution decisions
+  skip_atomization: true  # Set to true to bypass atomizer and use max_recursion_depth rules
+  
   # These are ignored when hitl_root_plan_only is true
-  hitl_after_plan_generation: true
-  hitl_after_modified_plan: true
+  hitl_after_plan_generation: false
+  hitl_after_modified_plan: false
   hitl_after_atomizer: false
   hitl_before_execute: false
 

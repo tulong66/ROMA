@@ -169,7 +169,7 @@ class SystemManagerV2:
             knowledge_store=self.knowledge_store,
             agent_registry=self.agent_registry,
             trace_manager=self.trace_manager,
-            config=self.config,
+            config=node_processor_config,
             node_processor_config=node_processor_config,
             agent_blueprint=self._current_blueprint
         )

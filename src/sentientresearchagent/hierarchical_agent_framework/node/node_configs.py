@@ -19,3 +19,6 @@ class NodeProcessorConfig(BaseModel):
     
     # NEW: Force root nodes to always plan (skip atomizer)
     force_root_node_planning: bool = True
+    
+    # NEW: Skip atomization entirely and use depth-based rules
+    skip_atomization: bool = False
