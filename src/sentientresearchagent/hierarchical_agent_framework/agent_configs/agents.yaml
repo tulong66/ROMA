@@ -363,7 +363,7 @@ agents:
     description: "Specialized planner for cryptocurrency and DeFi analytics with deep domain expertise"
     model:
       provider: "litellm"
-      model_id: "openrouter/moonshotai/kimi-k2:nitro"  # Switched from slow o3 model for 10x faster planning
+      model_id: "openrouter/google/gemini-2.5-flash:nitro"  # Switched from slow o3 model for 10x faster planning
       temperature: 0.35
     # agno_params:
     #   reasoning: true
@@ -382,7 +382,7 @@ agents:
     description: "Specialized planner for crypto-specific search tasks optimized for blockchain data retrieval"
     model:
       provider: "litellm"
-      model_id: "openrouter/moonshotai/kimi-k2:nitro"  # Switched from slow o3 model for 10x faster planning
+      model_id: "openrouter/google/gemini-2.5-flash:nitro"  # Switched from slow o3 model for 10x faster planning
       temperature: 0.35
     # agno_params:
     #   reasoning: true
@@ -423,7 +423,7 @@ agents:
     description: "Comprehensive crypto research executor for deep blockchain and DeFi analysis"
     model:
       provider: "litellm"
-      model_id: "openrouter/moonshotai/kimi-k2:nitro"
+      model_id: "openrouter/google/gemini-2.5-flash:nitro"
     # agno_params:
     #   reasoning: true
     prompt_source: "prompts.executor_prompts.CRYPTO_RESEARCH_EXECUTOR_SYSTEM_MESSAGE"
@@ -440,7 +440,7 @@ agents:
     description: "Specialized aggregator for crypto data synthesis and market insights"
     model:
       provider: "litellm"
-      model_id: "openrouter/moonshotai/kimi-k2:nitro"
+      model_id: "openrouter/google/gemini-2.5-flash:nitro"
     # agno_params:
     #   reasoning: true
     prompt_source: "prompts.aggregator_prompts.CRYPTO_ANALYTICS_AGGREGATOR_SYSTEM_MESSAGE"
@@ -454,7 +454,7 @@ agents:
     description: "Master aggregator for executive-level crypto research synthesis and strategic insights"
     model:
       provider: "litellm"
-      model_id: "openrouter/moonshotai/kimi-k2:nitro"
+      model_id: "openrouter/google/gemini-2.5-flash:nitro"
     # agno_params:
     #   reasoning: true
     prompt_source: "prompts.aggregator_prompts.CRYPTO_ROOT_AGGREGATOR_SYSTEM_MESSAGE"
