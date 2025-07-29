@@ -12,6 +12,7 @@ from .context_builder_service import (
     ContextConfig,
     ContextType
 )
+from .node_update_manager import NodeUpdateManager
 
 __all__ = [
     # HITL Service
@@ -29,4 +30,7 @@ __all__ = [
     "ContextBuilderService",
     "ContextConfig",
     "ContextType",
+    
+    # Node Update Manager
+    "NodeUpdateManager",
 ]

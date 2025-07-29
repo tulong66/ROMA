@@ -41,6 +41,12 @@ from ..hierarchical_agent_framework.tracing.manager import TraceManager
 from ..hierarchical_agent_framework.agent_configs.profile_loader import ProfileLoader
 from ..framework_entry import create_node_processor_config_from_main_config
 
+# Optimized components
+from ..hierarchical_agent_framework.context.optimized_knowledge_store import OptimizedKnowledgeStore
+from ..hierarchical_agent_framework.context.cached_context_builder import CachedContextBuilder
+from ..hierarchical_agent_framework.traces.batched_trace_manager import BatchedTraceManager
+from ..hierarchical_agent_framework.services.node_update_manager import NodeUpdateManager
+
 # Import WebSocket HITL utils with error handling
 try:
     from ..hierarchical_agent_framework.utils.websocket_hitl_utils import (
@@ -91,10 +97,28 @@ class SystemManagerV2:
         
         # Core components
         self.task_graph = TaskGraph()
-        self.knowledge_store = KnowledgeStore()
+        
+        # Use optimized knowledge store if enabled
+        optimization_level = getattr(self.config.execution, 'optimization_level', 'balanced')
+        if optimization_level == 'aggressive':
+            self.knowledge_store = OptimizedKnowledgeStore(
+                cache_size=1000,
+                cache_ttl_ms=5000,
+                write_buffer_size=getattr(self.config.execution, 'knowledge_store_batch_size', 10)
+            )
+        else:
+            self.knowledge_store = KnowledgeStore()
+        
         self.state_manager = StateManager(self.task_graph)
         self.agent_registry = AgentRegistry()
-        self.trace_manager = TraceManager(project_id="sentient_v2")
+        
+        # Use batched trace manager for better performance
+        execution_strategy = getattr(self.config.execution, 'execution_strategy', 'standard')
+        self.trace_manager = BatchedTraceManager(
+            project_id="sentient_v2",
+            enable_batching=execution_strategy != 'realtime',
+            trace_lightweight=execution_strategy == 'realtime'
+        )
         
         # New orchestration components
         self.state_transition_manager = StateTransitionManager(
@@ -109,7 +133,19 @@ class SystemManagerV2:
         hitl_config = HITLConfig.from_config(self.config)
         self.hitl_service = HITLService(hitl_config)
         self.agent_selector: Optional[AgentSelector] = None  # Set when profile loaded
-        self.context_builder = ContextBuilderService(ContextConfig())
+        
+        # Use cached context builder for better performance
+        if optimization_level in ['balanced', 'aggressive']:
+            self.context_builder = CachedContextBuilder(
+                self.knowledge_store,
+                cache_size=100,
+                cache_ttl_ms=30000
+            )
+        else:
+            self.context_builder = ContextBuilderService(ContextConfig())
+        
+        # Initialize node update manager
+        self.node_update_manager = NodeUpdateManager.from_config(self.config.execution)
         
         # Node processor (still using old one for compatibility)
         self.node_processor: Optional["NodeProcessor"] = None
@@ -171,7 +207,9 @@ class SystemManagerV2:
             trace_manager=self.trace_manager,
             config=node_processor_config,
             node_processor_config=node_processor_config,
-            agent_blueprint=self._current_blueprint
+            agent_blueprint=self._current_blueprint,
+            update_manager=self.node_update_manager,
+            context_builder=self.context_builder
         )
         
         # Create execution orchestrator
@@ -281,6 +319,20 @@ class SystemManagerV2:
         
         logger.info(f"✅ WebSocket HITL initialized with {self.config.execution.hitl_timeout_seconds}s timeout")
         logger.info(f"🔗 HTTP fallback configured for localhost:5000")
+        
+        # Also setup optimized broadcast service for the execution orchestrator
+        if self.execution_orchestrator and hasattr(self.execution_orchestrator, 'update_manager'):
+            from ..server.services.optimized_broadcast_service import OptimizedBroadcastService
+            broadcast_service = OptimizedBroadcastService(
+                socketio=socketio,
+                batch_size=self.config.execution.ws_batch_size,
+                batch_timeout_ms=self.config.execution.ws_batch_timeout_ms,
+                enable_compression=self.config.execution.enable_ws_compression,
+                enable_diff_updates=self.config.execution.enable_diff_updates
+            )
+            # Set the websocket handler on the update manager
+            self.execution_orchestrator.update_manager.websocket_handler = broadcast_service
+            logger.info("✅ Optimized broadcast service configured for NodeUpdateManager")
     
     def is_websocket_hitl_ready(self) -> bool:
         """Check if WebSocket HITL is ready for use"""

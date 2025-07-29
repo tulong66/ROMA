@@ -111,6 +111,14 @@ class ExecutionConfig(BaseModel):
     hitl_after_atomizer: bool = False         # Review atomizer decisions (usually off)
     hitl_before_execute: bool = False         # Review before execution (usually off)
     
+    # NEW: Execution optimization settings
+    optimization_level: str = "balanced"  # "conservative" | "balanced" | "aggressive"
+    execution_strategy: str = "standard"  # "standard" | "realtime" | "deferred"
+    knowledge_store_batch_size: int = 10  # Number of updates to batch
+    broadcast_mode: str = "full"  # "full" | "batch" | "none"
+    enable_update_coalescing: bool = True  # Combine rapid updates
+    update_coalescing_window_ms: int = 50  # Window for combining updates
+    
     @validator('max_concurrent_nodes')
     def validate_concurrency(cls, v):
         if v < 1:
@@ -163,7 +171,13 @@ class ExecutionConfig(BaseModel):
                 'hitl_after_plan_generation': True,
                 'hitl_after_modified_plan': True,
                 'hitl_after_atomizer': False,
-                'hitl_before_execute': False
+                'hitl_before_execute': False,
+                'optimization_level': 'balanced',
+                'execution_strategy': 'standard',
+                'knowledge_store_batch_size': 10,
+                'broadcast_mode': 'full',
+                'enable_update_coalescing': True,
+                'update_coalescing_window_ms': 50
             }
         
         # Apply overrides
@@ -201,7 +215,11 @@ class ExecutionConfig(BaseModel):
             'hitl_after_plan_generation': self.hitl_after_plan_generation,
             'hitl_after_modified_plan': self.hitl_after_modified_plan,
             'hitl_after_atomizer': self.hitl_after_atomizer,
-            'hitl_before_execute': self.hitl_before_execute
+            'hitl_before_execute': self.hitl_before_execute,
+            'optimization_level': self.optimization_level,
+            'execution_strategy': self.execution_strategy,
+            'broadcast_mode': self.broadcast_mode,
+            'enable_update_coalescing': self.enable_update_coalescing
         }
     
     @validator('max_recursion_depth')
@@ -236,6 +254,27 @@ class ExecutionConfig(BaseModel):
             logger.warning(f"High rate limit ({v} RPM) may cause API errors or rate limiting from providers.")
         if v < 1:
             raise ValueError("rate_limit_rpm must be at least 1.")
+        return v
+    
+    @validator('optimization_level')
+    def validate_optimization_level(cls, v):
+        valid_levels = ['conservative', 'balanced', 'aggressive']
+        if v not in valid_levels:
+            raise ValueError(f'optimization_level must be one of: {valid_levels}')
+        return v
+    
+    @validator('execution_strategy')
+    def validate_execution_strategy(cls, v):
+        valid_strategies = ['standard', 'realtime', 'deferred']
+        if v not in valid_strategies:
+            raise ValueError(f'execution_strategy must be one of: {valid_strategies}')
+        return v
+    
+    @validator('broadcast_mode')
+    def validate_broadcast_mode(cls, v):
+        valid_modes = ['full', 'batch', 'none']
+        if v not in valid_modes:
+            raise ValueError(f'broadcast_mode must be one of: {valid_modes}')
         return v
 
 class AgentConfig(BaseModel):

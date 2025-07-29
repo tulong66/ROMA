@@ -620,6 +620,11 @@ class ProfiledSentientAgent(SentientAgent): # MODIFIED: Inherits from refactored
         
         config = load_unified_config(config_path)
         
+        # Set execution strategy for ProfiledSentientAgent
+        config.execution.execution_strategy = "realtime"
+        config.execution.broadcast_mode = "full"  # Real-time UI updates
+        logger.info(f"ProfiledSentientAgent: Setting execution_strategy='realtime', broadcast_mode='full'")
+        
         # THE FIX: Apply overrides directly to the config object *before* initializing the system manager.
         if enable_hitl_override is not None:
             config.execution.enable_hitl = enable_hitl_override
@@ -920,6 +925,12 @@ class LightweightSentientAgent(SentientAgent):
         from .core.system_manager import SystemManagerV2 as ConcreteSystemManager
         
         config = load_unified_config(config_path)
+        
+        # Set execution strategy for LightweightSentientAgent
+        config.execution.execution_strategy = "deferred"
+        config.execution.broadcast_mode = "none"  # No broadcasts for lightweight
+        config.execution.optimization_level = "aggressive"  # Maximum optimization
+        logger.info(f"LightweightSentientAgent: Setting execution_strategy='deferred', broadcast_mode='none', optimization_level='aggressive'")
         
         # Apply overrides with defaults optimized for lightweight usage
         if enable_hitl_override is not None:

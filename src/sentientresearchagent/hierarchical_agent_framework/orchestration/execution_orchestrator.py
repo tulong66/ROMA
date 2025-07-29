@@ -116,7 +116,15 @@ class ExecutionOrchestrator:
             enable_compression=getattr(config.execution, 'enable_state_compression', True)
         )
         
-        logger.info("ExecutionOrchestrator initialized")
+        # Initialize NodeUpdateManager based on execution strategy
+        from sentientresearchagent.hierarchical_agent_framework.services import NodeUpdateManager
+        self.update_manager = NodeUpdateManager.from_config(
+            config.execution,
+            knowledge_store=knowledge_store,
+            websocket_handler=None  # Will be set by system manager if available
+        )
+        
+        logger.info(f"ExecutionOrchestrator initialized with execution_strategy={config.execution.execution_strategy}")
     
     async def execute(
         self, 
@@ -159,6 +167,11 @@ class ExecutionOrchestrator:
             # Ensure all state updates are flushed
             await self.batched_state_manager.flush_all()
             
+            # Flush deferred updates for LightweightAgent
+            if self.config.execution.execution_strategy == "deferred":
+                logger.info("Flushing deferred updates...")
+                await self.update_manager.flush_deferred_updates()
+            
             logger.info(f"Execution {self._execution_id} completed")
             return final_result
             
@@ -170,6 +183,13 @@ class ExecutionOrchestrator:
                 "stats": self._execution_stats
             }
         finally:
+            # Ensure deferred updates are flushed even on error
+            if hasattr(self, 'update_manager') and self.config.execution.execution_strategy == "deferred":
+                try:
+                    await self.update_manager.flush_deferred_updates()
+                except Exception as flush_error:
+                    logger.error(f"Error flushing deferred updates: {flush_error}")
+            
             self._is_running = False
     
     async def _initialize_root_task(self, root_goal: str) -> Optional[TaskNode]:
@@ -660,11 +680,12 @@ class ExecutionOrchestrator:
         start_time = asyncio.get_event_loop().time()
         
         try:
-            # Process the node
+            # Process the node with update manager
             await self.node_processor.process_node(
                 node, 
                 self.task_graph, 
-                self.knowledge_store
+                self.knowledge_store,
+                self.update_manager
             )
             
             # Track successful processing time

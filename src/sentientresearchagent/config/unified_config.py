@@ -201,6 +201,12 @@ class ConfigurationManager:
             "enable_hitl_after_modified_plan": exec_config.hitl_after_modified_plan if not exec_config.hitl_root_plan_only else True,
             "enable_hitl_after_atomizer": exec_config.hitl_after_atomizer if not exec_config.hitl_root_plan_only else False,
             "enable_hitl_before_execute": exec_config.hitl_before_execute if not exec_config.hitl_root_plan_only else False,
+            "optimization_level": exec_config.optimization_level,
+            "execution_strategy": exec_config.execution_strategy,
+            "knowledge_store_batch_size": exec_config.knowledge_store_batch_size,
+            "broadcast_mode": exec_config.broadcast_mode,
+            "enable_update_coalescing": exec_config.enable_update_coalescing,
+            "update_coalescing_window_ms": exec_config.update_coalescing_window_ms,
         }
     
     def to_dict(self) -> Dict[str, Any]:

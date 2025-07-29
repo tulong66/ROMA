@@ -49,7 +49,9 @@ class ProcessorContext:
                  node_atomizer: NodeAtomizer,
                  trace_manager: TraceManager,
                  current_agent_blueprint: Optional[AgentBlueprint] = None,
-                 update_callback: Optional[callable] = None):
+                 update_callback: Optional[callable] = None,
+                 update_manager: Optional[Any] = None,
+                 context_builder: Optional[Any] = None):
         self.task_graph = task_graph
         self.knowledge_store = knowledge_store
         self.agent_registry = agent_registry
@@ -60,6 +62,8 @@ class ProcessorContext:
         self.trace_manager = trace_manager
         self.current_agent_blueprint = current_agent_blueprint
         self.update_callback = update_callback
+        self.update_manager = update_manager
+        self.context_builder = context_builder
 
 
 class NodeProcessor:
@@ -77,7 +81,9 @@ class NodeProcessor:
                  node_processor_config: Optional[NodeProcessorConfig] = None,
                  agent_blueprint_name: Optional[str] = None,
                  agent_blueprint: Optional[AgentBlueprint] = None,
-                 update_callback: Optional[callable] = None):
+                 update_callback: Optional[callable] = None,
+                 update_manager: Optional[Any] = None,
+                 context_builder: Optional[Any] = None):
         logger.info("NodeProcessor initialized.")
         
         self.config = config or SentientConfig()
@@ -88,6 +94,8 @@ class NodeProcessor:
         self.knowledge_store = knowledge_store
         self.agent_registry = agent_registry
         self.trace_manager = trace_manager
+        self.update_manager = update_manager
+        self.context_builder = context_builder
         
         active_blueprint: Optional[AgentBlueprint] = None
         
@@ -121,7 +129,9 @@ class NodeProcessor:
             node_atomizer=self.node_atomizer,
             trace_manager=self.trace_manager,
             current_agent_blueprint=active_blueprint,
-            update_callback=self.update_callback
+            update_callback=self.update_callback,
+            update_manager=self.update_manager,
+            context_builder=self.context_builder
         )
 
         # Create HandlerContext for v2 handlers
@@ -133,7 +143,11 @@ class NodeProcessor:
         
         # Create services needed by v2 handlers
         agent_selector = AgentSelector(blueprint=active_blueprint)
-        context_builder = ContextBuilderService()
+        # Use provided context builder or create default
+        if self.context_builder is None:
+            context_builder = ContextBuilderService()
+        else:
+            context_builder = self.context_builder
         
         # For now, we'll keep hitl_service as None since v2 architecture 
         # doesn't provide a clean way to pass it. This is a limitation that
@@ -162,12 +176,19 @@ class NodeProcessor:
         logger.info(f"NodeProcessor initialized with handlers for statuses: {list(self.handler_strategies.keys())}")
 
 
-    async def process_node(self, node: TaskNode, task_graph: "TaskGraph", knowledge_store: KnowledgeStore):
+    async def process_node(self, node: TaskNode, task_graph: "TaskGraph", knowledge_store: KnowledgeStore, update_manager=None):
         """
         Processes a node based on its current status using a strategy pattern.
+        
+        Args:
+            node: The node to process
+            task_graph: The task graph
+            knowledge_store: The knowledge store
+            update_manager: Optional NodeUpdateManager for optimized updates
         """
         self.processor_context.task_graph = task_graph
         self.processor_context.knowledge_store = knowledge_store
+        self.processor_context.update_manager = update_manager
         
         original_status = node.status
 
@@ -209,12 +230,22 @@ class NodeProcessor:
                 for sub_node in created_nodes:
                     depends_on = sub_node.aux_data.get('depends_on_indices', []) if sub_node.aux_data is not None else []
                     if not depends_on:  # No dependencies
-                        sub_node.update_status(TaskStatus.READY, validate_transition=True)
+                        sub_node.update_status(TaskStatus.READY, validate_transition=True, update_manager=update_manager)
                         self.knowledge_store.add_or_update_record_from_node(sub_node)
                         logger.info(f"Transitioned sub-node {sub_node.task_id} to READY (no dependencies)")
         
         if node.status != original_status or node.result is not None or node.error is not None:
              logger.info(f"Node {node.task_id} status changed from {original_status} to {node.status} or has new results/errors. Updating knowledge store.")
         
-        self.knowledge_store.add_or_update_record_from_node(node)
+        # Use optimized knowledge store update if available
+        if hasattr(self.knowledge_store, 'add_or_update_record_from_node'):
+            # Check if this is the OptimizedKnowledgeStore by checking class name
+            if self.knowledge_store.__class__.__name__ == 'OptimizedKnowledgeStore':
+                # This is OptimizedKnowledgeStore that accepts immediate parameter
+                immediate = update_manager is None or getattr(update_manager, 'execution_strategy', None) != 'deferred'
+                self.knowledge_store.add_or_update_record_from_node(node, immediate=immediate)
+            else:
+                # Regular KnowledgeStore doesn't have immediate parameter
+                self.knowledge_store.add_or_update_record_from_node(node)
+        
         logger.info(f"NodeProcessor: Finished processing for node {node.task_id}. Final status: {node.status.name}")
