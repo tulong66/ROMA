@@ -665,8 +665,11 @@ class ExecutionService:
         import json
         from pathlib import Path
         
-        backup_dir = Path("emergency_backups")
-        backup_dir.mkdir(exist_ok=True)
+        # Use centralized paths for emergency backups
+        from ...config.paths import RuntimePaths
+        paths = RuntimePaths.get_default()
+        backup_dir = paths.get_emergency_backup_path()
+        backup_dir.mkdir(exist_ok=True, parents=True)
         
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         backup_file = backup_dir / f"{project_id}_{timestamp}_emergency.json"

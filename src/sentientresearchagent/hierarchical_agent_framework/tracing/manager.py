@@ -22,7 +22,10 @@ class TraceManager:
         if traces_dir:
             self.traces_dir = Path(traces_dir)
         else:
-            self.traces_dir = Path("project_results") / "traces" / project_id
+            # Use centralized paths
+            from ...config.paths import RuntimePaths
+            paths = RuntimePaths.get_default()
+            self.traces_dir = paths.experiment_results_dir / "traces" / project_id
         self.traces_dir.mkdir(parents=True, exist_ok=True)
         
         # Optional callback for real-time updates

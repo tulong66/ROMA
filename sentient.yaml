@@ -12,7 +12,7 @@ llm:
 cache:
   enabled: true
   cache_type: "file"  # Persist between sessions
-  cache_dir: ".agent_cache"
+  # cache_dir is now automatically set to runtime/cache/agent
   ttl_seconds: 7200  # 2 hours (longer for complex reasoning)
   max_size: 500  # Fewer but larger responses
 
@@ -73,9 +73,15 @@ logging:
   level: "INFO"
   enable_console: true
   enable_file: true
-  file_path: "sentient.log"  # Single log file
+  # file_path is now automatically set to runtime/logs/sentient.log
   file_rotation: "10 MB"     # Rotate by size
   file_retention: 3          # Keep only 3 files (must be number, not string)
+  
+  # Console style options:
+  # - "clean": Just messages with smart spacing and colors (default)
+  # - "timestamp": Messages with timestamps
+  # - "detailed": Full details with time, level, module, and message
+  console_style: "clean"
   
   # Filter noisy logs to separate files or suppress them
   module_levels:
@@ -90,6 +96,16 @@ logging:
     "sentientresearchagent.hierarchical_agent_framework.graph.cycle_manager": "INFO"
     "sentientresearchagent.hierarchical_agent_framework.node": "INFO"
     "sentientresearchagent.hierarchical_agent_framework.node_handlers": "INFO"
+
+# Experiment Configuration
+experiment:
+  base_dir: "experiments"  # Base directory for all experiment outputs
+  results_dir: "results"  # Subdirectory for results
+  emergency_backup_dir: "emergency_backups"  # Subdirectory for emergency backups
+  configs_dir: "configs"  # Subdirectory for experiment configs
+  retention_days: 30  # Keep experiment results for 30 days
+  auto_cleanup: true  # Automatically clean old results
+  timestamp_format: "%Y%m%d_%H%M%S"  # Format for timestamped directories
 
 # Environment
 environment: "research"
