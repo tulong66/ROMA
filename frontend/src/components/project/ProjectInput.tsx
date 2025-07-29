@@ -6,6 +6,7 @@ import { useTaskGraphStore } from '@/stores/taskGraphStore'
 import { useProjectStore } from '@/stores/projectStore'
 import projectService from '@/services/projectService'
 import { toast } from '@/components/ui/use-toast'
+import { cn } from '@/lib/utils'
 import {
   Dialog,
   DialogContent,
@@ -16,9 +17,10 @@ import {
 import ProjectConfigPanel, { ProjectConfig } from './ProjectConfigPanel'
 
 const ProjectInput: React.FC = () => {
-  const [goal, setGoal] = useState('Write me a detailed report about the recent U.S. trade tariffs and their effect on the global economy')
+  const [goal, setGoal] = useState('')
   const [isStarting, setIsStarting] = useState(false)
   const [showConfigDialog, setShowConfigDialog] = useState(false)
+  const [isFocused, setIsFocused] = useState(false)
   const { isConnected, setLoading } = useTaskGraphStore()
   const { addProject, getCurrentProject } = useProjectStore()
 
@@ -61,6 +63,15 @@ const ProjectInput: React.FC = () => {
   })
 
   const currentProject = getCurrentProject()
+
+  // Example prompts - shorter for better fit
+  const examplePrompts = [
+    "Impact of AI on software development",
+    "Quantum computing breakthroughs 2024",
+    "Renewable energy storage comparison",
+    "Remote work effectiveness study",
+    "Cryptocurrency market analysis"
+  ]
 
   // Update config when goal changes
   React.useEffect(() => {
@@ -119,26 +130,41 @@ const ProjectInput: React.FC = () => {
   }
 
   return (
-    <div className="max-w-2xl mx-auto p-8">
-      <div className="text-center mb-8">
-        <h2 className="text-3xl font-bold mb-4">
-          {currentProject ? 'Start Another Project' : 'Start a New Project'}
-        </h2>
-        <p className="text-muted-foreground">
-          Describe your research goal and watch as the AI breaks it down into manageable tasks
-        </p>
-      </div>
+    <div className="max-w-2xl mx-auto p-6 h-full overflow-y-auto">
+      <div className="min-h-full flex flex-col">
+        <div className="text-center mb-4">
+          <h2 className="text-2xl font-bold mb-2">
+            {currentProject ? 'Start Another Project' : 'Start a New Project'}
+          </h2>
+          <p className="text-muted-foreground text-sm">
+            Describe your research goal and watch as the AI breaks it down into manageable tasks
+          </p>
+        </div>
 
       <form onSubmit={handleQuickSubmit} className="space-y-4">
         <div className="relative">
           <Textarea
             value={goal}
             onChange={(e) => setGoal(e.target.value)}
-            placeholder="Enter your project goal here..."
-            className="min-h-[120px] pr-12 resize-none"
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
+            placeholder="Enter your research goal or question here..."
+            className={cn(
+              "min-h-[100px] resize-none transition-all",
+              !goal && "placeholder:text-muted-foreground/60"
+            )}
             disabled={isStarting}
           />
         </div>
+        
+        {/* Helper text below textarea */}
+        {!goal && (
+          <div className="text-center -mt-2">
+            <p className="text-sm text-muted-foreground italic">
+              e.g., "Analyze the impact of AI on software development" or "Research quantum computing breakthroughs in 2024"
+            </p>
+          </div>
+        )}
         
         <div className="flex justify-between items-center">
           <div className="text-sm text-muted-foreground">
@@ -199,17 +225,39 @@ const ProjectInput: React.FC = () => {
         </div>
       </form>
 
-      {/* Configuration Preview */}
-      <div className="mt-6 p-4 bg-muted/50 rounded-lg">
-        <h4 className="text-sm font-medium mb-2">Current Configuration:</h4>
-        <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-          <div>Recursion Depth: {config.execution.max_recursion_depth}</div>
-          <div>Cache: {config.cache.cache_type}</div>
-          <div>Max Steps: {config.execution.max_execution_steps}</div>
-          <div>HITL: {config.execution.enable_hitl ? 
-            (config.execution.hitl_root_plan_only ? 'Root Only' : 'Full') : 
-            'Disabled'
-          }</div>
+        {/* Example Prompts */}
+        {!goal && (
+          <div className="mt-4 p-3 bg-muted/30 rounded-lg border border-muted">
+            <p className="text-sm font-medium mb-2">Need inspiration? Try one of these examples:</p>
+            <div className="flex flex-wrap gap-2">
+              {examplePrompts.map((prompt, index) => (
+                <Button
+                  key={index}
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="text-xs hover:bg-primary hover:text-primary-foreground hover:border-primary transition-all duration-200"
+                  onClick={() => setGoal(prompt)}
+                >
+                  {prompt}
+                </Button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Configuration Preview */}
+        <div className="mt-4 p-3 bg-muted/50 rounded-lg">
+          <h4 className="text-sm font-medium mb-2">Current Configuration:</h4>
+          <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+            <div>Recursion Depth: {config.execution.max_recursion_depth}</div>
+            <div>Cache: {config.cache.cache_type}</div>
+            <div>Max Steps: {config.execution.max_execution_steps}</div>
+            <div>HITL: {config.execution.enable_hitl ? 
+              (config.execution.hitl_root_plan_only ? 'Root Only' : 'Full') : 
+              'Disabled'
+            }</div>
+          </div>
         </div>
       </div>
     </div>

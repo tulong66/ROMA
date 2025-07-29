@@ -94,7 +94,7 @@ class WebSocketService {
       this.handleReconnect()
     })
 
-    // FIXED: Enhanced project-aware task graph updates with aggressive debugging
+    // FIXED: Enhanced project-aware task graph updates with race condition prevention
     this.socket.on('task_graph_update', (data: APIResponse & { project_id?: string, current_project?: any }) => {
       const now = Date.now()
       this.updateCount++
@@ -134,22 +134,45 @@ class WebSocketService {
           // CRITICAL FIX: Always store project data first
           taskGraphStore.setProjectData(projectId, data)
           
-          // CRITICAL FIX: Only update display if this matches BOTH store's current project
-          const isCurrentInTaskGraph = projectId === taskGraphStore.currentProjectId
-          const isCurrentInProjectStore = projectId === projectStore.currentProjectId
+          // CRITICAL FIX: Check if stores are synchronized
+          const taskGraphCurrentProject = taskGraphStore.currentProjectId
+          const projectStoreCurrentProject = projectStore.currentProjectId
+          
+          // If stores are out of sync, synchronize them
+          if (taskGraphCurrentProject !== projectStoreCurrentProject) {
+            console.warn('⚠️ STORES OUT OF SYNC! Synchronizing...', {
+              taskGraph: taskGraphCurrentProject,
+              projectStore: projectStoreCurrentProject
+            })
+            
+            // Use projectStore as source of truth
+            if (projectStoreCurrentProject) {
+              taskGraphStore.setCurrentProject(projectStoreCurrentProject)
+            }
+          }
+          
+          // Re-check after potential sync
+          const isCurrentProject = projectId === projectStore.currentProjectId && 
+                                 projectId === taskGraphStore.currentProjectId
           
           console.log('🔍 PROJECT MATCHING CHECK:', {
             projectId,
             taskGraphCurrent: taskGraphStore.currentProjectId,
             projectStoreCurrent: projectStore.currentProjectId,
-            isCurrentInTaskGraph,
-            isCurrentInProjectStore,
-            shouldUpdateDisplay: isCurrentInTaskGraph && isCurrentInProjectStore
+            isCurrentProject,
+            shouldUpdateDisplay: isCurrentProject
           })
           
-          if (isCurrentInTaskGraph && isCurrentInProjectStore) {
+          if (isCurrentProject) {
             console.log('🔄 Updating display for current project:', projectId)
-            taskGraphStore.setData(data)
+            
+            // Add timestamp to force re-render
+            const timestampedData = {
+              ...data,
+              _updateTimestamp: Date.now()
+            }
+            
+            taskGraphStore.setData(timestampedData)
             
             // AGGRESSIVE DEBUGGING: Verify the update worked
             setTimeout(() => {
@@ -517,11 +540,16 @@ class WebSocketService {
   private handleReconnect() {
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       console.error('❌ Max reconnection attempts reached')
+      // Show user-friendly error notification
+      useTaskGraphStore.getState().setConnectionStatus(false)
       return
     }
 
     this.reconnectAttempts++
-    const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000)
+    // Better exponential backoff with jitter
+    const baseDelay = Math.min(1000 * Math.pow(1.5, this.reconnectAttempts - 1), 30000)
+    const jitter = Math.random() * 0.3 * baseDelay // Add 0-30% jitter
+    const delay = Math.floor(baseDelay + jitter)
     
     console.log(`🔄 Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`)
     
@@ -907,8 +935,6 @@ class WebSocketService {
   }
 
   constructor() {
-    // ... existing code ...
-    
     // Make the service available globally for debugging
     if (typeof window !== 'undefined') {
       (window as any).websocketService = this
@@ -987,9 +1013,4 @@ if (typeof window !== 'undefined') {
   
   // NEW: localStorage management functions
   globalWindow.cleanLocalStorage = () => webSocketService.cleanLocalStorage()
-}
-
-// Make the service available globally for debugging
-if (typeof window !== 'undefined') {
-  (window as any).websocketService = this
 } 
