@@ -102,9 +102,28 @@ The application will be available at:
 
 ## 📖 Documentation
 
+### 📚 Comprehensive Documentation
+
+- **[🚀 Introduction](docs/INTRODUCTION.md)** - Vision, philosophy, and what you can build
+- **[🏗️ Architecture](docs/ARCHITECTURE.md)** - System design and technical architecture
+- **[🔧 Getting Started](docs/GETTING_STARTED.md)** - Quick start guide and basic usage
+- **[🧠 Core Concepts](docs/CORE_CONCEPTS.md)** - Understanding the hierarchical framework
+- **[🤖 Agents Guide](docs/AGENTS_GUIDE.md)** - Working with agents and creating custom ones
+- **[🔄 Execution Flow](docs/EXECUTION_FLOW.md)** - Detailed execution flow and context propagation
+- **[🎮 HITL Integration](docs/HITL_INTEGRATION.md)** - Human-in-the-Loop system guide
+- **[🔌 API Reference](docs/API_REFERENCE.md)** - Complete API and WebSocket documentation
+- **[⚙️ Configuration](docs/CONFIGURATION.md)** - All configuration options explained
+- **[🧪 Examples](docs/examples/)** - Real-world implementation examples
+- **[🎨 Frontend Guide](docs/FRONTEND_GUIDE.md)** - Frontend architecture and customization
+- **[🚢 Deployment](docs/DEPLOYMENT.md)** - Production deployment guide
+- **[🔍 Troubleshooting](docs/TROUBLESHOOTING.md)** - Common issues and solutions
+- **[🤝 Contributing](docs/CONTRIBUTING.md)** - How to contribute to the project
+
+### 📄 Existing Documentation
+
 - [Detailed Execution Flow](docs/DETAILED_EXECUTION_FLOW.md) - Complete system architecture and flow
 - [Docker Setup Guide](docker/README.md) - Docker deployment instructions
-- [API Documentation](docs/API.md) - REST and WebSocket API reference
+- [Setup Instructions](docs/SETUP.md) - Detailed installation guide
 
 ## 🏗️ Architecture Overview
 
