@@ -1,227 +1,311 @@
 # 🚀 Introduction to SentientResearchAgent
 
-## 🌟 Welcome to the Future of Intelligent Task Execution
+## 🌟 Welcome to the Universal Task Execution Framework
 
-SentientResearchAgent is a **general-purpose, hierarchical task execution framework** designed to tackle complex, long-horizon tasks by decomposing them into manageable subtasks, solving each intelligently, and integrating the results into coherent outputs.
+SentientResearchAgent is a **general-purpose, hierarchical task execution framework** that empowers you to build ANY intelligent system by decomposing complex tasks into three fundamental operations: **Think 🤔, Write ✍️, and Search 🔍**.
 
-This isn't just another AI tool—it's a **universal scaffold for building intelligent systems** that can handle research, writing, code generation, design, video creation, and **any task that can be broken down and solved step by step**.
+This isn't just another AI tool—it's a **universal scaffold for building intelligent agents** that can handle ANY task that can be broken down using the MECE (Mutually Exclusive, Collectively Exhaustive) principle. From podcast generation to market analysis, from story writing to code generation—if you can imagine it, you can build it.
 
-## 🧠 The Vision: Building Blocks for AGI
+## 🧠 The Power of MECE: Three Building Blocks, Infinite Possibilities
 
-We believe the path to AGI isn't through monolithic models, but through **composable, specialized agents** working together in intelligent hierarchies. SentientResearchAgent provides the foundation for this vision:
+### What is MECE?
 
-- **🔗 Modular by Design**: Each component can be swapped, enhanced, or specialized
-- **🌍 Community-Driven**: Open-source from the core, designed for collective innovation
-- **🎯 Task-Agnostic**: From research papers to manga generation—if it can be planned, it can be executed
-- **🔄 Self-Improving**: Human-in-the-loop feedback creates a continuous learning cycle
+MECE (Mutually Exclusive, Collectively Exhaustive) is a problem-solving principle that ensures:
+- **Mutually Exclusive**: Each task type is distinct with no overlap
+- **Collectively Exhaustive**: Together, they cover all possible operations
 
-## 💡 Why SentientResearchAgent Matters
+In SentientResearchAgent, every complex task can be decomposed into:
+
+### 🤔 **THINK** - Reasoning & Analysis
+The cognitive operations that process and analyze information:
+- Data analysis and pattern recognition
+- Strategic planning and decision making
+- Problem solving and evaluation
+- Logical reasoning and inference
+
+### ✍️ **WRITE** - Content Generation & Synthesis
+The creative operations that produce new content:
+- Report writing and documentation
+- Creative content generation
+- Code implementation
+- Summary and synthesis creation
+
+### 🔍 **SEARCH** - Information Retrieval
+The discovery operations that gather information:
+- Web searches and research
+- Database queries and API calls
+- Literature reviews
+- Data fetching and collection
+
+These three operations can be **recursively combined** to create workflows of any complexity. A podcast generator might:
+1. **SEARCH** for trending topics
+2. **THINK** to analyze and select the best topic
+3. **SEARCH** for detailed information on the chosen topic
+4. **THINK** to structure the episode
+5. **WRITE** the script
+6. **THINK** to review and refine
+7. **WRITE** the final version with show notes
+
+## 💡 Why SentientResearchAgent Changes Everything
 
 ### The Problem with Current AI Systems
 
-Most AI tools today suffer from fundamental limitations:
-- **Single-Shot Execution**: No ability to plan, revise, or iterate
-- **Context Loss**: Information gets lost between steps
-- **No True Collaboration**: Agents work in isolation, not as teams
-- **Black Box Operations**: No visibility into the reasoning process
+Most AI tools today are:
+- **Single-purpose**: Built for one specific task
+- **Opaque**: You can't see or control the reasoning process
+- **Inflexible**: Hard to adapt to new use cases
+- **Limited**: Can't handle complex, multi-step workflows
 
-### Our Solution
+### Our Solution: Hierarchical Task Decomposition
 
 SentientResearchAgent addresses these limitations through:
 
-1. **Hierarchical Decomposition** 📊
-   - Complex tasks are automatically broken down into subtasks
-   - Each subtask can be further decomposed as needed
-   - Natural tree structure mirrors human problem-solving
+1. **Universal Applicability** 🌍
+   - Build ANY type of agent using the same framework
+   - From creative writing to technical analysis
+   - From content generation to data processing
+   - Limited only by your imagination
 
-2. **Specialized Agent Networks** 🤖
-   - Different agents for different tasks (research, analysis, writing, etc.)
-   - Agents can be LLMs, tool-callers, or even human experts
-   - Easy to add new agent types for emerging capabilities
+2. **Transparent Execution** 🔍
+   - **Stage Tracing** shows exactly what happens at each step
+   - See inputs and outputs for every agent
+   - Debug and optimize with full visibility
+   - Understand the reasoning process
 
-3. **Context Propagation** 🔄
-   - Information flows intelligently between tasks
-   - Results from one task inform others
-   - No repeated work or lost insights
+3. **Intelligent Orchestration** 🎭
+   - **Top-down decomposition**: Break complex tasks into manageable pieces
+   - **Bottom-up aggregation**: Synthesize results into coherent outputs
+   - **Left-to-right dependencies**: Tasks can build on each other
+   - **Parallel execution**: Independent tasks run simultaneously
 
-4. **Human-in-the-Loop Integration** 🎮
-   - Review and modify plans before execution
-   - Intervene at any point in the process
-   - Continuous improvement through human feedback
+4. **Complete Flexibility** 🔧
+   - **Agent/LLM agnostic**: Use any AI provider
+   - **Built on AgnoAgents**: Leverage a powerful foundation
+   - **Multi-modal support**: Text, images, code, data
+   - **Tool integration**: Connect to any API or service
+
+5. **Human-Centric Design** 👥
+   - **"Vibe Prompting"**: Just describe what you want naturally
+   - **Human-in-the-Loop**: Review and guide execution
+   - **Continuous improvement**: Learn from feedback
+   - **Community-driven**: Share and discover agents
 
 ## 🚀 What Can You Build?
 
-The framework's flexibility enables a wide range of applications:
+The possibilities are endless. Here are just a few examples to spark your imagination:
 
-### 📚 Deep Research Systems
+### 🎙️ **Content Creation Agents**
 ```
-Input: "Analyze the environmental impact of cryptocurrency mining"
-Output: Comprehensive report with:
-- Current mining statistics
-- Energy consumption analysis
-- Environmental consequences
-- Mitigation strategies
-- Future projections
-```
-
-### 📝 Content Generation Pipelines
-```
-Input: "Create a blog series about quantum computing for beginners"
-Output: Multi-part series with:
-- Structured outline
-- Engaging introductions
-- Technical explanations
-- Visual descriptions
-- Cross-references
+"Create a podcast about space exploration"
+→ SEARCH: Latest space news and discoveries
+→ THINK: Select most interesting topics
+→ WRITE: Episode outline
+→ SEARCH: Deep dive into selected topics
+→ WRITE: Full script with segments
+→ THINK: Review and improve flow
+→ WRITE: Show notes and timestamps
 ```
 
-### 🎨 Creative Workflows
+### 📊 **Analysis Agents**
 ```
-Input: "Generate a Ghibli-style comic about AI safety"
-Output: Complete comic with:
-- Story outline
-- Character descriptions
-- Scene compositions
-- Dialogue
-- Art direction notes
-```
-
-### 💻 Code Generation Systems
-```
-Input: "Build a real-time collaborative text editor"
-Output: Full implementation with:
-- Architecture design
-- Component breakdown
-- Implementation code
-- Tests
-- Documentation
+"Analyze the cryptocurrency market for investment opportunities"
+→ SEARCH: Current market data and trends
+→ SEARCH: News and sentiment analysis
+→ THINK: Identify patterns and opportunities
+→ SEARCH: Deep dive into promising projects
+→ THINK: Risk assessment
+→ WRITE: Investment report with recommendations
 ```
 
-### 🔬 Scientific Analysis
+### 📖 **Creative Writing Agents**
 ```
-Input: "Compare CRISPR vs traditional gene therapy approaches"
-Output: Scientific analysis with:
-- Technology overviews
-- Comparative metrics
-- Case studies
-- Future implications
-- Referenced citations
+"Write a sci-fi story about AI consciousness"
+→ THINK: Develop story concept and themes
+→ WRITE: Character profiles
+→ THINK: Plot structure
+→ WRITE: Chapter outlines
+→ WRITE: First draft
+→ THINK: Story analysis and improvements
+→ WRITE: Final polished version
 ```
 
-## 🌈 The Possibilities Are Endless
+### 💻 **Technical Agents**
+```
+"Build a REST API for a todo application"
+→ THINK: Design API architecture
+→ WRITE: API specification
+→ THINK: Database schema design
+→ WRITE: Implementation code
+→ WRITE: Tests
+→ WRITE: Documentation
+→ THINK: Security review
+→ WRITE: Deployment configuration
+```
 
-What makes SentientResearchAgent special is its **generality**. We've built successful agents for:
+### 🎮 **Multi-Modal Creative Agents**
+```
+"Design a mobile game about environmental conservation"
+→ THINK: Game concept and mechanics
+→ WRITE: Game design document
+→ THINK: Level progression
+→ WRITE: Character descriptions for art team
+→ WRITE: Dialogue and narrative
+→ THINK: Monetization strategy
+→ WRITE: Marketing plan
+```
 
-- **🔍 Research**: Academic papers, market analysis, competitive intelligence
-- **✍️ Writing**: Blog posts, documentation, creative fiction
-- **🖼️ Multimodal**: Image generation, video scripts, presentation design
-- **🏗️ Engineering**: Code generation, architecture design, debugging
-- **📊 Analysis**: Data interpretation, trend analysis, forecasting
+## 🌈 The Magic of Recursive Decomposition
 
-But these are just the beginning. The community can build agents for:
-- **🎵 Music composition and analysis**
-- **🏛️ Architecture and urban planning**
-- **🧬 Bioinformatics pipelines**
-- **📈 Financial modeling**
-- **🌍 Climate modeling**
-- **And anything else you can imagine!**
+What makes SentientResearchAgent special is its **recursive nature**. Any task can be broken down into subtasks, which can themselves be broken down further, creating a tree of operations that mirrors how humans naturally solve complex problems.
 
-## 🔮 The Future: A Marketplace of Intelligence
+### Depth Control
+You control how deep the recursion goes:
+- **Shallow (1-2 levels)**: Quick, simple tasks
+- **Medium (3-4 levels)**: Balanced thoroughness
+- **Deep (5+ levels)**: Comprehensive, detailed work
 
-Imagine a world where:
-- **Specialized agents** are shared like apps
-- **Complex workflows** are composed like LEGO blocks
-- **Human expertise** is amplified, not replaced
-- **Collective intelligence** emerges from individual contributions
+### Intelligent Dependencies
+Tasks can depend on each other, ensuring proper sequencing:
+- Research before analysis
+- Analysis before writing
+- Review after creation
 
-This is the future we're building with SentientResearchAgent.
+### Parallel Processing
+Independent tasks execute simultaneously:
+- Multiple searches at once
+- Parallel content generation
+- Concurrent analysis streams
 
-## 🎯 Key Differentiators
+## 🎯 "Vibe Prompting": AI for Everyone
 
-### 1. **True Hierarchical Execution**
-Unlike flat workflow systems, we support arbitrary depth and complexity. Tasks can spawn subtasks, which can spawn their own subtasks, creating natural hierarchies that match problem complexity.
+You don't need to be technical to use SentientResearchAgent. Our "Vibe Prompting" approach means you can just describe what you want naturally:
 
-### 2. **Agent Agnostic**
-We don't lock you into specific models or providers. Use:
-- OpenAI, Anthropic, Google, or any LLM
-- Custom models and fine-tunes
-- Tool-calling agents
-- Even human agents for critical decisions
+### Natural Language Examples:
+- "Make me a podcast about the future of renewable energy"
+- "Help me understand the stock market and find good investments"
+- "Write a business plan for my coffee shop idea"
+- "Create a workout plan based on my goals"
+- "Analyze my competitor's marketing strategy"
 
-### 3. **Production-Ready**
+The framework automatically:
+1. Understands your intent
+2. Breaks it down into THINK, WRITE, and SEARCH operations
+3. Executes the plan with appropriate agents
+4. Delivers the results you need
+
+## 🔮 Built on Solid Foundations
+
+### Powered by AgnoAgents
+
+SentientResearchAgent is built on top of [AgnoAgents](https://github.com/your/agnoagents), a lightweight and flexible agentic framework that provides:
+
+- **Multi-modal support**: Handle text, images, code, and more
+- **Tool integration**: Connect to any API or service
+- **MCP support**: Model Context Protocol for advanced features
+- **Hooks system**: Customize behavior at any point
+- **Provider agnostic**: Use any LLM provider
+
+### Inspired by Research
+
+This project builds on the hierarchical planning approach pioneered by the WriteHERE project:
+
+> Xiong, R., Chen, Y., Khizbullin, D., Zhuge, M., & Schmidhuber, J. (2025). Beyond Outlining: Heterogeneous Recursive Planning for Long-form Writing with Language Models. arXiv:2503.08275
+
+We've extended this approach from writing to a universal task execution framework.
+
+## 🌟 Key Differentiators
+
+### 1. **True General Purpose**
+Unlike specialized tools, SentientResearchAgent can build ANY type of agent. The same framework that creates podcasts can analyze markets, write code, or design games.
+
+### 2. **Complete Transparency**
+Our Stage Tracing feature lets you see exactly what each agent receives and produces. No more black boxes—understand and optimize every step.
+
+### 3. **Community Marketplace**
+Share your agents and earn SENT tokens. Discover agents built by others. Together, we're creating an ecosystem of intelligent tools.
+
+### 4. **Production Ready**
 This isn't a research prototype. It includes:
-- Robust error handling and recovery
-- Comprehensive logging and tracing
+- Robust error handling
 - Performance optimization
 - Real-time monitoring
 - Deployment configurations
 
-### 4. **Data Goldmine**
-With human-in-the-loop corrections, every execution generates valuable training data for:
-- Task decomposition strategies
-- Agent selection optimization
-- Error pattern recognition
-- Performance improvement
+### 5. **Rapid Iteration**
+The transparent nature and modular design enable fast experimentation:
+- See what works and what doesn't
+- Tweak prompts and flows
+- Test different approaches
+- Optimize for your use case
 
 ## 🚀 Getting Started
 
 Ready to build something amazing? Here's how to start:
 
-1. **[Quick Start](GETTING_STARTED.md)** - Get up and running in minutes
-2. **[Core Concepts](CORE_CONCEPTS.md)** - Understand the fundamentals
-3. **[Agent Guide](AGENTS_GUIDE.md)** - Learn to create custom agents
-4. **[Examples](examples/)** - See real implementations
+1. **[Quick Start Cookbook](QUICKSTART_COOKBOOK.md)** - 5-minute agent recipes
+2. **[Core Concepts](CORE_CONCEPTS.md)** - Master the MECE framework
+3. **[Agent Guide](AGENTS_GUIDE.md)** - Create custom agents
+4. **[Examples](../examples/)** - See real implementations
 
 ## 🌟 Join the Revolution
 
 SentientResearchAgent is more than a framework—it's a movement toward democratized AI. Whether you're a:
-- **Researcher** pushing the boundaries of what's possible
 - **Developer** building the next killer app
 - **Creator** exploring new forms of expression
-- **Enthusiast** excited about the future
+- **Entrepreneur** automating your business
+- **Researcher** pushing the boundaries
+- **Hobbyist** having fun with AI
 
 There's a place for you in our community.
 
+## 💰 Build Agents, Earn Rewards
+
+We believe great agents should be rewarded. Our SENT token program offers:
+- Bounties for popular agents
+- Rewards for contributions
+- Recognition in the community
+- Potential commercialization opportunities
+
+See [COMMUNITY.md](COMMUNITY.md) for details.
+
 ## 📈 The Road Ahead
 
-Our roadmap is ambitious and community-driven:
+Our vision is ambitious:
 
-### Near Term (Next 3 Months)
-- Enhanced multimodal capabilities
-- Improved agent marketplace
-- Better debugging and visualization tools
+### Near Term
+- Enhanced multi-modal capabilities
+- More pre-built agent templates
+- Improved debugging tools
 - Performance optimizations
 
-### Medium Term (6-12 Months)
-- Distributed execution across multiple machines
-- Advanced caching and memorization
-- Plugin ecosystem
+### Medium Term
+- Agent marketplace launch
+- Visual agent builder
 - Enterprise features
+- Mobile applications
 
-### Long Term (1+ Years)
-- Self-modifying agents
-- Emergent collaboration patterns
-- Cross-framework compatibility
+### Long Term
+- Self-improving agents
+- Agent collaboration protocols
+- Cross-platform compatibility
 - Industry-specific solutions
 
-## 🤝 Get Involved
+## 🎬 Your Journey Starts Now
 
-Ready to shape the future of AI? Here's how:
+You now understand the power and potential of SentientResearchAgent. The question isn't "what can it do?"—it's "what will YOU build?"
 
-1. **Star the repository** to show support
-2. **Try the framework** and share your creations
-3. **Contribute code**, documentation, or ideas
-4. **Join our community** discussions
-5. **Build amazing things** and inspire others
+Remember our motto: **If you can think it, you can build it with Think, Write, and Search!**
+
+Welcome to the future of AI agents. Let's build something amazing together. 🚀
 
 ---
 
-## 🎬 Next Steps
+## 🎯 Next Steps
 
 Now that you understand the vision, dive deeper:
 
-- **[Architecture Overview](ARCHITECTURE.md)** - See how it all works
-- **[Getting Started Guide](GETTING_STARTED.md)** - Build your first agent
-- **[Examples Gallery](examples/)** - Get inspired by what others have built
+- **[Quick Start Cookbook](QUICKSTART_COOKBOOK.md)** - Start building in 5 minutes
+- **[Core Concepts](CORE_CONCEPTS.md)** - Master the framework
+- **[Use Cases](USE_CASES.md)** - Get inspired by examples
 
-Welcome to SentientResearchAgent. Let's build the future of intelligence, together. 🚀
+Welcome to SentientResearchAgent. The future is what we build together. 🌟
