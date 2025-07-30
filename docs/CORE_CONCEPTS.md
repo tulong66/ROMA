@@ -120,22 +120,60 @@ Tasks can depend on siblings for context:
      ┌─────────────────┐
      │   Root Goal     │ 
      └────────┬────────┘
-              │ Top-Down Decomposition
+              │
+     ┌────────▼────────┐
+     │    ATOMIZER     │ ← Decides: PLAN or EXECUTE?
+     └────────┬────────┘
+              │ If PLAN
+     ┌────────▼────────┐
+     │   PLAN NODE     │ ← Decomposes into subtasks
+     └────────┬────────┘
+              │
      ┌────────┴────────┬──────────────┐
      ▼                 ▼              ▼
 ┌─────────┐      ┌─────────┐    ┌─────────┐
-│ Task A  │      │ Task B  │───▶│ Task C  │ Left-Right
-└────┬────┘      └────┬────┘    └────┬────┘ Dependency
+│ SEARCH  │      │ THINK   │───▶│ WRITE   │ Left-Right
+│ Task    │      │ Task    │    │ Task    │ Dependency
+└────┬────┘      └────┬────┘    └────┬────┘
      │                 │              │
      ▼                 ▼              ▼
-[Subtasks]        [Subtasks]     [Subtasks]
+[ATOMIZER]        [ATOMIZER]     [ATOMIZER] ← Each subtask
+     │                 │              │        goes through
+     ▼                 ▼              ▼        atomization
+[EXECUTE]         [EXECUTE]      [EXECUTE]
      │                 │              │
      └─────────────────┴──────────────┘
-                       │ Bottom-Up Aggregation
+                       │
+              ┌────────▼────────┐
+              │   AGGREGATOR    │ ← Combines all results
+              └────────┬────────┘
+                       │ Returns to parent
               ┌────────▼────────┐
               │  Final Result   │
               └─────────────────┘
 ```
+
+### The Recursive Process
+
+1. **Every task starts at an ATOMIZER**
+   - Evaluates task complexity
+   - Decides: Can this be executed directly (EXECUTE) or needs planning (PLAN)?
+
+2. **If EXECUTE node**:
+   - Task is atomic (can't be broken down further)
+   - Appropriate executor agent is called
+   - Result is returned
+
+3. **If PLAN node**:
+   - Task is complex and needs decomposition
+   - Planner agent breaks it into subtasks (THINK, WRITE, or SEARCH)
+   - Each subtask goes through its own atomizer
+   - Process repeats recursively
+
+4. **AGGREGATOR collects results**:
+   - Once all subtasks complete
+   - Combines results intelligently
+   - Returns synthesized result to parent
 
 ## 🎚️ Recursive Depth Control
 
@@ -337,44 +375,86 @@ for stage in trace.stages:
 
 ## 🌳 Hierarchical Task Decomposition
 
-The core principle of SentientResearchAgent is **hierarchical task decomposition** - breaking complex goals into manageable subtasks.
+The core principle of SentientResearchAgent is **hierarchical task decomposition** through a recursive atomizer-planner-executor architecture.
 
 ### The Concept
 
-Just like humans solve complex problems, the framework:
-1. **Analyzes** the overall goal
-2. **Decomposes** it into smaller, focused tasks
-3. **Executes** each subtask (potentially decomposing further)
-4. **Aggregates** results back up the hierarchy
+The framework mirrors human problem-solving through a recursive process:
+1. **Atomizer evaluates** - Is this task atomic or does it need planning?
+2. **If atomic** - Execute directly with appropriate agent
+3. **If complex** - Plan and decompose into subtasks (THINK, WRITE, SEARCH)
+4. **Recursively process** - Each subtask goes through the same evaluation
+5. **Aggregate results** - Combine outputs bottom-up through aggregators
 
-### Visual Example
+### Visual Example with Atomizer Flow
 
 ```
-"Write a research paper on climate change"
+"Write a research paper on climate change" 
+            │
+            ▼ [ATOMIZER: Too complex → PLAN]
 ├── Research current climate data
+│   │
+│   ▼ [ATOMIZER: Too complex → PLAN]
 │   ├── Search temperature trends
+│   │   ▼ [ATOMIZER: Atomic → EXECUTE]
 │   ├── Search sea level data
+│   │   ▼ [ATOMIZER: Atomic → EXECUTE]
 │   └── Search extreme weather patterns
+│       ▼ [ATOMIZER: Atomic → EXECUTE]
+│   ▲ [AGGREGATOR: Combine search results]
+│
 ├── Analyze environmental impacts
+│   │
+│   ▼ [ATOMIZER: Too complex → PLAN]
 │   ├── Impact on ecosystems
+│   │   ▼ [ATOMIZER: Atomic → EXECUTE]
 │   ├── Impact on human societies
+│   │   ▼ [ATOMIZER: Atomic → EXECUTE]
 │   └── Economic consequences
-├── Research mitigation strategies
-│   ├── Renewable energy solutions
-│   ├── Policy recommendations
-│   └── Individual actions
+│       ▼ [ATOMIZER: Atomic → EXECUTE]
+│   ▲ [AGGREGATOR: Synthesize analysis]
+│
 └── Write and format paper
+    │
+    ▼ [ATOMIZER: Too complex → PLAN]
     ├── Create outline
+    │   ▼ [ATOMIZER: Atomic → EXECUTE]
     ├── Write sections
+    │   ▼ [ATOMIZER: Atomic → EXECUTE]
     └── Add citations
+        ▼ [ATOMIZER: Atomic → EXECUTE]
+    ▲ [AGGREGATOR: Compile final paper]
 ```
+
+### Key Components in Action
+
+1. **ATOMIZER** - The gatekeeper that decides task handling:
+   - Evaluates complexity
+   - Routes to PLAN or EXECUTE
+   - Ensures appropriate decomposition depth
+
+2. **PLAN NODE** - The decomposer:
+   - Breaks complex tasks into MECE subtasks
+   - Assigns task types (THINK, WRITE, SEARCH)
+   - Defines dependencies
+
+3. **EXECUTE NODE** - The worker:
+   - Handles atomic tasks
+   - Uses specialized agents
+   - Returns concrete results
+
+4. **AGGREGATOR** - The synthesizer:
+   - Collects all subtask results
+   - Combines intelligently based on context
+   - Returns unified output to parent
 
 ### Benefits
 
+- **Intelligent Decomposition**: Atomizer ensures optimal task breakdown
 - **Parallelization**: Independent subtasks run concurrently
-- **Specialization**: Different agents handle different task types
-- **Clarity**: Complex goals become understandable steps
-- **Reusability**: Common subtasks can be cached and reused
+- **Specialization**: Right agent for each task type
+- **Clarity**: Complex goals become traceable execution paths
+- **Flexibility**: Recursive depth adapts to task complexity
 
 ## 📦 Task Nodes
 

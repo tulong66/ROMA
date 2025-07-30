@@ -161,26 +161,41 @@ Your Request: "Create a market analysis report"
                     │
                     ▼
            ┌─────────────────┐
-           │  THINK: Plan    │ ← "I need to research, analyze, and write"
+           │    ATOMIZER     │ ← "Is this task atomic or needs planning?"
+           └────────┬────────┘
+                    │ Decides: PLAN node
+                    ▼
+           ┌─────────────────┐
+           │   PLAN NODE     │ ← "Break into subtasks"
            └────────┬────────┘
                     │ Decomposes into
      ┌──────────────┼──────────────┐
      ▼              ▼              ▼
 ┌─────────┐   ┌─────────┐   ┌─────────┐
-│ SEARCH  │   │ SEARCH  │   │ SEARCH  │  ← Parallel research
-│ Market  │   │Competitor│  │ Trends  │
+│ SEARCH  │   │ SEARCH  │   │ SEARCH  │  ← Each goes through
+│ Market  │   │Competitor│  │ Trends  │     atomizer → EXECUTE
 │  Data   │   │   Data   │  │  Data   │
 └────┬────┘   └────┬────┘   └────┬────┘
+     │              │              │        Execute & Return
+     ▼              ▼              ▼
+[Executor]     [Executor]     [Executor]
      │              │              │
      └──────────────┼──────────────┘
                     ▼
            ┌─────────────────┐
-           │ THINK: Analyze  │ ← "Let me find patterns"
+           │   AGGREGATOR    │ ← "Combine all results"
            └────────┬────────┘
+                    │ Returns to parent
                     ▼
            ┌─────────────────┐
-           │ WRITE: Report   │ ← "Here's your comprehensive analysis"
+           │ Final Result    │
            └─────────────────┘
+
+Key Components:
+- ATOMIZER: Decides if task needs decomposition (PLAN) or direct execution (EXECUTE)
+- PLAN NODE: Breaks complex tasks into subtasks (THINK, WRITE, SEARCH)
+- EXECUTE NODE: Directly executes atomic tasks
+- AGGREGATOR: Combines results from subtasks bottom-up
 ```
 
 ## 💰 Community & SENT Token Incentives
@@ -262,6 +277,11 @@ See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for guidelines.
 ## 📄 License
 
 MIT License - see [LICENSE](LICENSE) file
+
+## 👨‍💻 Main Contributor
+
+**Salah Al-Zubi** ([@salzubi401](https://github.com/salzubi401))  
+Creator and lead developer of SentientResearchAgent
 
 ## 🚀 Start Building Today!
 
