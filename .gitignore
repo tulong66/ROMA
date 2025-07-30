@@ -51,7 +51,7 @@ research_agent.log
 env/
 venv/
 .claude-sessions/
-.*
+.
 
 # PDM
 .pdm.toml
