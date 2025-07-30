@@ -128,19 +128,21 @@ Tasks can depend on siblings for context:
      ┌────────▼────────┐
      │   PLAN NODE     │ ← Decomposes into subtasks
      └────────┬────────┘
-              │
+              │ Showcasing all three building blocks:
      ┌────────┴────────┬──────────────┐
      ▼                 ▼              ▼
 ┌─────────┐      ┌─────────┐    ┌─────────┐
 │ SEARCH  │      │ THINK   │───▶│ WRITE   │ Left-Right
-│ Task    │      │ Task    │    │ Task    │ Dependency
+│Gather   │      │Analyze  │    │Create   │ Dependency
+│Data     │      │Results  │    │Report   │ (optional)
 └────┬────┘      └────┬────┘    └────┬────┘
      │                 │              │
      ▼                 ▼              ▼
-[ATOMIZER]        [ATOMIZER]     [ATOMIZER] ← Each subtask
-     │                 │              │        goes through
-     ▼                 ▼              ▼        atomization
-[EXECUTE]         [EXECUTE]      [EXECUTE]
+[ATOMIZER]        [ATOMIZER]     [ATOMIZER] ← 🔄 RECURSIVE
+     │                 │              │        Each subtask
+     ▼                 ▼              ▼        repeats process
+[EXECUTE or       [EXECUTE or     [EXECUTE or
+ PLAN again]       PLAN again]     PLAN again]
      │                 │              │
      └─────────────────┴──────────────┘
                        │
@@ -151,6 +153,11 @@ Tasks can depend on siblings for context:
               ┌────────▼────────┐
               │  Final Result   │
               └─────────────────┘
+
+📌 Key Points:
+- ➡️ Horizontal arrows show dependencies (task waits for predecessor)
+- 🔄 RECURSIVE: Each node can spawn its own subtree
+- Tasks without dependencies execute in parallel
 ```
 
 ### The Recursive Process
@@ -168,12 +175,19 @@ Tasks can depend on siblings for context:
    - Task is complex and needs decomposition
    - Planner agent breaks it into subtasks (THINK, WRITE, or SEARCH)
    - Each subtask goes through its own atomizer
-   - Process repeats recursively
+   - Process repeats recursively to any depth
 
-4. **AGGREGATOR collects results**:
+4. **Horizontal Dependencies** (Optional):
+   - Tasks can depend on siblings at the same level
+   - Dependent tasks wait for predecessors to complete
+   - Results flow left-to-right when dependencies exist
+   - Independent tasks execute in parallel
+
+5. **AGGREGATOR collects results**:
    - Once all subtasks complete
-   - Combines results intelligently
+   - Combines results intelligently based on context
    - Returns synthesized result to parent
+   - Parent may itself be a subtask in a larger tree
 
 ## 🎚️ Recursive Depth Control
 

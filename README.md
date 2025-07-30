@@ -172,13 +172,17 @@ Your Request: "Create a market analysis report"
      ┌──────────────┼──────────────┐
      ▼              ▼              ▼
 ┌─────────┐   ┌─────────┐   ┌─────────┐
-│ SEARCH  │   │ SEARCH  │   │ SEARCH  │  ← Each goes through
-│ Market  │   │Competitor│  │ Trends  │     atomizer → EXECUTE
-│  Data   │   │   Data   │  │  Data   │
+│ SEARCH  │   │ THINK   │──▶│ WRITE   │  ← Horizontal flow
+│ Market  │   │ Analyze │   │ Report  │    (WRITE waits for THINK)
+│  Data   │   │  Data   │   │         │
 └────┬────┘   └────┬────┘   └────┬────┘
-     │              │              │        Execute & Return
+     │              │              │
      ▼              ▼              ▼
-[Executor]     [Executor]     [Executor]
+[ATOMIZER]     [ATOMIZER]     [ATOMIZER] ← 🔄 RECURSIVE: Each subtask
+     │              │              │         goes through same process
+     ▼              ▼              ▼
+[EXECUTE or    [EXECUTE or    [EXECUTE or
+ PLAN again]    PLAN again]    PLAN again]
      │              │              │
      └──────────────┼──────────────┘
                     ▼
@@ -196,6 +200,8 @@ Key Components:
 - PLAN NODE: Breaks complex tasks into subtasks (THINK, WRITE, SEARCH)
 - EXECUTE NODE: Directly executes atomic tasks
 - AGGREGATOR: Combines results from subtasks bottom-up
+- ➡️ Horizontal Dependencies: Tasks can depend on siblings (must wait for completion)
+- 🔄 RECURSIVE: Each subtask goes through the entire process again
 ```
 
 ## 💰 Community & SENT Token Incentives
