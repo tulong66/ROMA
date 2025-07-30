@@ -1,4 +1,4 @@
-# Dockerfile for SentientResearchAgent with PDM (using uv backend)
+# Dockerfile for SentientResearchAgent with UV for faster builds
 
 # Backend base image
 FROM python:3.12-slim AS backend
@@ -10,8 +10,9 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Install PDM
-RUN pip install pdm
+# Install UV for fast Python package management
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.cargo/bin:$PATH"
 
 # Set working directory
 WORKDIR /app
@@ -20,12 +21,15 @@ WORKDIR /app
 COPY pyproject.toml pdm.lock* ./
 COPY README.md ./
 
-# Configure PDM to use uv backend
-RUN pdm config use_uv true && \
-    pdm config python.use_venv false
-
-# Install dependencies
-RUN pdm sync --prod
+# Convert PDM lock to requirements and install with UV
+# This provides compatibility with PDM while using UV's speed
+RUN if [ -f pdm.lock ]; then \
+        pip install pdm && \
+        pdm export -f requirements --without-hashes > requirements.txt && \
+        uv pip install --system -r requirements.txt; \
+    else \
+        uv pip install --system -e .; \
+    fi
 
 # Copy source code
 COPY src/ ./src/
@@ -41,4 +45,4 @@ ENV FLASK_APP=sentientresearchagent.server.main
 EXPOSE 5000
 
 # Command to run the backend
-CMD ["pdm", "run", "python", "-m", "sentientresearchagent"]
+CMD ["python", "-m", "sentientresearchagent"]

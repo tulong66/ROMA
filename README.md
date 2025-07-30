@@ -16,50 +16,57 @@ SentientResearchAgent is designed for:
 
 ## 🚀 Quick Start
 
-### Option 1: Docker (Recommended)
-
-The easiest way to get started is using our Docker setup:
-
-```bash
-cd docker
-./setup.sh
-```
-
-This will set up both backend and frontend services with all dependencies. See [docker/README.md](docker/README.md) for detailed instructions.
-
-### Option 2: Quick Local Setup
+The easiest way to get started:
 
 ```bash
 # Clone the repository
 git clone https://github.com/yourusername/SentientResearchAgent.git
 cd SentientResearchAgent
 
-# Copy environment template and add your API keys
-cp .env.example .env
-# Edit .env with your API keys
+# Run the setup script
+./setup.sh
+```
 
-# Install dependencies with PDM
-pip install pdm
-pdm install
+This will prompt you to choose between:
+- **Docker Setup** (Recommended) - Isolated environment, one-command setup
+- **Native Setup** - Direct installation for development
 
-# Start the server
-python -m sentientresearchagent
+Both options provide the same functionality. See [docs/SETUP.md](docs/SETUP.md) for detailed instructions.
+
+### Quick Docker Setup
+
+```bash
+./setup.sh --docker
+# or
+cd docker && ./setup.sh
+```
+
+### Quick Native Setup (Ubuntu/Debian)
+
+```bash
+./setup.sh --native
+# or
+./setup_native.sh
 ```
 
 ## 🛠️ Manual Installation
 
-If you prefer to run without Docker, you'll need Python 3.12+ and Node.js 20+.
+For detailed setup instructions, see [docs/SETUP.md](docs/SETUP.md).
+
+### Requirements
+- **Python 3.12+** (Native setup installs this automatically on Ubuntu/Debian)
+- **Node.js 23.11.0** with npm 10.9.2 (Native setup installs via NVM)
+- **PDM** and **UV** package managers (Installed by setup scripts)
 
 ### Backend Setup
 
 ```bash
-# Install PDM
-pip install pdm
-
-# Configure PDM to use uv backend (faster)
+# Initialize PDM project
+pdm init --non-interactive --python 3.12 --dist
 pdm config use_uv true
 
 # Install dependencies
+eval "$(pdm venv activate)"
 pdm install
 ```
 
@@ -68,7 +75,6 @@ pdm install
 ```bash
 cd frontend
 npm install
-npm run build
 ```
 
 ### Configuration

@@ -225,35 +225,69 @@ interactive_setup() {
     fi
 }
 
+# Choose setup method
+choose_setup_method() {
+    echo ""
+    echo "Choose your setup method:"
+    echo ""
+    echo "  1) Docker Setup (Recommended)"
+    echo "     - Isolated environment"
+    echo "     - No system dependencies"
+    echo "     - One-command setup"
+    echo "     - Best for production"
+    echo ""
+    echo "  2) Native Ubuntu/Debian Setup"
+    echo "     - Direct installation"
+    echo "     - Full development access"
+    echo "     - Manual dependency management"
+    echo "     - Best for development"
+    echo ""
+    echo "Both options provide the same functionality!"
+    echo ""
+    read -p "Enter your choice (1 or 2): " -n 1 -r
+    echo ""
+    
+    case $REPLY in
+        1)
+            print_info "Running Docker setup..."
+            exec bash docker/setup.sh
+            ;;
+        2)
+            print_info "Running native Ubuntu setup..."
+            if [ -f setup_native.sh ]; then
+                exec bash setup_native.sh
+            else
+                print_error "setup_native.sh not found!"
+                exit 1
+            fi
+            ;;
+        *)
+            print_error "Invalid choice. Please run the script again and select 1 or 2."
+            exit 1
+            ;;
+    esac
+}
+
 # Main execution
 main() {
-    check_requirements
-    setup_environment
-    convert_to_uv
-    
-    # Ask about SSL certificates
-    read -p "Generate self-signed SSL certificates for local development? (y/n): " -n 1 -r
-    echo ""
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        generate_ssl_certs
+    # For backward compatibility, check if --docker flag is passed
+    if [[ "$1" == "--docker" ]]; then
+        print_info "Running Docker setup..."
+        exec bash docker/setup.sh
     fi
     
-    build_docker
-    
-    # Ask about database initialization
-    read -p "Initialize PostgreSQL database? (y/n): " -n 1 -r
-    echo ""
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        init_database
+    # For backward compatibility, check if --native flag is passed
+    if [[ "$1" == "--native" ]]; then
+        print_info "Running native Ubuntu setup..."
+        exec bash setup_native.sh
     fi
     
-    start_services
-    interactive_setup
-    display_status
+    # If no flags, show interactive menu
+    choose_setup_method
 }
 
 # Error handling
 trap 'print_error "Setup failed! Check the error messages above."; exit 1' ERR
 
-# Run main function
-main
+# Run main function with all arguments
+main "$@"

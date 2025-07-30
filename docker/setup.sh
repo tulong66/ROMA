@@ -1,6 +1,7 @@
 #!/bin/bash
 
-# Simple setup script for SentientResearchAgent
+# Docker setup script for SentientResearchAgent
+# Aligned with native setup process using PDM + UV
 
 set -e
 
@@ -8,15 +9,44 @@ set -e
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
+BLUE='\033[0;34m'
 NC='\033[0m'
 
-echo "🚀 SentientResearchAgent Docker Setup"
-echo "===================================="
+# Helper functions
+print_info() {
+    echo -e "${BLUE}[INFO]${NC} $1"
+}
+
+print_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
+}
+
+print_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+}
+
+print_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+# ASCII Banner
+cat << "EOF"
+  ____            _   _            _   
+ / ___|  ___ _ __ | |_(_) ___ _ __ | |_ 
+ \___ \ / _ \ '_ \| __| |/ _ \ '_ \| __|
+  ___) |  __/ | | | |_| |  __/ | | | |_ 
+ |____/ \___|_| |_|\__|_|\___|_| |_|\__|
+                                        
+ Research Agent - Docker Setup
+EOF
+
 echo ""
+
+print_info "Starting Docker setup for SentientResearchAgent..."
 
 # Check Docker
 if ! command -v docker &> /dev/null; then
-    echo -e "${RED}❌ Docker is not installed${NC}"
+    print_error "Docker is not installed"
     echo "Please install Docker: https://docs.docker.com/get-docker/"
     exit 1
 fi
@@ -24,7 +54,8 @@ fi
 # Check Docker Compose
 if ! docker compose version &> /dev/null 2>&1; then
     if ! command -v docker-compose &> /dev/null; then
-        echo -e "${RED}❌ Docker Compose is not installed${NC}"
+        print_error "Docker Compose is not installed"
+        echo "Visit: https://docs.docker.com/compose/install/"
         exit 1
     fi
     COMPOSE_CMD="docker-compose"
@@ -32,56 +63,117 @@ else
     COMPOSE_CMD="docker compose"
 fi
 
-echo -e "${GREEN}✓ Docker and Docker Compose found${NC}"
+print_success "Docker and Docker Compose found"
 
 # Setup environment
-if [ ! -f docker/.env ]; then
-    cp docker/.env.example docker/.env
-    echo -e "${YELLOW}⚠️  Created docker/.env from template${NC}"
-    echo -e "${YELLOW}   Please edit docker/.env with your API keys!${NC}"
-else
-    echo -e "${GREEN}✓ docker/.env already exists${NC}"
-fi
+setup_environment() {
+    print_info "Setting up environment configuration..."
+    
+    # Navigate to project root
+    cd "$(dirname "$0")/.."
+    
+    # Check if .env exists in project root
+    if [ ! -f .env ]; then
+        if [ -f .env.example ]; then
+            cp .env.example .env
+            print_info "Created .env file from .env.example"
+            print_warning "Please update .env with your API keys!"
+        else
+            print_warning "No .env.example file found. Please create .env manually."
+        fi
+    else
+        print_info ".env file already exists"
+    fi
+    
+    # Check docker-specific env
+    if [ ! -f docker/.env ]; then
+        if [ -f docker/.env.example ]; then
+            cp docker/.env.example docker/.env
+            print_info "Created docker/.env from template"
+        else
+            # Create docker/.env from main .env
+            cp .env docker/.env 2>/dev/null || true
+        fi
+    fi
+    
+    # Create necessary directories
+    print_info "Creating necessary directories..."
+    mkdir -p logs project_results emergency_backups
+    
+    print_success "Environment setup complete"
+}
 
-# Create necessary directories
-echo "Creating directories..."
-mkdir -p logs project_results emergency_backups
+# Build Docker images
+build_docker() {
+    print_info "Building Docker images..."
+    
+    cd docker
+    $COMPOSE_CMD build --no-cache
+    
+    print_success "Docker images built successfully"
+}
 
-# Build and start
-echo ""
-echo "Building Docker images..."
-cd docker
-$COMPOSE_CMD build
+# Start services
+start_services() {
+    print_info "Starting services..."
+    
+    $COMPOSE_CMD up -d
+    
+    # Wait for services
+    print_info "Waiting for services to start..."
+    sleep 10
+    
+    # Check backend health
+    if curl -sf http://localhost:5000/api/health > /dev/null; then
+        print_success "Backend is healthy"
+    else
+        print_warning "Backend health check failed - it may still be starting"
+        echo "Check logs with: cd docker && $COMPOSE_CMD logs backend"
+    fi
+    
+    # Check frontend
+    if curl -sf http://localhost:5173 > /dev/null 2>&1; then
+        print_success "Frontend is running"
+    else
+        print_info "Frontend may still be starting..."
+    fi
+}
 
-echo ""
-echo "Starting services..."
-$COMPOSE_CMD up -d
+# Display final information
+display_info() {
+    echo ""
+    echo "========================================"
+    print_success "Docker Setup Complete!"
+    echo "========================================"
+    echo ""
+    echo "Services:"
+    echo "  - Backend API: http://localhost:5000"
+    echo "  - Frontend Dev: http://localhost:5173"
+    echo ""
+    echo "Useful Docker commands:"
+    echo "  - View logs:    cd docker && $COMPOSE_CMD logs -f"
+    echo "  - Stop:         cd docker && $COMPOSE_CMD down"
+    echo "  - Restart:      cd docker && $COMPOSE_CMD restart"
+    echo "  - View status:  cd docker && $COMPOSE_CMD ps"
+    echo ""
+    echo "Development tips:"
+    echo "  - Backend hot-reloads on code changes"
+    echo "  - Frontend hot-reloads with Vite HMR"
+    echo "  - Volumes are mounted for live development"
+    echo ""
+    
+    if [ -f docker/.env ] && grep -q "your_.*_api_key_here" docker/.env; then
+        print_warning "Don't forget to add your API keys to docker/.env"
+    fi
+}
 
-# Wait for services
-echo ""
-echo "Waiting for services to start..."
-sleep 5
+# Main execution
+main() {
+    setup_environment
+    build_docker
+    start_services
+    display_info
+}
 
-# Check health
-if curl -sf http://localhost:5000/api/health > /dev/null; then
-    echo -e "${GREEN}✓ Backend is healthy${NC}"
-else
-    echo -e "${YELLOW}⚠️  Backend health check failed${NC}"
-fi
-
-echo ""
-echo -e "${GREEN}✅ Setup complete!${NC}"
-echo ""
-echo "Services:"
-echo "  Backend API: http://localhost:5000"
-echo "  Frontend Dev: http://localhost:5173"
-echo ""
-echo "Commands:"
-echo "  View logs:    cd docker && docker compose logs -f"
-echo "  Stop:         cd docker && docker compose down"
-echo "  Restart:      cd docker && docker compose restart"
-echo ""
-
-if grep -q "your_.*_api_key_here" docker/.env; then
-    echo -e "${YELLOW}⚠️  Don't forget to add your API keys to docker/.env${NC}"
-fi
+# Run main
+main
