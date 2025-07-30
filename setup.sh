@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# SentientResearchAgent One-Stop Setup Script
-# This script sets up the complete production environment
+# SentientResearchAgent Unified Setup Script
+# Supports both Docker and Native installation
 
 set -e  # Exit on error
 
@@ -30,203 +30,396 @@ print_error() {
 }
 
 # ASCII Banner
-cat << "EOF"
+show_banner() {
+    cat << "EOF"
   ____            _   _            _   
  / ___|  ___ _ __ | |_(_) ___ _ __ | |_ 
  \___ \ / _ \ '_ \| __| |/ _ \ '_ \| __|
   ___) |  __/ | | | |_| |  __/ | | | |_ 
  |____/ \___|_| |_|\__|_|\___|_| |_|\__|
                                         
- Research Agent - Production Setup
+ Research Agent - Setup
 EOF
-
-echo ""
-print_info "Starting SentientResearchAgent setup..."
-echo ""
-
-# Check system requirements
-check_requirements() {
-    print_info "Checking system requirements..."
-    
-    # Check for Docker
-    if ! command -v docker &> /dev/null; then
-        print_error "Docker is not installed. Please install Docker first."
-        echo "Visit: https://docs.docker.com/get-docker/"
-        exit 1
-    fi
-    
-    # Check for Docker Compose
-    if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
-        print_error "Docker Compose is not installed. Please install Docker Compose first."
-        echo "Visit: https://docs.docker.com/compose/install/"
-        exit 1
-    fi
-    
-    # Check for Git
-    if ! command -v git &> /dev/null; then
-        print_error "Git is not installed. Please install Git first."
-        exit 1
-    fi
-    
-    print_success "All system requirements met!"
+    echo ""
 }
 
-# Setup environment
-setup_environment() {
-    print_info "Setting up environment configuration..."
+# ============================================
+# DOCKER SETUP FUNCTIONS
+# ============================================
+
+docker_check_requirements() {
+    print_info "Checking Docker requirements..."
     
-    # Check if .env exists
-    if [ -f .env ]; then
-        print_warning ".env file already exists. Backing up to .env.backup"
-        cp .env .env.backup
+    if ! command -v docker &> /dev/null; then
+        print_error "Docker is not installed"
+        echo "Please install Docker: https://docs.docker.com/get-docker/"
+        return 1
     fi
     
-    # Copy example env if .env doesn't exist
+    if ! docker compose version &> /dev/null 2>&1; then
+        if ! command -v docker-compose &> /dev/null; then
+            print_error "Docker Compose is not installed"
+            echo "Visit: https://docs.docker.com/compose/install/"
+            return 1
+        fi
+        COMPOSE_CMD="docker-compose"
+    else
+        COMPOSE_CMD="docker compose"
+    fi
+    
+    print_success "Docker and Docker Compose found"
+    return 0
+}
+
+docker_setup_environment() {
+    print_info "Setting up Docker environment..."
+    
+    # Check if .env exists in project root
     if [ ! -f .env ]; then
-        cp .env.example .env
-        print_info "Created .env file from .env.example"
-        print_warning "Please update .env with your API keys and configuration!"
+        if [ -f .env.example ]; then
+            cp .env.example .env
+            print_info "Created .env file from .env.example"
+            print_warning "Please update .env with your API keys!"
+        else
+            print_warning "No .env.example file found. Please create .env manually."
+        fi
+    else
+        print_info ".env file already exists"
+    fi
+    
+    # Check docker-specific env
+    if [ ! -f docker/.env ]; then
+        if [ -f docker/.env.example ]; then
+            cp docker/.env.example docker/.env
+            print_info "Created docker/.env from template"
+        else
+            # Create docker/.env from main .env
+            cp .env docker/.env 2>/dev/null || true
+        fi
     fi
     
     # Create necessary directories
     print_info "Creating necessary directories..."
-    mkdir -p data logs cache project_results emergency_backups nginx/ssl
+    mkdir -p logs project_results emergency_backups
     
-    print_success "Environment setup complete!"
+    print_success "Environment setup complete"
 }
 
-# Convert from PDM to UV
-convert_to_uv() {
-    print_info "Converting from PDM to UV package manager..."
-    
-    # Backup original pyproject.toml
-    if [ -f pyproject.toml ]; then
-        cp pyproject.toml pyproject.toml.pdm.backup
-        print_info "Backed up original pyproject.toml"
-    fi
-    
-    # Use UV version
-    if [ -f pyproject.toml.uv ]; then
-        cp pyproject.toml.uv pyproject.toml
-        print_success "Switched to UV-compatible pyproject.toml"
-    fi
-    
-    # Remove PDM files
-    rm -rf .pdm.toml .pdm-python __pypackages__ 2>/dev/null || true
-    
-    print_success "Conversion to UV complete!"
-}
-
-# Build Docker images
-build_docker() {
+docker_build() {
     print_info "Building Docker images..."
     
-    # Determine Docker Compose command
-    if docker compose version &> /dev/null; then
-        DOCKER_COMPOSE="docker compose"
-    else
-        DOCKER_COMPOSE="docker-compose"
-    fi
+    cd docker
+    $COMPOSE_CMD build --no-cache
     
-    # Build images
-    $DOCKER_COMPOSE build --no-cache
-    
-    print_success "Docker images built successfully!"
+    print_success "Docker images built successfully"
 }
 
-# Initialize database (if using PostgreSQL)
-init_database() {
-    print_info "Initializing database..."
+docker_start() {
+    print_info "Starting Docker services..."
     
-    # Start only PostgreSQL service
-    $DOCKER_COMPOSE up -d postgres
+    $COMPOSE_CMD up -d
     
-    # Wait for PostgreSQL to be ready
-    print_info "Waiting for PostgreSQL to be ready..."
+    # Wait for services
+    print_info "Waiting for services to start..."
     sleep 10
     
-    # TODO: Add database migration scripts here
-    # For now, just ensure the service is running
-    
-    print_success "Database initialized!"
-}
-
-# Generate SSL certificates for local development
-generate_ssl_certs() {
-    print_info "Generating self-signed SSL certificates for local development..."
-    
-    if [ ! -f nginx/ssl/cert.pem ]; then
-        openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-            -keyout nginx/ssl/key.pem \
-            -out nginx/ssl/cert.pem \
-            -subj "/C=US/ST=State/L=City/O=Organization/CN=localhost" \
-            2>/dev/null
-        
-        print_success "SSL certificates generated!"
+    # Check backend health
+    if curl -sf http://localhost:5000/api/health > /dev/null; then
+        print_success "Backend is healthy"
     else
-        print_info "SSL certificates already exist, skipping..."
+        print_warning "Backend health check failed - it may still be starting"
+        echo "Check logs with: cd docker && $COMPOSE_CMD logs backend"
+    fi
+    
+    # Check frontend
+    if curl -sf http://localhost:5173 > /dev/null 2>&1; then
+        print_success "Frontend is running"
+    else
+        print_info "Frontend may still be starting..."
     fi
 }
 
-# Start services
-start_services() {
-    print_info "Starting all services..."
+docker_setup() {
+    print_info "Starting Docker setup..."
     
-    $DOCKER_COMPOSE up -d
-    
-    # Wait for services to be healthy
-    print_info "Waiting for services to be healthy..."
-    sleep 15
-    
-    # Check health
-    if curl -f http://localhost:5000/api/health &> /dev/null; then
-        print_success "Backend service is healthy!"
-    else
-        print_warning "Backend service health check failed. Check logs with: docker-compose logs sentient-backend"
+    if ! docker_check_requirements; then
+        return 1
     fi
     
-    print_success "All services started!"
-}
-
-# Display status and next steps
-display_status() {
+    docker_setup_environment
+    docker_build
+    docker_start
+    
     echo ""
     echo "========================================"
-    print_success "Setup Complete!"
+    print_success "Docker Setup Complete!"
     echo "========================================"
     echo ""
-    echo "Services running:"
+    echo "Services:"
     echo "  - Backend API: http://localhost:5000"
-    echo "  - Frontend: http://localhost:80"
-    echo "  - Redis: localhost:6379"
-    echo "  - PostgreSQL: localhost:5432"
+    echo "  - Frontend Dev: http://localhost:5173"
     echo ""
-    echo "Useful commands:"
-    echo "  - View logs: docker-compose logs -f"
-    echo "  - Stop services: docker-compose down"
-    echo "  - Restart services: docker-compose restart"
-    echo "  - View status: docker-compose ps"
+    echo "Useful Docker commands:"
+    echo "  - View logs:    cd docker && $COMPOSE_CMD logs -f"
+    echo "  - Stop:         cd docker && $COMPOSE_CMD down"
+    echo "  - Restart:      cd docker && $COMPOSE_CMD restart"
+    echo "  - View status:  cd docker && $COMPOSE_CMD ps"
+    echo ""
+    
+    if [ -f docker/.env ] && grep -q "your_.*_api_key_here" docker/.env; then
+        print_warning "Don't forget to add your API keys to docker/.env"
+    fi
+}
+
+# ============================================
+# NATIVE SETUP FUNCTIONS
+# ============================================
+
+native_check_system() {
+    print_info "Checking system compatibility..."
+    
+    if [[ ! -f /etc/debian_version ]]; then
+        print_error "This script is designed for Ubuntu/Debian systems."
+        print_error "For other systems, please install dependencies manually."
+        return 1
+    fi
+    
+    print_success "Running on Ubuntu/Debian system"
+    return 0
+}
+
+native_install_python() {
+    print_info "Installing Python 3.12..."
+    
+    # Check if Python 3.12 is already installed
+    if command -v python3.12 &> /dev/null; then
+        print_success "Python 3.12 is already installed"
+        return
+    fi
+    
+    # Add deadsnakes PPA
+    print_info "Adding deadsnakes PPA..."
+    sudo add-apt-repository ppa:deadsnakes/ppa -y
+    
+    # Update package list
+    print_info "Updating package list..."
+    sudo apt update
+    
+    # Install Python 3.12
+    print_info "Installing Python 3.12..."
+    sudo apt install -y python3.12 python3.12-venv python3.12-dev
+    
+    print_success "Python 3.12 installed successfully"
+}
+
+native_install_pdm_uv() {
+    print_info "Installing PDM and UV package managers..."
+    
+    # Install PDM
+    if ! command -v pdm &> /dev/null; then
+        print_info "Installing PDM..."
+        curl -sSL https://pdm-project.org/install-pdm.py | python3 -
+        
+        # Add PDM to PATH
+        export PATH="$HOME/.local/bin:$PATH"
+        
+        # Add to bashrc if not already there
+        if ! grep -q "export PATH=\"\$HOME/.local/bin:\$PATH\"" ~/.bashrc; then
+            echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+        fi
+    else
+        print_success "PDM is already installed"
+    fi
+    
+    # Install UV
+    if ! command -v uv &> /dev/null; then
+        print_info "Installing UV..."
+        curl -LsSf https://astral.sh/uv/install.sh | sh
+        
+        # Source cargo env for UV
+        source "$HOME/.cargo/env"
+        
+        # Add to bashrc if not already there
+        if ! grep -q "source \"\$HOME/.cargo/env\"" ~/.bashrc; then
+            echo 'source "$HOME/.cargo/env"' >> ~/.bashrc
+        fi
+    else
+        print_success "UV is already installed"
+    fi
+    
+    print_success "PDM and UV installed successfully"
+}
+
+native_install_node() {
+    print_info "Installing NVM and Node.js..."
+    
+    # Install NVM
+    if [ ! -d "$HOME/.nvm" ]; then
+        print_info "Installing NVM..."
+        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+        
+        # Load NVM
+        export NVM_DIR="$HOME/.nvm"
+        [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+    else
+        print_success "NVM is already installed"
+        # Load NVM
+        export NVM_DIR="$HOME/.nvm"
+        [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+    fi
+    
+    # Install Node.js 23.11.0
+    print_info "Installing Node.js v23.11.0..."
+    nvm install 23.11.0
+    nvm use 23.11.0
+    
+    # Install specific npm version
+    print_info "Installing npm v10.9.2..."
+    npm install -g npm@10.9.2
+    
+    # Verify versions
+    NODE_VERSION=$(node -v)
+    NPM_VERSION=$(npm -v)
+    
+    if [[ "$NODE_VERSION" == "v23.11.0" ]] && [[ "$NPM_VERSION" == "10.9.2" ]]; then
+        print_success "Node.js $NODE_VERSION and npm $NPM_VERSION installed successfully"
+    else
+        print_warning "Version mismatch - Node: $NODE_VERSION (expected v23.11.0), npm: $NPM_VERSION (expected 10.9.2)"
+    fi
+}
+
+native_setup_project() {
+    print_info "Setting up project with PDM..."
+    
+    # Check if we're in the project directory
+    if [ ! -f "pyproject.toml" ]; then
+        print_error "Please run this script from the SentientResearchAgent project root directory"
+        return 1
+    fi
+    
+    # Initialize PDM if not already initialized
+    if [ ! -f "pdm.lock" ]; then
+        print_info "Initializing PDM project..."
+        pdm init --non-interactive --python 3.12 --dist
+    fi
+    
+    # Configure PDM to use UV
+    print_info "Configuring PDM to use UV backend..."
+    pdm config use_uv true
+    
+    # Create and activate virtual environment
+    print_info "Creating virtual environment..."
+    pdm venv create --python 3.12 || true
+    
+    # Install dependencies
+    print_info "Installing Python dependencies..."
+    eval "$(pdm venv activate)"
+    pdm install
+    
+    print_success "Project setup complete"
+}
+
+native_install_frontend() {
+    print_info "Installing frontend dependencies..."
+    
+    # Check if frontend directory exists
+    if [ ! -d "frontend" ]; then
+        print_error "Frontend directory not found"
+        return 1
+    fi
+    
+    cd frontend
+    
+    # Install dependencies
+    print_info "Running npm install..."
+    npm install
+    
+    cd ..
+    
+    print_success "Frontend dependencies installed"
+}
+
+native_setup_environment() {
+    print_info "Setting up environment configuration..."
+    
+    # Create .env file if it doesn't exist
+    if [ ! -f .env ]; then
+        if [ -f .env.example ]; then
+            cp .env.example .env
+            print_info "Created .env file from .env.example"
+            print_warning "Please update .env with your API keys!"
+        else
+            print_warning "No .env.example file found. Please create .env manually."
+        fi
+    else
+        print_info ".env file already exists"
+    fi
+    
+    # Create necessary directories
+    print_info "Creating necessary directories..."
+    mkdir -p logs project_results emergency_backups
+    
+    print_success "Environment setup complete"
+}
+
+native_setup() {
+    print_info "Starting native Ubuntu/Debian setup..."
+    
+    if ! native_check_system; then
+        return 1
+    fi
+    
+    # Install system dependencies
+    print_info "Installing system dependencies..."
+    sudo apt update
+    sudo apt install -y curl git build-essential screen
+    
+    native_install_python
+    native_install_pdm_uv
+    native_install_node
+    native_setup_environment
+    native_setup_project
+    native_install_frontend
+    
+    echo ""
+    echo "========================================"
+    print_success "Native Setup Complete!"
+    echo "========================================"
+    echo ""
+    echo "To run the servers:"
+    echo ""
+    echo "1. Start the backend server:"
+    echo "   screen -S backend_server"
+    echo "   eval \"\$(pdm venv activate)\""
+    echo "   python -m sentientresearchagent"
+    echo "   # Press Ctrl+A, then D to detach"
+    echo ""
+    echo "2. Start the frontend server:"
+    echo "   screen -S frontend_server"
+    echo "   cd frontend && npm run dev"
+    echo "   # Press Ctrl+A, then D to detach"
+    echo ""
+    echo "Server URLs:"
+    echo "  - Backend API: http://localhost:5000"
+    echo "  - Frontend: http://localhost:5173"
+    echo ""
+    echo "Screen commands:"
+    echo "  - List screens: screen -ls"
+    echo "  - Reattach: screen -r backend_server"
+    echo "  - Kill screen: screen -X -S backend_server quit"
     echo ""
     print_warning "Don't forget to:"
     echo "  1. Update .env file with your API keys"
-    echo "  2. Configure your domain for production deployment"
-    echo "  3. Set up proper SSL certificates for production"
+    echo "  2. Source ~/.bashrc to update PATH:"
+    echo "     source ~/.bashrc"
     echo ""
 }
 
-# Interactive setup
-interactive_setup() {
-    echo ""
-    read -p "Do you want to configure API keys now? (y/n): " -n 1 -r
-    echo ""
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        print_info "Opening .env file for editing..."
-        ${EDITOR:-nano} .env
-    fi
-}
+# ============================================
+# MAIN MENU
+# ============================================
 
-# Choose setup method
-choose_setup_method() {
+show_menu() {
     echo ""
     echo "Choose your setup method:"
     echo ""
@@ -249,17 +442,10 @@ choose_setup_method() {
     
     case $REPLY in
         1)
-            print_info "Running Docker setup..."
-            exec bash docker/setup.sh
+            docker_setup
             ;;
         2)
-            print_info "Running native Ubuntu setup..."
-            if [ -f setup_native.sh ]; then
-                exec bash setup_native.sh
-            else
-                print_error "setup_native.sh not found!"
-                exit 1
-            fi
+            native_setup
             ;;
         *)
             print_error "Invalid choice. Please run the script again and select 1 or 2."
@@ -268,22 +454,40 @@ choose_setup_method() {
     esac
 }
 
-# Main execution
+# ============================================
+# MAIN EXECUTION
+# ============================================
+
 main() {
-    # For backward compatibility, check if --docker flag is passed
-    if [[ "$1" == "--docker" ]]; then
-        print_info "Running Docker setup..."
-        exec bash docker/setup.sh
-    fi
+    show_banner
     
-    # For backward compatibility, check if --native flag is passed
-    if [[ "$1" == "--native" ]]; then
-        print_info "Running native Ubuntu setup..."
-        exec bash setup_native.sh
-    fi
-    
-    # If no flags, show interactive menu
-    choose_setup_method
+    # Handle command line arguments
+    case "$1" in
+        --docker)
+            docker_setup
+            ;;
+        --native)
+            native_setup
+            ;;
+        --help)
+            echo "Usage: $0 [OPTIONS]"
+            echo ""
+            echo "Options:"
+            echo "  --docker    Run Docker setup directly"
+            echo "  --native    Run native Ubuntu/Debian setup directly"
+            echo "  --help      Show this help message"
+            echo ""
+            echo "Without options, an interactive menu will be shown."
+            ;;
+        "")
+            show_menu
+            ;;
+        *)
+            print_error "Unknown option: $1"
+            echo "Use --help for usage information"
+            exit 1
+            ;;
+    esac
 }
 
 # Error handling

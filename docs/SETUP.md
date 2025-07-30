@@ -34,7 +34,7 @@ The setup script will prompt you to choose between:
 ```bash
 ./setup.sh --docker
 # or
-cd docker && ./setup.sh
+make setup-docker
 ```
 
 ### What It Does
@@ -74,7 +74,7 @@ cd docker && docker compose build
 ```bash
 ./setup.sh --native
 # or
-./setup_native.sh
+make setup-native
 ```
 
 ### What It Does

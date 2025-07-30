@@ -1,10 +1,14 @@
 # Simple Makefile for Docker commands
 
-.PHONY: help up down logs restart build shell clean
+.PHONY: help setup up down logs restart build shell clean
+
+setup:
+	@../setup.sh --docker
 
 help:
 	@echo "SentientResearchAgent Docker Commands"
 	@echo "===================================="
+	@echo "make setup    - Run Docker setup"
 	@echo "make up       - Start all services"
 	@echo "make down     - Stop all services"
 	@echo "make logs     - View logs"

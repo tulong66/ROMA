@@ -2,10 +2,23 @@
 
 .PHONY: help install install-dev run run-debug frontend-dev test clean clean-cache clean-experiments lint format docker-up docker-down
 
+# Setup targets
+setup:
+	@./setup.sh
+
+setup-docker:
+	@./setup.sh --docker
+
+setup-native:
+	@./setup.sh --native
+
 # Default target
 help:
 	@echo "SentientResearchAgent Development Commands"
 	@echo "========================================="
+	@echo "setup            Run interactive setup (Docker or Native)"
+	@echo "setup-docker     Run Docker setup directly"
+	@echo "setup-native     Run native Ubuntu/Debian setup"
 	@echo "install          Install dependencies with PDM"
 	@echo "install-dev      Install with development dependencies"
 	@echo "run              Run the server"
@@ -22,18 +35,38 @@ help:
 
 # Installation
 install:
+	@echo "Setting up project dependencies..."
+	@if ! command -v pdm &> /dev/null; then \
+		echo "PDM not found. Please run ./setup.sh first"; \
+		exit 1; \
+	fi
+	pdm config use_uv true
 	pdm install
 
 install-dev:
+	@echo "Setting up development environment..."
+	@if ! command -v pdm &> /dev/null; then \
+		echo "PDM not found. Please run ./setup.sh first"; \
+		exit 1; \
+	fi
+	pdm config use_uv true
 	pdm install -d
 	cd frontend && npm install
 
 # Running
 run:
-	python -m sentientresearchagent
+	@if [ -f .venv/bin/activate ]; then \
+		. .venv/bin/activate && python -m sentientresearchagent; \
+	else \
+		eval "$$(pdm venv activate)" && python -m sentientresearchagent; \
+	fi
 
 run-debug:
-	python -m sentientresearchagent --debug
+	@if [ -f .venv/bin/activate ]; then \
+		. .venv/bin/activate && python -m sentientresearchagent --debug; \
+	else \
+		eval "$$(pdm venv activate)" && python -m sentientresearchagent --debug; \
+	fi
 
 frontend-dev:
 	cd frontend && npm run dev

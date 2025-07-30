@@ -38,7 +38,7 @@ Both options provide the same functionality. See [docs/SETUP.md](docs/SETUP.md) 
 ```bash
 ./setup.sh --docker
 # or
-cd docker && ./setup.sh
+make setup-docker
 ```
 
 ### Quick Native Setup (Ubuntu/Debian)
@@ -46,7 +46,7 @@ cd docker && ./setup.sh
 ```bash
 ./setup.sh --native
 # or
-./setup_native.sh
+make setup-native
 ```
 
 ## 🛠️ Manual Installation
