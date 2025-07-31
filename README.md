@@ -284,10 +284,73 @@ See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for guidelines.
 
 MIT License - see [LICENSE](LICENSE) file
 
-## 👨‍💻 Main Contributor
+## 👥 Contributors
 
-**Salah Al-Zubi** ([@salzubi401](https://github.com/salzubi401))  
-Creator and lead developer of SentientResearchAgent
+### 🏆 Lead Contributor
+
+<table>
+  <tr>
+    <td align="center">
+      <a href="https://github.com/salzubi401">
+        <img src="https://github.com/salzubi401.png" width="100px;" alt="Salah Al-Zubi"/>
+        <br />
+        <sub><b>Salah Al-Zubi</b></sub>
+      </a>
+      <br />
+      <sub>Creator & Lead Developer</sub>
+    </td>
+  </tr>
+</table>
+
+### ✨ Contributors
+
+<!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
+<!-- prettier-ignore-start -->
+<!-- markdownlint-disable -->
+<table>
+  <tr>
+    <td align="center">
+      <a href="https://github.com/contributor1">
+        <img src="https://github.com/contributor1.png?size=50" width="50px;" alt=""/>
+        <br />
+        <sub><b>Contributor 1</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/contributor2">
+        <img src="https://github.com/contributor2.png?size=50" width="50px;" alt=""/>
+        <br />
+        <sub><b>Contributor 2</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/contributor3">
+        <img src="https://github.com/contributor3.png?size=50" width="50px;" alt=""/>
+        <br />
+        <sub><b>Contributor 3</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/contributor4">
+        <img src="https://github.com/contributor4.png?size=50" width="50px;" alt=""/>
+        <br />
+        <sub><b>Contributor 4</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/contributor5">
+        <img src="https://github.com/contributor5.png?size=50" width="50px;" alt=""/>
+        <br />
+        <sub><b>Contributor 5</b></sub>
+      </a>
+    </td>
+  </tr>
+</table>
+<!-- markdownlint-restore -->
+<!-- prettier-ignore-end -->
+<!-- ALL-CONTRIBUTORS-LIST:END -->
+
+<sub>This project follows the [all-contributors](https://github.com/all-contributors/all-contributors) specification. Contributions of any kind welcome!</sub>
 
 ## 🚀 Start Building Today!
 
