@@ -180,15 +180,16 @@ Your Request: "Create a market analysis report"
      ▼              ▼              ▼
 [ATOMIZER]     [ATOMIZER]     [ATOMIZER] ← 🔄 RECURSIVE: Each subtask
      │              │              │         goes through same process
+     ├──────────────┼──────────────┤
      ▼              ▼              ▼
-[EXECUTE or    [EXECUTE or    [EXECUTE or
- PLAN again]    PLAN again]    PLAN again]
+[EXECUTE]      [EXECUTE or    [EXECUTE or
+              PLAN→AGGREGATE]  PLAN→AGGREGATE]
      │              │              │
      └──────────────┼──────────────┘
                     ▼
            ┌─────────────────┐
-           │   AGGREGATOR    │ ← "Combine all results"
-           └────────┬────────┘
+           │   AGGREGATOR    │ ← "Combine all subtask results"
+           └────────┬────────┘    (Only after PLAN nodes complete)
                     │ Returns to parent
                     ▼
            ┌─────────────────┐
@@ -198,10 +199,11 @@ Your Request: "Create a market analysis report"
 Key Components:
 - ATOMIZER: Decides if task needs decomposition (PLAN) or direct execution (EXECUTE)
 - PLAN NODE: Breaks complex tasks into subtasks (THINK, WRITE, SEARCH)
-- EXECUTE NODE: Directly executes atomic tasks
-- AGGREGATOR: Combines results from subtasks bottom-up
+- EXECUTE NODE: Directly executes atomic tasks (no aggregation needed)
+- AGGREGATOR: Only combines results after PLAN nodes complete their subtasks
 - ➡️ Horizontal Dependencies: Tasks can depend on siblings (must wait for completion)
 - 🔄 RECURSIVE: Each subtask goes through the entire process again
+- 📦 Aggregation happens locally after each group of subtasks completes
 ```
 
 ## 💰 Community & SENT Token Incentives
