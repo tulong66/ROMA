@@ -1,14 +1,15 @@
 """
 Agent Factory
 
-Creates agent instances from YAML configuration and Python prompts.
-Enhanced to handle structured outputs like the original definitions.
+Creates agent instances from YAML configuration with comprehensive Pydantic validation.
+Leverages structured Pydantic models for type safety and validation.
 """
 
 import importlib
 import os
 from typing import Dict, Any, Optional, List, Union, Type
 from loguru import logger
+from pathlib import Path
 
 try:
     from omegaconf import DictConfig
@@ -50,6 +51,11 @@ from ..types import TaskType
 from sentientresearchagent.hierarchical_agent_framework.agents.base_adapter import BaseAdapter
 from sentientresearchagent.hierarchical_agent_framework.agents.registry import AgentRegistry
 from sentientresearchagent.hierarchical_agent_framework.agent_blueprints import AgentBlueprint
+from sentientresearchagent.hierarchical_agent_framework.toolkits.data import BinanceToolkit
+from .models import (
+    AgentConfig, ModelConfig, ToolConfig, ToolkitConfig, 
+    validate_agent_config, validate_toolkit_config
+)
 
 try:
     from dotenv import load_dotenv
@@ -59,107 +65,7 @@ try:
 except ImportError:
     logger.warning("python-dotenv not installed. Environment variables from .env files will not be loaded automatically.")
 
-def _validate_provider_environment(provider: str, model_id: str) -> None:
-    """
-    Validate that required environment variables are set for specific LLM providers.
-    
-    Args:
-        provider: The LLM provider (litellm, openai, etc.)
-        model_id: The model identifier
-        
-    Raises:
-        ValueError: If required environment variables are missing
-    """
-    if provider == "litellm":
-        # Determine the actual provider from the model_id
-        if model_id.startswith("openrouter/"):
-            # OpenRouter models require OPENROUTER_API_KEY
-            env_var = "OPENROUTER_API_KEY"
-            if not os.getenv(env_var):
-                raise ValueError(
-                    f"OpenRouter model '{model_id}' requires {env_var} environment variable to be set. "
-                    f"Please add {env_var}=your_openrouter_api_key to your .env file."
-                )
-            logger.debug(f"✅ Found {env_var} for OpenRouter model {model_id}")
-                
-        elif model_id.startswith("anthropic/"):
-            # Anthropic models require ANTHROPIC_API_KEY
-            env_var = "ANTHROPIC_API_KEY"
-            if not os.getenv(env_var):
-                raise ValueError(
-                    f"Anthropic model '{model_id}' requires {env_var} environment variable to be set. "
-                    f"Please add {env_var}=your_anthropic_api_key to your .env file."
-                )
-            logger.debug(f"✅ Found {env_var} for Anthropic model {model_id}")
-                
-        elif model_id.startswith("openai/") or model_id.startswith("gpt-"):
-            # OpenAI models require OPENAI_API_KEY
-            env_var = "OPENAI_API_KEY"
-            if not os.getenv(env_var):
-                raise ValueError(
-                    f"OpenAI model '{model_id}' requires {env_var} environment variable to be set. "
-                    f"Please add {env_var}=your_openai_api_key to your .env file."
-                )
-            logger.debug(f"✅ Found {env_var} for OpenAI model {model_id}")
-                
-        elif model_id.startswith("azure/"):
-            # Azure models require AZURE_API_KEY
-            env_var = "AZURE_API_KEY"
-            if not os.getenv(env_var):
-                raise ValueError(
-                    f"Azure model '{model_id}' requires {env_var} environment variable to be set. "
-                    f"Please add {env_var}=your_azure_api_key to your .env file."
-                )
-            logger.debug(f"✅ Found {env_var} for Azure model {model_id}")
-                
-        elif model_id.startswith("fireworks_ai/") or model_id.startswith("fireworks/"):
-            # Fireworks AI models require FIREWORKS_AI_API_KEY
-            env_var = "FIREWORKS_AI_API_KEY"
-            if not os.getenv(env_var):
-                raise ValueError(
-                    f"Fireworks AI model '{model_id}' requires {env_var} environment variable to be set. "
-                    f"Please add {env_var}=your_fireworks_ai_api_key to your .env file."
-                )
-            logger.debug(f"✅ Found {env_var} for Fireworks AI model {model_id}")
-                
-        else:
-            # For other providers, warn but don't fail
-            logger.warning(
-                f"Unknown LiteLLM model provider for '{model_id}'. "
-                f"Please ensure appropriate environment variables are set. "
-                f"Common providers: openrouter/, anthropic/, openai/, azure/, fireworks_ai/"
-            )
-            
-    elif provider == "openai":
-        # Direct OpenAI provider
-        env_var = "OPENAI_API_KEY"
-        if not os.getenv(env_var):
-            raise ValueError(
-                f"OpenAI provider requires {env_var} environment variable to be set. "
-                f"Please add {env_var}=your_openai_api_key to your .env file."
-            )
-        logger.debug(f"✅ Found {env_var} for OpenAI provider")
-        
-    elif provider == "fireworks" or provider == "fireworks_ai":
-        # Direct Fireworks AI provider
-        env_var = "FIREWORKS_AI_API_KEY"
-        if not os.getenv(env_var):
-            raise ValueError(
-                f"Fireworks AI provider requires {env_var} environment variable to be set. "
-                f"Please add {env_var}=your_fireworks_ai_api_key to your .env file."
-            )
-        logger.debug(f"✅ Found {env_var} for Fireworks AI provider")
-
-    elif provider == "google" or provider == "gemini":
-        # Google/Gemini provider
-        env_var = "GOOGLE_API_KEY"
-        alt_env_var = "GEMINI_API_KEY"
-        if not (os.getenv(env_var) or os.getenv(alt_env_var)):
-            raise ValueError(
-                f"Google/Gemini provider requires {env_var} or {alt_env_var} environment variable to be set. "
-                f"Please add one of these to your .env file."
-            )
-        logger.debug(f"✅ Found API key for Google/Gemini provider")
+# Environment validation is now handled by Pydantic ModelConfig validation
 
 
 class AgentFactory:
@@ -200,6 +106,10 @@ class AgentFactory:
             "ReasoningTools": ReasoningTools,
         }
         
+        self._toolkits = {
+            "BinanceToolkit": BinanceToolkit,
+        }
+        
         # Add WikipediaTools if available
         if WIKIPEDIA_AVAILABLE and WikipediaTools:
             self._tools["WikipediaTools"] = WikipediaTools
@@ -220,6 +130,9 @@ class AgentFactory:
         Returns:
             Pydantic model class or None
         """
+        if not response_model_name:
+            return None
+            
         if response_model_name in self._response_models:
             return self._response_models[response_model_name]
         
@@ -239,31 +152,42 @@ class AgentFactory:
         logger.warning(f"Unknown response model: {response_model_name}")
         return None
     
-    def create_model_instance(self, model_config: DictConfig) -> Union[LiteLLM, OpenAIChat]:
+    def create_model_instance(self, model_config: Union[DictConfig, Dict[str, Any], ModelConfig]) -> Union[LiteLLM, OpenAIChat]:
         """
-        Create a model instance from configuration with proper environment validation.
+        Create a model instance from configuration with Pydantic validation.
         
         Args:
-            model_config: Model configuration from YAML
+            model_config: Model configuration (DictConfig, dict, or ModelConfig)
             
         Returns:
             Model instance
             
         Raises:
-            ValueError: If provider is unsupported or required API keys are missing
+            ValueError: If configuration is invalid or required API keys are missing
         """
-        provider = model_config.provider.lower()
-        model_id = model_config.model_id
+        # Convert to Pydantic ModelConfig for validation
+        if isinstance(model_config, ModelConfig):
+            validated_config = model_config
+        else:
+            # Convert DictConfig or dict to dict
+            if hasattr(model_config, '__getitem__'):
+                config_dict = dict(model_config)
+            else:
+                config_dict = model_config
+                
+            # Validate using Pydantic model (includes environment validation)
+            try:
+                validated_config = ModelConfig(**config_dict)
+                logger.debug(f"✅ Model configuration validated: {validated_config.provider}/{validated_config.model_id}")
+            except Exception as e:
+                logger.error(f"Model configuration validation failed: {e}")
+                raise ValueError(f"Invalid model configuration: {e}") from e
+        
+        provider = validated_config.provider
+        model_id = validated_config.model_id
         
         if provider not in self._model_providers:
             raise ValueError(f"Unsupported model provider: {provider}. Available: {list(self._model_providers.keys())}")
-        
-        # Validate that required environment variables are set
-        try:
-            _validate_provider_environment(provider, model_id)
-        except ValueError as e:
-            logger.error(f"Environment validation failed for {provider}/{model_id}: {e}")
-            raise
         
         model_class = self._model_providers[provider]
         
@@ -277,8 +201,9 @@ class AgentFactory:
             'min_p', 'tfs', 'typical_p', 'epsilon_cutoff', 'eta_cutoff'
         ]
         
+        # Use validated config instead of raw model_config
         for param in supported_llm_params:
-            param_value = model_config.get(param)
+            param_value = getattr(validated_config, param, None)
             if param_value is not None:
                 model_kwargs[param] = param_value
                 logger.debug(f"Adding model parameter {param}={param_value} to {provider}/{model_id}")
@@ -358,7 +283,12 @@ class AgentFactory:
         clean_tools_func = None
         # Check if web_search is needed
         for config in tool_configs:
-            tool_name = config if isinstance(config, str) else config.get("name", "")
+            if isinstance(config, str):
+                tool_name = config
+            elif hasattr(config, '__getitem__'):
+                tool_name = config.get("name") or ""
+            else:
+                continue
             if tool_name == "web_search":
                 try:
                     from ..tools.web_search_tool import web_search, clean_tools
@@ -373,8 +303,9 @@ class AgentFactory:
             if isinstance(config, str):
                 tool_name = config
                 tool_params = {}
-            elif isinstance(config, dict):
-                tool_name = config.get("name", "")
+            elif isinstance(config, dict) or hasattr(config, '__getitem__'):
+                # Handle both regular dict and OmegaConf DictConfig
+                tool_name = config.get("name") or ""
                 tool_params = config.get("params", {})
             else:
                 logger.warning(f"Invalid tool configuration type: {type(config)}")
@@ -415,6 +346,81 @@ class AgentFactory:
             logger.debug("Cleaned tools to remove problematic attributes")
         
         return tools
+        
+    def create_toolkits(self, toolkit_configs: List[Dict[str, Any]]) -> List[Any]:
+        """
+        Create toolkit instances and extract specified tools.
+        
+        Args:
+            toolkit_configs: List of toolkit configurations
+            
+        Returns:
+            List of selected toolkits
+            
+        Raises:
+            ValueError: If toolkit configuration is invalid
+        """
+        selected_toolkits = []
+        
+        for config in toolkit_configs:
+            # Validate and parse toolkit configuration using Pydantic model
+            try:
+                validated_toolkit = validate_toolkit_config(config)
+                toolkit_name = validated_toolkit.name
+                logger.info(f"✅ Toolkit configuration validated: {toolkit_name}")
+            except Exception as e:
+                logger.error(f"Invalid toolkit configuration for {toolkit_name}: {e}")
+                raise ValueError(f"Toolkit validation failed: {e}") from e
+
+            if toolkit_name in self._toolkits:
+                try:
+                    toolkit_class = self._toolkits[toolkit_name]
+                    params = validated_toolkit.params
+                    
+                    # Apply any parameter transformations
+                    params = self._transform_toolkit_params(toolkit_name, params)
+                    
+                    available_tools = validated_toolkit.available_tools
+                    if available_tools:
+                        params["include_tools"] = available_tools
+                    
+                    toolkit_instance = toolkit_class(**params)
+                    logger.info(f"Created toolkit '{toolkit_name}' with params: {params}")
+                    selected_toolkits.append(toolkit_instance)
+                            
+                except Exception as e:
+                    logger.error(f"Failed to create toolkit {toolkit_name}: {e}")
+                    raise ValueError(f"Toolkit creation failed for {toolkit_name}: {e}")
+            else:
+                available_toolkits = list(self._toolkits.keys())
+                logger.error(f"Unknown toolkit: {toolkit_name}. Available: {available_toolkits}")
+                raise ValueError(f"Unknown toolkit: {toolkit_name}")
+                
+        return selected_toolkits
+    
+    # Toolkit validation is now handled by Pydantic ToolkitConfig model
+    
+    def _transform_toolkit_params(self, toolkit_name: str, params: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Transform toolkit parameters if needed.
+        
+        Args:
+            toolkit_name: Name of the toolkit
+            params: Original parameters
+            
+        Returns:
+            dict: Transformed parameters
+        """
+        if toolkit_name == "BinanceToolkit":
+            # Convert relative data_dir to absolute if needed
+            data_dir = params.get("data_dir")
+            if data_dir and not os.path.isabs(data_dir):
+                # Make relative to project root
+                project_root = Path(__file__).resolve().parents[4]  # Go up to project root
+                params["data_dir"] = str(project_root / data_dir)
+                logger.debug(f"Converted relative data_dir to absolute: {params['data_dir']}")
+        
+        return params
     
     def create_agno_agent(self, agent_config: DictConfig) -> Optional[AgnoAgent]:
         """
@@ -458,9 +464,13 @@ class AgentFactory:
             # Create tools if specified
             tools = []
             if "tools" in agent_config and agent_config.tools:
-                tools = self.create_tools(agent_config.tools)
-                if tools:
-                    logger.debug(f"Created {len(tools)} tools for {agent_config.name}: {[type(t).__name__ for t in tools]}")
+                tools.extend(self.create_tools(agent_config.tools))
+
+            if "toolkits" in agent_config and agent_config.toolkits:
+                tools.extend(self.create_toolkits(agent_config.toolkits))
+            
+            if tools:
+                logger.debug(f"Created {len(tools)} tools/toolkit functions for {agent_config.name}")
             
             # Prepare AgnoAgent kwargs
             agno_kwargs = {
@@ -482,7 +492,7 @@ class AgentFactory:
             # Removed problematic code that added LLM settings to agno_kwargs.
             
             # Handle additional AgnoAgent parameters from config
-            if "agno_params" in agent_config:
+            if "agno_params" in agent_config and agent_config.agno_params is not None:
                 additional_params = dict(agent_config.agno_params)
                 agno_kwargs.update(additional_params)
                 logger.debug(f"Added additional AgnoAgent params for {agent_config.name}: {list(additional_params.keys())}")
@@ -525,11 +535,11 @@ class AgentFactory:
                 adapter_kwargs = {}
                 
                 # Check if there are custom parameters for this adapter
-                if "adapter_params" in agent_config:
+                if "adapter_params" in agent_config and agent_config.adapter_params is not None:
                     adapter_kwargs.update(dict(agent_config.adapter_params))
                 
                 # Override model_id if specified in config
-                if "model" in agent_config and "model_id" in agent_config.model:
+                if "model" in agent_config and agent_config.model is not None and "model_id" in agent_config.model:
                     adapter_kwargs["model_id"] = agent_config.model.model_id
                 
                 return adapter_class(**adapter_kwargs)
@@ -545,7 +555,7 @@ class AgentFactory:
                 }
                 
                 # Add any additional adapter parameters from config
-                if "adapter_params" in agent_config:
+                if "adapter_params" in agent_config and agent_config.adapter_params is not None:
                     additional_params = dict(agent_config.adapter_params)
                     adapter_kwargs.update(additional_params)
                     logger.debug(f"Added additional adapter params for {agent_config.name}: {list(additional_params.keys())}")
@@ -556,33 +566,51 @@ class AgentFactory:
             logger.error(f"❌ Failed to create adapter {adapter_class_name} for {agent_config.name}: {e}")
             raise
     
-    def create_agent(self, agent_config: DictConfig) -> Dict[str, Any]:
+    def create_agent(self, agent_config: Union[DictConfig, Dict[str, Any], AgentConfig]) -> Dict[str, Any]:
         """
-        Create a complete agent (AgnoAgent + Adapter) from configuration.
+        Create a complete agent (AgnoAgent + Adapter) from configuration with Pydantic validation.
         
         Args:
-            agent_config: Agent configuration from YAML
+            agent_config: Agent configuration (DictConfig, dict, or AgentConfig)
             
         Returns:
             Dictionary containing agent components and metadata
         """
-        logger.info(f"🔧 Creating agent: {agent_config.name} (type: {agent_config.type})")
+        # Convert to Pydantic AgentConfig for validation
+        if isinstance(agent_config, AgentConfig):
+            validated_config = agent_config
+        else:
+            # Convert DictConfig or dict to dict
+            if hasattr(agent_config, '__getitem__'):
+                config_dict = dict(agent_config)
+            else:
+                config_dict = agent_config
+                
+            # Validate using Pydantic model
+            try:
+                validated_config = validate_agent_config(config_dict)
+                logger.debug(f"✅ Agent configuration validated: {validated_config.name}")
+            except Exception as e:
+                logger.error(f"Agent configuration validation failed: {e}")
+                raise ValueError(f"Invalid agent configuration: {e}") from e
+        
+        logger.info(f"🔧 Creating agent: {validated_config.name} (type: {validated_config.type})")
         
         try:
-            # Create AgnoAgent if needed
-            agno_agent = self.create_agno_agent(agent_config)
+            # Create AgnoAgent if needed (pass original config for now - will refactor methods later)
+            agno_agent = self.create_agno_agent(agent_config if not isinstance(agent_config, AgentConfig) else agent_config)
             
             # Create adapter
-            adapter = self.create_adapter(agent_config, agno_agent)
+            adapter = self.create_adapter(agent_config if not isinstance(agent_config, AgentConfig) else agent_config, agno_agent)
             
             # CRITICAL FIX: Verify adapter is BaseAdapter
             if not isinstance(adapter, BaseAdapter):
-                logger.error(f"❌ Created adapter for {agent_config.name} is not a BaseAdapter!")
+                logger.error(f"❌ Created adapter for {validated_config.name} is not a BaseAdapter!")
                 logger.error(f"   Type: {type(adapter)}")
                 logger.error(f"   Expected: {BaseAdapter}")
                 raise TypeError(f"Adapter {type(adapter)} is not a BaseAdapter")
             
-            logger.info(f"✅ Created valid BaseAdapter for {agent_config.name}: {type(adapter).__name__}")
+            logger.info(f"✅ Created valid BaseAdapter for {validated_config.name}: {type(adapter).__name__}")
             
             # Prepare registration information
             registration_info = {

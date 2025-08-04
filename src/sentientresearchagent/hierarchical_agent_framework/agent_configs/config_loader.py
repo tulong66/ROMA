@@ -1,7 +1,8 @@
 """
 Agent Configuration Loader
 
-Loads agent configurations from YAML files and resolves prompt references.
+Loads agent configurations from YAML files with comprehensive Pydantic validation.
+Leverages structured Pydantic models for type safety and validation.
 """
 
 import os
@@ -9,6 +10,7 @@ import importlib
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 from loguru import logger
+from .models import validate_agents_yaml, validate_agent_config, AgentConfig, AgentsYAMLConfig
 
 try:
     from omegaconf import OmegaConf, DictConfig
@@ -18,11 +20,11 @@ except ImportError:
 
 
 class AgentConfigLoader:
-    """Loads and validates agent configurations from YAML files."""
+    """Loads and validates agent configurations from YAML files with comprehensive Pydantic validation."""
     
     def __init__(self, config_dir: Optional[Path] = None):
         """
-        Initialize the config loader.
+        Initialize the config loader with validation.
         
         Args:
             config_dir: Directory containing agent configuration files.
@@ -40,28 +42,47 @@ class AgentConfigLoader:
         
         if not self.agents_config_file.exists():
             raise FileNotFoundError(f"Agents config file not found: {self.agents_config_file}")
+        
+        # Cache for validated configurations
+        self._config_cache: Optional[AgentsYAMLConfig] = None
     
     def load_config(self) -> DictConfig:
         """
-        Load the agent configuration from YAML.
+        Load and validate agent configuration from YAML with caching.
         
         Returns:
-            OmegaConf DictConfig containing the agent configuration
+            OmegaConf DictConfig containing the validated agent configuration
         """
         try:
             logger.info(f"Loading agent configuration from: {self.agents_config_file}")
             config = OmegaConf.load(self.agents_config_file)
             
-            # Validate basic structure
-            if "agents" not in config:
-                raise ValueError("Configuration must contain 'agents' section")
+            # Validate using Pydantic model
+            config_dict = OmegaConf.to_container(config, resolve=True)
+            validated_config = validate_agents_yaml(config_dict)
             
-            logger.info(f"Loaded configuration for {len(config.agents)} agents")
-            return config
+            # Cache the validated config
+            self._config_cache = validated_config
+            
+            logger.info(f"✅ Loaded and validated configuration for {len(validated_config.agents)} agents")
+            
+            # Convert back to DictConfig for compatibility
+            return OmegaConf.create(validated_config.model_dump())
             
         except Exception as e:
             logger.error(f"Failed to load agent configuration: {e}")
             raise
+    
+    def get_validated_config(self) -> AgentsYAMLConfig:
+        """
+        Get the validated Pydantic configuration object.
+        
+        Returns:
+            AgentsYAMLConfig instance
+        """
+        if self._config_cache is None:
+            self.load_config()  # This will populate the cache
+        return self._config_cache
     
     def resolve_prompt(self, prompt_source: str) -> str:
         """
@@ -102,55 +123,48 @@ class AgentConfigLoader:
             logger.error(f"Failed to resolve prompt {prompt_source}: {e}")
             raise
     
-    def validate_agent_config(self, agent_config: DictConfig) -> List[str]:
+    def validate_agent_config(self, agent_config: Dict[str, Any]) -> List[str]:
         """
-        Validate a single agent configuration.
+        Validate a single agent configuration using Pydantic with prompt resolution check.
         
         Args:
-            agent_config: Agent configuration to validate
+            agent_config: Agent configuration dictionary to validate
         
         Returns:
             List of validation errors (empty if valid)
         """
         errors = []
         
-        # Required fields
-        required_fields = ["name", "type", "adapter_class"]
-        for field in required_fields:
-            if field not in agent_config:
-                errors.append(f"Missing required field: {field}")
-        
-        # Validate agent type
-        valid_types = ["planner", "executor", "aggregator", "atomizer", "plan_modifier", "custom_search"]
-        if "type" in agent_config and agent_config.type not in valid_types:
-            errors.append(f"Invalid agent type: {agent_config.type}. Must be one of {valid_types}")
-        
-        # Validate prompt source if present
-        if "prompt_source" in agent_config:
-            try:
-                self.resolve_prompt(agent_config.prompt_source)
-            except Exception as e:
-                errors.append(f"Invalid prompt_source: {e}")
-        
-        # Validate model configuration if present
-        if "model" in agent_config:
-            model_config = agent_config.model
-            if "provider" not in model_config or "model_id" not in model_config:
-                errors.append("Model configuration must include 'provider' and 'model_id'")
-        
-        # Validate registration configuration
-        if "registration" not in agent_config:
-            errors.append("Missing registration configuration")
-        else:
-            reg_config = agent_config.registration
-            if "action_keys" not in reg_config and "named_keys" not in reg_config:
-                errors.append("Registration must include either 'action_keys' or 'named_keys'")
+        try:
+            # Convert to dict if DictConfig
+            if isinstance(agent_config, DictConfig):
+                agent_config = OmegaConf.to_container(agent_config, resolve=True)
+            
+            # Validate using Pydantic model - this handles most validation
+            validated = validate_agent_config(agent_config)
+            
+            # Additional validation for prompt resolution
+            if validated.prompt_source:
+                try:
+                    self.resolve_prompt(validated.prompt_source)
+                    logger.debug(f"✅ Prompt source validated: {validated.prompt_source}")
+                except Exception as e:
+                    errors.append(f"Invalid prompt_source '{validated.prompt_source}': {e}")
+                    
+        except Exception as e:
+            # Parse Pydantic validation errors
+            if hasattr(e, 'errors'):
+                for error in e.errors():
+                    field_path = ' -> '.join(str(loc) for loc in error['loc'])
+                    errors.append(f"{field_path}: {error['msg']}")
+            else:
+                errors.append(str(e))
         
         return errors
     
     def validate_config(self, config: DictConfig) -> Dict[str, Any]:
         """
-        Validate the entire agent configuration.
+        Validate the entire agent configuration using Pydantic models.
         
         Args:
             config: Configuration to validate
@@ -162,30 +176,47 @@ class AgentConfigLoader:
             "valid": True,
             "errors": [],
             "warnings": [],
-            "agent_count": len(config.agents),
+            "agent_count": 0,
             "enabled_count": 0,
             "disabled_count": 0
         }
         
-        agent_names = set()
-        
-        for i, agent_config in enumerate(config.agents):
-            # Check for duplicate names
-            if agent_config.name in agent_names:
-                validation_result["errors"].append(f"Duplicate agent name: {agent_config.name}")
-            else:
-                agent_names.add(agent_config.name)
+        try:
+            # Convert to dict for Pydantic validation
+            config_dict = OmegaConf.to_container(config, resolve=True)
             
-            # Validate individual agent
-            agent_errors = self.validate_agent_config(agent_config)
-            for error in agent_errors:
-                validation_result["errors"].append(f"Agent {agent_config.name}: {error}")
+            # Use Pydantic validation - this handles duplicate names, type checking, etc.
+            validated_config = validate_agents_yaml(config_dict)
             
-            # Count enabled/disabled
-            if agent_config.get("enabled", True):
-                validation_result["enabled_count"] += 1
+            # Count agents and their status
+            validation_result["agent_count"] = len(validated_config.agents)
+            
+            for agent in validated_config.agents:
+                if agent.enabled:
+                    validation_result["enabled_count"] += 1
+                else:
+                    validation_result["disabled_count"] += 1
+                
+                # Additional validation for prompt resolution
+                if agent.prompt_source:
+                    try:
+                        self.resolve_prompt(agent.prompt_source)
+                        logger.debug(f"✅ Prompt validated for {agent.name}: {agent.prompt_source}")
+                    except Exception as e:
+                        validation_result["errors"].append(
+                            f"Agent {agent.name}: Invalid prompt_source '{agent.prompt_source}': {e}"
+                        )
+            
+            logger.info(f"✅ Configuration validated: {validation_result['enabled_count']} enabled, {validation_result['disabled_count']} disabled agents")
+            
+        except Exception as e:
+            # Parse Pydantic validation errors
+            if hasattr(e, 'errors'):
+                for error in e.errors():
+                    field_path = ' -> '.join(str(loc) for loc in error['loc'])
+                    validation_result["errors"].append(f"{field_path}: {error['msg']}")
             else:
-                validation_result["disabled_count"] += 1
+                validation_result["errors"].append(str(e))
         
         validation_result["valid"] = len(validation_result["errors"]) == 0
         
