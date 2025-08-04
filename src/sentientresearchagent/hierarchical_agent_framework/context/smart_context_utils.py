@@ -5,8 +5,8 @@ from ..agents.definitions.utility_agents import context_summarizer_agno_agent
 # New intelligent thresholds - INCREASED LIMITS
 FULL_CONTENT_WORD_LIMIT = 20000      # Increased from 5000
 FULL_CONTENT_CHAR_LIMIT = 150000     # 20000 words * 7.5 chars/word average
-DETAILED_SUMMARY_TARGET_WORDS = 4000  # Increased from 1250
-MAX_DETAILED_SUMMARY_CHARS = 30000   # 4000 words * 7.5 chars/word average
+DETAILED_SUMMARY_TARGET_WORDS = 10000  # Increased from 1250 - for when we do need to summarize
+MAX_DETAILED_SUMMARY_CHARS = 150000   # 20000 words * 7.5 chars/word average
 
 def get_smart_child_context(
     content: Any, 

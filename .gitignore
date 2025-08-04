@@ -9,13 +9,29 @@ old_project_runs/
 .claude
 *.csv
 old_projects/
-# Agent runtime data and cache
+# Runtime directory (contains all runtime files)
+runtime/
+
+# Agent runtime data and cache (legacy - to be migrated)
 .agent_cache/
 .agent_projects/
 .agent*
+
+# Experiment outputs (new structure)
+experiments/results/
+experiments/emergency_backups/
+experiments/configs/*.yaml
+!experiments/configs/example_*.yaml
+
+# Legacy output directories (to be migrated)
 project_results/
 emergency_backups/
 emergency_backups/*
+
+# Experiment archives
+experiment_archives/
+
+# Documentation files that shouldn't be in repo
 CLAUDE.md
 data_quality_analysis.md
 *.txt
@@ -34,6 +50,8 @@ research_agent.log
 .venv/
 env/
 venv/
+.claude-sessions/
+.
 
 # PDM
 .pdm.toml

@@ -113,7 +113,7 @@ const MainLayout: React.FC = () => {
         
         <main className="flex-1 overflow-hidden">
           {showProjectInput ? (
-            <div className="h-full flex items-center justify-center">
+            <div className="h-full overflow-y-auto">
               <ProjectInput />
             </div>
           ) : (
@@ -121,9 +121,12 @@ const MainLayout: React.FC = () => {
               <div className="h-full">
                 {isLoading ? (
                   <div className="h-full flex items-center justify-center">
-                    <div className="text-center">
-                      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-                      <h3 className="text-lg font-medium">{loadingMessage}{loadingDots}</h3>
+                    <div className="text-center animate-fade-in">
+                      <div className="relative">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+                        <div className="absolute inset-0 rounded-full h-12 w-12 border-2 border-primary/20 mx-auto"></div>
+                      </div>
+                      <h3 className="text-lg font-medium mt-4">{loadingMessage}{loadingDots}</h3>
                       <p className="text-muted-foreground mt-2">
                         {currentProject ? `Working on: ${currentProject.title}` : 'Setting up your project...'}
                       </p>

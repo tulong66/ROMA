@@ -59,7 +59,7 @@ class StateManager:
         """Checks if the parent node's status allows the current node to become READY."""
         if node.parent_node_id:
             parent_node = self.task_graph.get_node(node.parent_node_id)
-            if not parent_node or parent_node.status not in (TaskStatus.RUNNING, TaskStatus.PLAN_DONE):
+            if not parent_node or parent_node.status not in (TaskStatus.RUNNING, TaskStatus.PLAN_DONE, TaskStatus.DONE, TaskStatus.AGGREGATING):
                 return False
         # If no parent_node_id, it's a root node, so parent conditions are implicitly met.
         return True

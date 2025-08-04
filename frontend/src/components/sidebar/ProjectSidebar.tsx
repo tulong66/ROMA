@@ -64,6 +64,7 @@ const ProjectSidebar: React.FC = () => {
   const [loadingProjectId, setLoadingProjectId] = useState<string | null>(null)
   const [showConfigDialog, setShowConfigDialog] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [lastSwitchTime, setLastSwitchTime] = useState(0)
   const [newProjectConfig, setNewProjectConfig] = useState<ProjectConfig>({
     llm: {
       provider: 'openai',
@@ -447,12 +448,32 @@ const ProjectSidebar: React.FC = () => {
   const handleSwitchProject = async (projectId: string) => {
     if (projectId === currentProjectId) return
 
+    // Debounce rapid switches (minimum 500ms between switches)
+    const now = Date.now()
+    if (now - lastSwitchTime < 500) {
+      console.log('⏳ Debouncing rapid project switch')
+      return
+    }
+    setLastSwitchTime(now)
+
     setLoadingProjectId(projectId)
     setLoading(true)
     
     try {
-      await projectService.switchProject(projectId)
+      // CRITICAL: Update both stores BEFORE calling the service
+      // This prevents race conditions where WebSocket updates arrive before state is synced
       setCurrentProject(projectId)
+      useTaskGraphStore.getState().setCurrentProject(projectId)
+      
+      // Now switch the project on the backend
+      await projectService.switchProject(projectId)
+      
+      // If we have cached data, switch to it immediately
+      const cachedData = useTaskGraphStore.getState().getProjectData(projectId)
+      if (cachedData) {
+        console.log('🚀 Using cached project data for immediate display')
+        useTaskGraphStore.getState().switchToProject(projectId)
+      }
       
       toast({
         title: "Project Switched",
@@ -460,6 +481,11 @@ const ProjectSidebar: React.FC = () => {
       })
     } catch (error) {
       console.error('Failed to switch project:', error)
+      
+      // Revert the optimistic update on error
+      setCurrentProject(currentProjectId)
+      useTaskGraphStore.getState().setCurrentProject(currentProjectId)
+      
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to switch project",
@@ -525,7 +551,7 @@ const ProjectSidebar: React.FC = () => {
 
   return (
     <div className={cn(
-      "h-full bg-background border-r transition-all duration-300 flex flex-col",
+      "h-full bg-background border-r transition-all duration-300 ease-in-out flex flex-col shadow-sm",
       isSidebarOpen ? "w-80" : "w-12"
     )}>
       {/* Header */}
@@ -697,8 +723,8 @@ const ProjectSidebar: React.FC = () => {
                   <div
                     key={project.id}
                     className={cn(
-                      "group rounded-lg p-3 cursor-pointer transition-colors hover:bg-muted/50 relative",
-                      project.id === currentProjectId && "bg-muted/30 border border-border"
+                      "group rounded-lg p-3 cursor-pointer transition-all duration-200 hover:bg-muted/50 hover:shadow-md relative",
+                      project.id === currentProjectId && "bg-muted/30 border border-border shadow-sm"
                     )}
                     onClick={() => handleSwitchProject(project.id)}
                   >

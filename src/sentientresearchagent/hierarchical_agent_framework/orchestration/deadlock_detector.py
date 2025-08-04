@@ -299,17 +299,31 @@ class DeadlockDetector:
                             "reason": "All children complete but not aggregating"
                         })
                     else:
-                        # Some children still active
+                        # Some children still active - only consider stuck if ALL children are PENDING
+                        # and none are RUNNING or READY (true deadlock)
                         incomplete = [
-                            n.task_id for n in sub_nodes 
+                            n for n in sub_nodes 
                             if n.status not in [TaskStatus.DONE, TaskStatus.FAILED]
                         ]
-                        if len(incomplete) < len(sub_nodes) / 2:
-                            stuck_nodes.append({
-                                "node": node.task_id,
-                                "incomplete_children": incomplete,
-                                "reason": f"Waiting for {len(incomplete)} children"
-                            })
+                        
+                        # Only flag as stuck if all incomplete children are truly stuck (PENDING only)
+                        # and none are actively running or ready to run
+                        all_stuck = all(
+                            n.status == TaskStatus.PENDING for n in incomplete
+                        )
+                        
+                        if all_stuck and len(incomplete) > 0:
+                            # Additional check: are any children actually ready to transition?
+                            children_can_progress = any(
+                                self.state_manager.can_become_ready(n) for n in incomplete
+                            )
+                            
+                            if not children_can_progress:
+                                stuck_nodes.append({
+                                    "node": node.task_id,
+                                    "incomplete_children": [n.task_id for n in incomplete],
+                                    "reason": f"True deadlock: {len(incomplete)} children permanently stuck in PENDING"
+                                })
         
         if stuck_nodes:
             affected_nodes = [s["node"] for s in stuck_nodes]
@@ -339,7 +353,7 @@ class DeadlockDetector:
                         "parent": node.parent_node_id,
                         "reason": "Parent not found"
                     })
-                elif parent.status not in [TaskStatus.RUNNING, TaskStatus.PLAN_DONE, TaskStatus.DONE]:
+                elif parent.status not in [TaskStatus.RUNNING, TaskStatus.PLAN_DONE, TaskStatus.DONE, TaskStatus.AGGREGATING]:
                     orphaned.append({
                         "node": node.task_id,
                         "parent": node.parent_node_id,

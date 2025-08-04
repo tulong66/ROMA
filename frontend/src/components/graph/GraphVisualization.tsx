@@ -13,6 +13,7 @@ import ReactFlow, {
   EdgeTypes,
   ReactFlowProvider,
   useReactFlow,
+  ControlButton,
 } from 'reactflow'
 import 'reactflow/dist/style.css'
 import { Button } from '@/components/ui/button'
@@ -87,12 +88,17 @@ const FlowContent: React.FC = () => {
     getFilteredNodes
   ])
 
+  // Track if this is the initial load
+  const isInitialLoad = useRef(true)
+  
   useEffect(() => {
     setNodes(flowData.nodes)
     setEdges(flowData.edges)
     
-    if (flowData.nodes.length > 0) {
+    // Only auto-fit on initial load or when nodes go from 0 to > 0
+    if (flowData.nodes.length > 0 && isInitialLoad.current) {
       setTimeout(() => fitView({ padding: 0.2, duration: 800 }), 300)
+      isInitialLoad.current = false
     }
   }, [flowData, setNodes, setEdges, fitView])
 
@@ -165,7 +171,13 @@ const FlowContent: React.FC = () => {
       <Controls 
         className="bg-background border border-border rounded-lg shadow-lg" 
         showInteractive={false}
-      />
+      >
+        <ControlButton onClick={() => fitView({ padding: 0.2, duration: 800 })}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M3 3h6v6H3V3zm12 0h6v6h-6V3zM3 15h6v6H3v-6zm12 0h6v6h-6v-6zm-4-4h2v2h-2v-2zm-4 0h2v2H7v-2zm8 0h2v2h-2v-2zm-4-4h2v2h-2V7z"/>
+          </svg>
+        </ControlButton>
+      </Controls>
     </ReactFlow>
   )
 }
@@ -175,16 +187,16 @@ const GraphVisualization: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="w-full h-full flex items-center justify-center bg-muted/20">
-        <div className="text-center">
+      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-muted/20 to-muted/5">
+        <div className="text-center animate-fade-in">
           <div className="relative mb-6">
-            <div className="animate-spin rounded-full h-12 w-12 border-4 border-muted border-t-primary mx-auto"></div>
+            <div className="animate-spin rounded-full h-12 w-12 border-4 border-muted border-t-primary mx-auto shadow-lg"></div>
             <div className="absolute inset-0 rounded-full h-12 w-12 border-4 border-primary/20 mx-auto animate-pulse"></div>
           </div>
-          <h3 className="text-lg font-medium mb-2">
+          <h3 className="text-lg font-medium mb-2 animate-slide-in">
             Setting up AI Agent System...
           </h3>
-          <p className="text-muted-foreground">
+          <p className="text-muted-foreground animate-slide-in" style={{ animationDelay: '100ms' }}>
             Initializing task decomposition • Real-time updates will begin shortly
           </p>
         </div>

@@ -75,7 +75,7 @@ class TaskNode(BaseModel):
 
     def update_status(self, new_status: TaskStatus, result: Any = None, 
                      error_msg: Optional[str] = None, result_summary: Optional[str] = None,
-                     validate_transition: bool = True):
+                     validate_transition: bool = True, update_manager: Any = None):
         """
         Update the task status with better error handling and validation.
         
@@ -85,6 +85,7 @@ class TaskNode(BaseModel):
             error_msg: Optional error message (will set status to FAILED if provided)
             result_summary: Optional summary of the result
             validate_transition: Whether to validate status transitions
+            update_manager: Optional NodeUpdateManager for optimized updates
         """
         # Ensure we have a lock (in case of deserialized objects)
         if not hasattr(self, '_status_lock') or self._status_lock is None:
@@ -146,11 +147,87 @@ class TaskNode(BaseModel):
                            f"| Goal: '{self.goal[:40]}...' "
                            f"| Result: {str(result)[:50] if result else 'None'}... "
                            f"| Error: {error_msg[:50] if error_msg else 'None'}")
+                
+                # Handle update through update_manager if provided
+                if update_manager is not None:
+                    import asyncio
+                    # Create update data
+                    update_data = {
+                        "old_status": old_status,
+                        "new_status": new_status_enum,
+                        "timestamp": transition_time,
+                        "result": result,
+                        "error": error_msg,
+                        "result_summary": result_summary
+                    }
+                    # Run async update in sync context
+                    try:
+                        loop = asyncio.get_event_loop()
+                        if loop.is_running():
+                            # Schedule as a task if loop is already running
+                            asyncio.create_task(
+                                update_manager.update_node_state(self, "status", update_data)
+                            )
+                        else:
+                            # Run directly if no loop is running
+                            loop.run_until_complete(
+                                update_manager.update_node_state(self, "status", update_data)
+                            )
+                    except RuntimeError:
+                        # If no event loop, create one
+                        asyncio.run(
+                            update_manager.update_node_state(self, "status", update_data)
+                        )
                        
             except Exception as e:
                 logger.error(f"Failed to update status for task {self.task_id}: {e}")
                 # Don't re-raise here to avoid cascading failures
                 # Just log the error and keep the old status
+    
+    def update_status_fast(self, new_status: TaskStatus, update_manager: Any = None):
+        """
+        Fast path status update for deferred execution mode.
+        
+        This method bypasses validation and logging for maximum performance.
+        Only use when execution_strategy is "deferred".
+        
+        Args:
+            new_status: New status to set
+            update_manager: NodeUpdateManager configured for deferred updates
+        """
+        if update_manager is None or getattr(update_manager, 'execution_strategy', None) != 'deferred':
+            # Fall back to regular update if not in deferred mode
+            self.update_status(new_status, update_manager=update_manager)
+            return
+        
+        # Fast path - minimal operations only
+        old_status = self.status
+        self.status = new_status if isinstance(new_status, TaskStatus) else safe_task_status(new_status)
+        self.timestamp_updated = datetime.now()
+        
+        # Mark completion time for terminal states
+        if self.status in [TaskStatus.DONE, TaskStatus.FAILED, TaskStatus.CANCELLED]:
+            self.timestamp_completed = datetime.now()
+        
+        # Queue the update without any blocking operations
+        import asyncio
+        update_data = {
+            "old_status": old_status,
+            "new_status": self.status,
+            "timestamp": self.timestamp_updated,
+            "fast_path": True
+        }
+        
+        # Fire and forget - no waiting
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.create_task(
+                    update_manager.update_node_state(self, "status", update_data)
+                )
+        except RuntimeError:
+            # No event loop - this is fine for deferred mode
+            pass
     
     def _is_valid_transition(self, from_status: TaskStatus, to_status: TaskStatus) -> bool:
         """

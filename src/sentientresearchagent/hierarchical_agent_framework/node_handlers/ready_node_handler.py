@@ -115,6 +115,22 @@ class ReadyNodeHandler(BaseNodeHandler):
         Returns:
             NodeType.PLAN or NodeType.EXECUTE
         """
+        # Check if atomization should be skipped entirely
+        skip_atomization = context.config.get('skip_atomization', False)
+        logger.info(f"🐛 DEBUG: skip_atomization = {skip_atomization}, config type = {type(context.config)}")
+        
+        if skip_atomization:
+            logger.info(f"🚫 ATOMIZATION SKIPPED: Node {node.task_id} - skip_atomization is enabled")
+            
+            # Use hierarchy/depth-based rules instead
+            max_recursion_depth = context.config.get('max_planning_layer', 5)
+            if node.layer >= max_recursion_depth:
+                logger.info(f"🎯 DEPTH RULE APPLIED: Node {node.task_id} at layer {node.layer} >= max_depth {max_recursion_depth} - forcing EXECUTE")
+                return NodeType.EXECUTE
+            else:
+                logger.info(f"🎯 DEPTH RULE APPLIED: Node {node.task_id} at layer {node.layer} < max_depth {max_recursion_depth} - defaulting to PLAN")
+                return NodeType.PLAN
+        
         # This would use an AtomizerService in real implementation
         # For now, simulate the atomization
         

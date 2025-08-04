@@ -227,8 +227,9 @@ class TaskScheduler:
             logger.warning(f"Node {node.task_id} has invalid parent {node.parent_node_id}")
             return False
         
-        # Parent must be RUNNING or PLAN_DONE for child to execute
-        parent_ok = parent.status in [TaskStatus.RUNNING, TaskStatus.PLAN_DONE]
+        # Parent must be RUNNING, PLAN_DONE, DONE, or AGGREGATING for child to execute
+        # FIXED: Allow children to execute even if parent is DONE or AGGREGATING
+        parent_ok = parent.status in [TaskStatus.RUNNING, TaskStatus.PLAN_DONE, TaskStatus.DONE, TaskStatus.AGGREGATING]
         if not parent_ok:
             logger.debug(f"Parent {parent.task_id} not ready for child execution: status={parent.status}, "
                         f"expected RUNNING or PLAN_DONE")
@@ -340,7 +341,7 @@ class TaskScheduler:
                 return False
             
             # Parent must be in appropriate state
-            if parent.status not in [TaskStatus.RUNNING, TaskStatus.PLAN_DONE, TaskStatus.DONE]:
+            if parent.status not in [TaskStatus.RUNNING, TaskStatus.PLAN_DONE, TaskStatus.DONE, TaskStatus.AGGREGATING]:
                 return False
         
         # Check dependencies
@@ -362,7 +363,7 @@ class TaskScheduler:
         if node.parent_node_id:
             parent = self.task_graph.get_node(node.parent_node_id)
             if parent:
-                if parent.status not in [TaskStatus.RUNNING, TaskStatus.PLAN_DONE, TaskStatus.DONE]:
+                if parent.status not in [TaskStatus.RUNNING, TaskStatus.PLAN_DONE, TaskStatus.DONE, TaskStatus.AGGREGATING]:
                     reasons.append(f"Parent {parent.task_id} is in {parent.status} state")
             else:
                 reasons.append(f"Parent {node.parent_node_id} not found")

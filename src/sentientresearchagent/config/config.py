@@ -17,6 +17,7 @@ from loguru import logger
 import logging
 
 from sentientresearchagent.hierarchical_agent_framework.types import TaskType
+from .paths import RuntimePaths
 
 class LLMConfig(BaseModel):
     """Configuration for LLM providers and models."""
@@ -48,7 +49,7 @@ class CacheConfig(BaseModel):
     ttl_seconds: int = 3600  # 1 hour default
     max_size: int = 1000
     cache_type: str = "memory"  # memory, redis, file
-    cache_dir: Optional[str] = None
+    cache_dir: Optional[str] = None  # Will default to runtime/cache
     redis_url: Optional[str] = None
     
     @validator('cache_type')
@@ -66,6 +67,15 @@ class CacheConfig(BaseModel):
         if enabled and cache_type == "redis" and not redis_url:
             raise ValueError("Redis cache enabled but no redis_url provided")
         return values
+    
+    def get_cache_directory(self) -> Path:
+        """Get the cache directory path."""
+        if self.cache_dir:
+            return Path(self.cache_dir)
+        else:
+            # Use centralized runtime paths
+            paths = RuntimePaths.get_default()
+            return paths.get_cache_path("agent")
 
 class ExecutionConfig(BaseModel):
     """Configuration for task execution."""
@@ -102,11 +112,22 @@ class ExecutionConfig(BaseModel):
     # NEW: Force root nodes to always plan (skip atomizer)
     force_root_node_planning: bool = True  # Ensures complex top-level questions get decomposed
     
+    # NEW: Skip atomization entirely - forces hierarchy/depth-based execution decisions
+    skip_atomization: bool = False  # When True, bypasses atomizer and uses max_depth rules
+    
     # Specific HITL Checkpoints (when enable_hitl is True and hitl_root_plan_only is False)
     hitl_after_plan_generation: bool = True   # Review plans after generation
     hitl_after_modified_plan: bool = True     # Review modified plans
     hitl_after_atomizer: bool = False         # Review atomizer decisions (usually off)
     hitl_before_execute: bool = False         # Review before execution (usually off)
+    
+    # NEW: Execution optimization settings
+    optimization_level: str = "balanced"  # "conservative" | "balanced" | "aggressive"
+    execution_strategy: str = "standard"  # "standard" | "realtime" | "deferred"
+    knowledge_store_batch_size: int = 10  # Number of updates to batch
+    broadcast_mode: str = "full"  # "full" | "batch" | "none"
+    enable_update_coalescing: bool = True  # Combine rapid updates
+    update_coalescing_window_ms: int = 50  # Window for combining updates
     
     @validator('max_concurrent_nodes')
     def validate_concurrency(cls, v):
@@ -156,10 +177,17 @@ class ExecutionConfig(BaseModel):
                 'hitl_timeout_seconds': 1200.0,  # 20 minutes
                 'hitl_root_plan_only': True,
                 'force_root_node_planning': True,
+                'skip_atomization': False,
                 'hitl_after_plan_generation': True,
                 'hitl_after_modified_plan': True,
                 'hitl_after_atomizer': False,
-                'hitl_before_execute': False
+                'hitl_before_execute': False,
+                'optimization_level': 'balanced',
+                'execution_strategy': 'standard',
+                'knowledge_store_batch_size': 10,
+                'broadcast_mode': 'full',
+                'enable_update_coalescing': True,
+                'update_coalescing_window_ms': 50
             }
         
         # Apply overrides
@@ -193,10 +221,15 @@ class ExecutionConfig(BaseModel):
             'hitl_timeout_seconds': self.hitl_timeout_seconds,
             'hitl_root_plan_only': self.hitl_root_plan_only,
             'force_root_node_planning': self.force_root_node_planning,
+            'skip_atomization': self.skip_atomization,
             'hitl_after_plan_generation': self.hitl_after_plan_generation,
             'hitl_after_modified_plan': self.hitl_after_modified_plan,
             'hitl_after_atomizer': self.hitl_after_atomizer,
-            'hitl_before_execute': self.hitl_before_execute
+            'hitl_before_execute': self.hitl_before_execute,
+            'optimization_level': self.optimization_level,
+            'execution_strategy': self.execution_strategy,
+            'broadcast_mode': self.broadcast_mode,
+            'enable_update_coalescing': self.enable_update_coalescing
         }
     
     @validator('max_recursion_depth')
@@ -232,6 +265,27 @@ class ExecutionConfig(BaseModel):
         if v < 1:
             raise ValueError("rate_limit_rpm must be at least 1.")
         return v
+    
+    @validator('optimization_level')
+    def validate_optimization_level(cls, v):
+        valid_levels = ['conservative', 'balanced', 'aggressive']
+        if v not in valid_levels:
+            raise ValueError(f'optimization_level must be one of: {valid_levels}')
+        return v
+    
+    @validator('execution_strategy')
+    def validate_execution_strategy(cls, v):
+        valid_strategies = ['standard', 'realtime', 'deferred']
+        if v not in valid_strategies:
+            raise ValueError(f'execution_strategy must be one of: {valid_strategies}')
+        return v
+    
+    @validator('broadcast_mode')
+    def validate_broadcast_mode(cls, v):
+        valid_modes = ['full', 'batch', 'none']
+        if v not in valid_modes:
+            raise ValueError(f'broadcast_mode must be one of: {valid_modes}')
+        return v
 
 class AgentConfig(BaseModel):
     """Configuration for a specific agent."""
@@ -249,11 +303,13 @@ class LoggingConfig(BaseModel):
     level: str = "INFO"
     # Much cleaner format - shorter timestamps, no module paths
     format: str = "<green>{time:HH:mm:ss}</green> | <level>{level: <5}</level> | <level>{message}</level>"
-    file_path: Optional[str] = "sentient.log"  # Single log file
+    file_path: Optional[str] = None  # Will default to runtime/logs/sentient.log
     file_rotation: str = "10 MB"  # Rotate by size instead of time
     file_retention: int = 3  # Keep only 3 files (must be int, not string)
     enable_console: bool = True
     enable_file: bool = True
+    module_levels: Optional[Dict[str, str]] = None  # Module-specific log levels
+    console_style: str = "clean"  # "clean", "timestamp", or "detailed"
     
     @validator('level')
     def validate_level(cls, v):
@@ -261,6 +317,15 @@ class LoggingConfig(BaseModel):
         if v.upper() not in valid_levels:
             raise ValueError(f'Log level must be one of: {valid_levels}')
         return v.upper()
+    
+    def get_log_file_path(self) -> Optional[Path]:
+        """Get the log file path."""
+        if self.file_path:
+            return Path(self.file_path)
+        else:
+            # Use centralized runtime paths
+            paths = RuntimePaths.get_default()
+            return paths.get_log_path("sentient")
 
 class WebServerConfig(BaseModel):
     """Configuration for the Flask/SocketIO web server."""
@@ -283,6 +348,34 @@ class WebServerConfig(BaseModel):
             raise ValueError("FLASK_SECRET_KEY cannot be empty.")
         return v
 
+class ExperimentConfig(BaseModel):
+    """Configuration for experiment management and output organization."""
+    base_dir: str = Field(default_factory=lambda: os.getenv("EXPERIMENTS_DIR", "experiments"))
+    results_dir: str = "results"  # Subdirectory for results
+    emergency_backup_dir: str = "emergency_backups"  # Subdirectory for emergency backups
+    configs_dir: str = "configs"  # Subdirectory for experiment configs
+    retention_days: int = Field(default_factory=lambda: int(os.getenv("EXPERIMENT_RETENTION_DAYS", "30")))
+    auto_cleanup: bool = True
+    timestamp_format: str = "%Y%m%d_%H%M%S"
+    
+    @validator('retention_days')
+    def validate_retention(cls, v):
+        if v < 1:
+            raise ValueError('Retention days must be at least 1')
+        return v
+    
+    def get_results_path(self) -> Path:
+        """Get full path to results directory."""
+        return Path(self.base_dir) / self.results_dir
+    
+    def get_emergency_backup_path(self) -> Path:
+        """Get full path to emergency backups directory."""
+        return Path(self.base_dir) / self.emergency_backup_dir
+    
+    def get_configs_path(self) -> Path:
+        """Get full path to configs directory."""
+        return Path(self.base_dir) / self.configs_dir
+
 class SentientConfig(BaseModel):
     """Main configuration class for the Sentient Research Agent framework."""
     
@@ -292,6 +385,7 @@ class SentientConfig(BaseModel):
     execution: ExecutionConfig = Field(default_factory=ExecutionConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     web_server: WebServerConfig = Field(default_factory=WebServerConfig)
+    experiment: ExperimentConfig = Field(default_factory=ExperimentConfig)
     
     # Agent configurations
     agents: Dict[str, AgentConfig] = Field(default_factory=dict)
@@ -340,7 +434,7 @@ class SentientConfig(BaseModel):
             logger.info(f"Loaded configuration from {path}")
             # DEBUG: Log timeout value being loaded
             if 'execution' in data and 'node_execution_timeout_seconds' in data['execution']:
-                logger.info(f"🔧 CONFIG DEBUG: Loading node_execution_timeout_seconds = {data['execution']['node_execution_timeout_seconds']}")
+                logger.debug(f"🔧 CONFIG DEBUG: Loading node_execution_timeout_seconds = {data['execution']['node_execution_timeout_seconds']}")
             return cls(**data)
         except yaml.YAMLError as e:
             logger.error(f"Invalid YAML in configuration file {path}: {e}")
@@ -486,43 +580,15 @@ class SentientConfig(BaseModel):
 
     def setup_logging(self) -> None:
         """Configure logging based on the current settings."""
-        # Remove existing handlers
-        logger.remove()
+        from ..core.logging_config import setup_logging, create_module_filter
         
-        # Console handler with clean format
-        if self.logging.enable_console:
-            logger.add(
-                sink=lambda msg: print(msg, end=""),
-                format=self.logging.format,
-                level=self.logging.level,
-                colorize=True
-            )
+        # Create module filter if module_levels is specified
+        console_filter = None
+        if hasattr(self, 'logging') and hasattr(self.logging, 'module_levels') and self.logging.module_levels:
+            console_filter = create_module_filter(self.logging.module_levels)
         
-        # File handler with clean format (no colors)
-        if self.logging.enable_file and self.logging.file_path:
-            # Remove existing log file to start fresh (no appending)
-            log_path = Path(self.logging.file_path)
-            if log_path.exists():
-                try:
-                    log_path.unlink()  # Delete the existing log file
-                except OSError as e:
-                    # If we can't delete (e.g., permission issues), just log a warning
-                    # The logger hasn't been configured yet, so we use print
-                    print(f"Warning: Could not delete existing log file {log_path}: {e}")
-            
-            clean_format = (
-                "{time:HH:mm:ss} | {level: <5} | {message}"
-            )
-            logger.add(
-                sink=self.logging.file_path,
-                format=clean_format,
-                level=self.logging.level,
-                rotation=self.logging.file_rotation,
-                retention=self.logging.file_retention,  # Now correctly an int
-                colorize=False
-            )
-        
-        logger.info(f"Logging configured: level={self.logging.level}, file={self.logging.file_path}")
+        # Use the enhanced logging setup
+        setup_logging(self.logging, console_filter)
 
 # Default configuration instance
 default_config = SentientConfig()
@@ -558,10 +624,10 @@ def load_config(
     # Merge with file config
     if config_file:
         file_config = SentientConfig.from_yaml(config_file)
-        logger.info(f"🔧 CONFIG DEBUG: Before merge - timeout = {config.execution.node_execution_timeout_seconds}")
-        logger.info(f"🔧 CONFIG DEBUG: File config - timeout = {file_config.execution.node_execution_timeout_seconds}")
+        logger.debug(f"🔧 CONFIG DEBUG: Before merge - timeout = {config.execution.node_execution_timeout_seconds}")
+        logger.debug(f"🔧 CONFIG DEBUG: File config - timeout = {file_config.execution.node_execution_timeout_seconds}")
         config = config.merge_with(file_config)
-        logger.info(f"🔧 CONFIG DEBUG: After merge - timeout = {config.execution.node_execution_timeout_seconds}")
+        logger.debug(f"🔧 CONFIG DEBUG: After merge - timeout = {config.execution.node_execution_timeout_seconds}")
     
     # Validate and setup
     missing_keys = config.validate_api_keys()

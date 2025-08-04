@@ -1,0 +1,45 @@
+# Example Research Configuration
+# This configuration demonstrates a typical research setup
+
+# LLM Configuration
+llm:
+  provider: "openrouter"
+  model: "anthropic/claude-3.5-sonnet"
+  temperature: 0.7
+  max_tokens: 4096
+
+# Execution Configuration
+execution:
+  max_concurrent_nodes: 10
+  max_execution_steps: 500
+  enable_hitl: true
+  hitl_root_plan_only: true  # Only review top-level plans
+  hitl_timeout_seconds: 1200  # 20 minutes
+
+# Agent Profile
+agent_profile: "deep_research_agent"
+
+# Cache Configuration
+cache:
+  enabled: true
+  ttl_seconds: 3600  # 1 hour
+  cache_type: "file"
+  cache_dir: ".agent_cache"
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  enable_file: true
+  file_path: "experiments/results/experiment.log"
+
+# Experiment-specific settings
+experiment:
+  name: "example_research"
+  description: "Example configuration for research tasks"
+  tags: ["research", "example", "multi-hop"]
+  
+# Custom parameters for evaluation
+evaluation:
+  dataset: "simple_qa"
+  num_samples: 10
+  metrics: ["accuracy", "completeness", "citations"]

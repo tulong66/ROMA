@@ -1,5 +1,6 @@
 from agno.agent import Agent
 from agno.models.litellm import LiteLLM # Or your preferred Agno model wrapper
+from loguru import logger
 
 from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models import (
     PlanOutput, 
@@ -12,10 +13,10 @@ try:
     from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskType, NodeType
     TASK_TYPES_STR = ", ".join([f"'{t.value}'" for t in TaskType])
     NODE_TYPES_STR = ", ".join([f"'{n.value}'" for n in NodeType])
-    print(f"DEBUG: Dynamically loaded TASK_TYPES_STR: {TASK_TYPES_STR}")
-    print(f"DEBUG: Dynamically loaded NODE_TYPES_STR: {NODE_TYPES_STR}")
+    logger.debug(f"Dynamically loaded TASK_TYPES_STR: {TASK_TYPES_STR}")
+    logger.debug(f"Dynamically loaded NODE_TYPES_STR: {NODE_TYPES_STR}")
 except ImportError:
-    print("DEBUG: Failed to import TaskType/NodeType dynamically. Using fallback hardcoded values.")
+    logger.debug("Failed to import TaskType/NodeType dynamically. Using fallback hardcoded values.")
     # Fallback hardcoded values - ENSURE THESE MATCH YOUR ENUMS EXACTLY
     TASK_TYPES_STR = "'SEARCH', 'WRITE', 'THINK', 'CODE', 'REVIEW', 'ORGANIZE', 'COMMUNICATE', 'SYNTHESIZE', 'CRITIQUE', 'IMPROVE', 'TEST', 'OTHER'"
     NODE_TYPES_STR = "'PLAN', 'EXECUTE', 'AGGREGATE'"

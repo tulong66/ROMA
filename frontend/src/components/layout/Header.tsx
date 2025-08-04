@@ -33,7 +33,7 @@ const Header: React.FC = () => {
   }
 
   return (
-    <header className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <header className="border-b bg-background/95 backdrop-blur-md supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50 shadow-sm">
       <div className="flex items-center justify-between px-6 py-3">
         {/* Logo and Title */}
         <div className="flex items-center space-x-3">

@@ -57,9 +57,11 @@ class ProjectService:
         # Track current display state to prevent conflicts
         self.current_display_project_id: Optional[str] = None
         
-        # Create results storage directory
-        self.results_dir = Path("project_results")
-        self.results_dir.mkdir(exist_ok=True)
+        # Create results storage directory using centralized paths
+        from ...config.paths import RuntimePaths
+        paths = RuntimePaths.get_default()
+        self.results_dir = paths.experiment_results_dir
+        self.results_dir.mkdir(exist_ok=True, parents=True)
         
         logger.info("✅ ProjectService initialized")
         

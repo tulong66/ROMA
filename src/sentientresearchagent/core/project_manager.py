@@ -45,9 +45,15 @@ class ProjectMetadata:
 class ProjectManager:
     """Manages multiple projects/chat sessions"""
     
-    def __init__(self, projects_dir: str = ".agent_projects"):
-        self.projects_dir = Path(projects_dir)
-        self.projects_dir.mkdir(exist_ok=True)
+    def __init__(self, projects_dir: Optional[str] = None):
+        if projects_dir:
+            self.projects_dir = Path(projects_dir)
+        else:
+            # Use centralized runtime paths
+            from ..config.paths import RuntimePaths
+            paths = RuntimePaths.get_default()
+            self.projects_dir = paths.projects_dir
+        self.projects_dir.mkdir(exist_ok=True, parents=True)
         self.projects: Dict[str, ProjectMetadata] = {}
         self.current_project_id: Optional[str] = None
         self._lock = threading.Lock()

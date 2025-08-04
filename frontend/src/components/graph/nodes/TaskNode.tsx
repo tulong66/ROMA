@@ -127,13 +127,14 @@ const TaskNodeComponent: React.FC<NodeProps<TaskNodeData>> = ({ data, selected }
   const hasBeenProcessed = ['RUNNING', 'DONE', 'FAILED', 'PLAN_DONE', 'AGGREGATING'].includes(node.status)
 
   const nodeClassName = `
-    min-w-[280px] max-w-[320px] p-4 rounded-xl border-2 shadow-lg transition-all duration-300 relative
+    min-w-[280px] max-w-[320px] p-4 rounded-xl border-2 shadow-lg transition-all duration-300 relative overflow-hidden
     ${backgroundColorClass}
-    ${selected ? 'ring-2 ring-primary scale-105 shadow-xl' : 'hover:shadow-md'}
+    ${selected ? 'ring-2 ring-primary scale-105 shadow-xl' : 'hover:shadow-xl hover:scale-[1.02]'}
     ${isMultiSelected ? 'ring-2 ring-blue-500 ring-opacity-70' : ''}
     ${node.status === 'RUNNING' ? 'pulse-glow' : ''}
     ${isHighlighted ? 'transform scale-105 z-10' : ''}
     ${isDimmed ? 'opacity-30' : ''}
+    animate-scale-in
   `
 
   return (
