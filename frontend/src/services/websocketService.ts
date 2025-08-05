@@ -757,10 +757,6 @@ class WebSocketService {
     }
   }
 
-  // Add socket property for external access
-  get socket() {
-    return this.socket
-  }
 
   // ENHANCED: Auto-save project data with quota management
   private autoSaveProjectData(projectId: string, data: any) {

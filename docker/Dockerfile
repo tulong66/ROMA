@@ -1,7 +1,7 @@
 # Dockerfile for SentientResearchAgent with UV for faster builds
 
 # Backend base image
-FROM python:3.12-slim AS backend
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS backend
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -9,10 +9,6 @@ RUN apt-get update && apt-get install -y \
     git \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
-
-# Install UV for fast Python package management
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-ENV PATH="/root/.cargo/bin:$PATH"
 
 # Set working directory
 WORKDIR /app
@@ -45,4 +41,4 @@ ENV FLASK_APP=sentientresearchagent.server.main
 EXPOSE 5000
 
 # Command to run the backend
-CMD ["python", "-m", "sentientresearchagent"]
+CMD ["uv", "run", "python", "-m", "sentientresearchagent"]

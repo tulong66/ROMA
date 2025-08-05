@@ -106,8 +106,15 @@ class ResponseBuilder:
         if details:
             response["details"] = details
         
+        # Remove conflicting keys from additional_fields to prevent duplicate parameter errors
+        # This handles cases where **kwargs might contain keys that are already explicit parameters
+        safe_additional_fields = {
+            k: v for k, v in additional_fields.items() 
+            if k not in ["message", "error_type", "details", "success", "timestamp"]
+        }
+        
         # Add any additional fields
-        response.update(additional_fields)
+        response.update(safe_additional_fields)
         
         return response
 

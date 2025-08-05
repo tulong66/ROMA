@@ -401,7 +401,8 @@ agents:
     description: "Advanced crypto market analyst for technical analysis and on-chain metrics"
     model:
       provider: "litellm"
-      model_id: "openrouter/deepseek/deepseek-r1-0528:nitro"  # Switched from slow o3 model for faster analysis
+      # model_id: "openrouter/deepseek/deepseek-r1-0528:nitro"  # Switched from slow o3 model for faster analysis
+      model_id: "openrouter/anthropic/claude-sonnet-4"
     # agno_params:
     #   reasoning: true
     prompt_source: "prompts.executor_prompts.CRYPTO_MARKET_ANALYZER_SYSTEM_MESSAGE"
@@ -423,6 +424,22 @@ agents:
           - "get_order_book"
           - "get_symbol_ticker_change"
           - "get_book_ticker"
+      - name: "CoingeckoToolkit"
+        params:
+          data_dir: "./data/coingecko"
+          parquet_threshold: 500
+        available_tools:
+          - "get_coin_info"
+          - "get_coin_price"
+          - "get_coin_market_chart"
+          - "get_multiple_coins_data"
+          - "get_historical_price"
+          - "get_token_price_by_contract"
+          - "search_coins_exchanges_categories"
+          - "get_coins_list"
+          - "get_coins_markets"
+          - "get_coin_ohlc"
+          - "get_global_crypto_data"
     registration:
       action_keys:
         - action_verb: "execute"

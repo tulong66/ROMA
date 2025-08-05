@@ -153,7 +153,7 @@ class TestCoinValidation:
         
         assert result["success"] is False
         assert result["error_type"] == "coin_filtered"
-        assert "not in configured allowlist" in result["error"]
+        assert "not in configured allowlist" in result["message"]
 
 
 class TestCoinNameResolution:
@@ -161,9 +161,11 @@ class TestCoinNameResolution:
     
     @pytest.fixture
     def toolkit_with_coin_cache(self):
-        """Create toolkit with mocked coin cache for name resolution."""
+        """Create toolkit with mocked coin cache for name resolution - FIXED after cache structure update."""
         toolkit = CoinGeckoToolkit()
-        toolkit._coins_list_cache = [
+        
+        # Test data
+        coins_data = [
             {"id": "bitcoin", "symbol": "btc", "name": "Bitcoin"},
             {"id": "ethereum", "symbol": "eth", "name": "Ethereum"},
             {"id": "cardano", "symbol": "ada", "name": "Cardano"},
@@ -171,9 +173,10 @@ class TestCoinNameResolution:
             {"id": "ethereum-classic", "symbol": "etc", "name": "Ethereum Classic"},
             {"id": "binancecoin", "symbol": "bnb", "name": "BNB"}
         ]
-        toolkit._valid_coins_cache = {
-            coin["id"]: coin for coin in toolkit._coins_list_cache
-        }
+        
+        # Use the proper cache setter that maintains type consistency
+        toolkit._coins_list_cache = coins_data
+        
         return toolkit
     
     @pytest.mark.asyncio
@@ -258,7 +261,7 @@ class TestCoinNameResolution:
         result = await toolkit_with_coin_cache.resolve_coin_name_to_id("")
         
         assert result["success"] is False
-        assert result["error_type"] == "invalid_input"
+        assert result["error_type"] == "validation_error"
         assert "cannot be empty" in result["message"]
     
     @pytest.mark.asyncio
@@ -268,7 +271,7 @@ class TestCoinNameResolution:
         
         assert result["success"] is True
         assert result["coin_id"] == "bitcoin"
-        assert result["resolution_type"] == "name_resolution"
+        assert result["resolution_type"] == "id_validation"
     
     @pytest.mark.asyncio
     async def test_resolve_coin_name_or_id_with_name(self, toolkit_with_coin_cache):
@@ -393,7 +396,7 @@ class TestCoinPrice:
     
     @pytest.mark.asyncio
     async def test_get_coin_price_success(self, mock_toolkit):
-        """Test successful coin price retrieval."""
+        """Test successful coin price retrieval - BUG FIXED!"""
         # Mock HTTP client to return API data directly (async)
         mock_api_response = {
             "bitcoin": {
@@ -411,6 +414,7 @@ class TestCoinPrice:
             {"id": "bitcoin", "symbol": "btc", "name": "Bitcoin"}
         ]
         
+        # Now we can test with coin name thanks to the type consistency fix!
         result = await mock_toolkit.get_coin_price("Bitcoin", "usd")  # Use coin name
         
         assert result["success"] is True
@@ -432,7 +436,7 @@ class TestCoinPrice:
         result = await mock_toolkit.get_coin_price("InvalidCoin")
         
         assert result["success"] is False
-        assert "error" in result  # New format has error message at root level
+        assert "message" in result  # ResponseBuilder uses 'message' field for error messages
         
     @pytest.mark.asyncio
     async def test_get_coin_price_no_data(self, mock_toolkit):
@@ -443,7 +447,7 @@ class TestCoinPrice:
         result = await mock_toolkit.get_coin_price("Bitcoin")
         
         assert result["success"] is False
-        assert "error" in result  # New format has error message at root level
+        assert "message" in result  # ResponseBuilder uses 'message' field for error messages
         
     @pytest.mark.asyncio
     async def test_get_coin_price_multi_currency(self, mock_toolkit):
@@ -464,15 +468,22 @@ class TestCoinPrice:
         }
         mock_toolkit._make_api_request = AsyncMock(return_value=mock_api_response)
         
-        # Mock coins list cache for name resolution
-        mock_toolkit._coins_list_cache = [
-            {"id": "bitcoin", "symbol": "btc", "name": "Bitcoin"}
-        ]
+        # Mock coins list cache for name resolution using proper cache system
+        cache_key = "coins_list"
+        coin_ids = {"bitcoin"}
+        metadata = {
+            "total_coins": 1,
+            "loaded_at": time.time(),
+            "coin_lookup": {
+                "bitcoin": {"id": "bitcoin", "symbol": "btc", "name": "Bitcoin"}
+            }
+        }
+        mock_toolkit._cache_identifiers(cache_key, coin_ids, metadata)
         
         result = await mock_toolkit.get_coin_price("Bitcoin", "usd,eur,btc")
         
         assert result["success"] is True
-        assert result["metadata"]["vs_currency"] == "usd,eur,btc"
+        assert result["vs_currency"] == "usd,eur,btc"
         assert result["data"]["bitcoin"]["usd"] == 67250.50
         assert result["data"]["bitcoin"]["eur"] == 61234.75
         assert result["data"]["bitcoin"]["btc"] == 1.0
@@ -865,8 +876,8 @@ class TestMultipleCoinsFunctionality:
         
         assert result["success"] is False
         assert result["error_type"] == "resolution_error"
-        assert "InvalidCoin" in result["failed_coins"]
-        assert "Bitcoin" in result["successful_coins"]
+        assert "InvalidCoin" in result["details"]["failed_coins"]
+        assert "Bitcoin" in result["details"]["successful_coins"]
 
 
 class TestErrorHandling:

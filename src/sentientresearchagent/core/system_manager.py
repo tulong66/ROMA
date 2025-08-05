@@ -93,6 +93,7 @@ class SystemManagerV2:
     def __init__(self, config: Optional[SentientConfig] = None):
         """Initialize with refactored components."""
         self.config = config or auto_load_config()
+        self._initialized = False  # Initialize as False until setup is complete
         logger.info("📋 SystemManagerV2: Initializing with refactored components")
         
         # Core components
@@ -170,6 +171,8 @@ class SystemManagerV2:
         self._current_profile: Optional[str] = None
         self._current_blueprint = None
         
+        # Mark initialization as complete
+        self._initialized = True
         logger.success("✅ SystemManagerV2 initialized with refactored components")
     
     def initialize_with_profile(self, profile_name: str):

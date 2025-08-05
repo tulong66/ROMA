@@ -927,6 +927,15 @@ class BinanceToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
         """
         market_type = market_type or self.default_market_type
 
+        # Validate and normalize window_size parameter
+        if not window_size or not isinstance(window_size, str) or len(window_size.strip()) == 0:
+            window_size = "1d"  # Fallback to safe default (API expects "1d" format, not "24h")
+        else:
+            window_size = window_size.strip()
+            # Convert "24h" to "1d" for compatibility with rolling window API
+            if window_size == "24h":
+                window_size = "1d"
+
         # Use consolidated validation
         try:
             params = await self._validate_symbol_and_prepare_params(symbol, market_type)
@@ -939,6 +948,9 @@ class BinanceToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
                 market_type=market_type
             )
 
+        # Debug: Log the market_type to see what's happening
+        logger.debug(f"get_symbol_ticker_change: market_type='{market_type}', window_size='{window_size}'")
+        
         if market_type == "spot":
             # For spot market, use rolling window ticker endpoint with windowSize parameter
             api_params = {
@@ -1099,12 +1111,13 @@ class BinanceToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
         order_book = await toolkit.get_order_book("BTCUSDT", limit=100, market_type="spot")
         if order_book["success"]:
             if "data" in order_book:
-                # Small order book - analyze directly
-                bids = order_book["data"]["bids"]
-                asks = order_book["data"]["asks"]
+                # Small order book - analyze directly (data is now structured list)
+                book_data = order_book["data"]
+                bids = [item for item in book_data if item['side'] == 'bid']
+                asks = [item for item in book_data if item['side'] == 'ask']
                 
-                best_bid = float(bids[0][0]) if bids else 0
-                best_ask = float(asks[0][0]) if asks else 0
+                best_bid = max(bids, key=lambda x: x['price'])['price'] if bids else 0
+                best_ask = min(asks, key=lambda x: x['price'])['price'] if asks else 0
                 spread = best_ask - best_bid
                 
                 print(f"Best Bid: ${best_bid:,.2f}")
@@ -1113,7 +1126,7 @@ class BinanceToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
                 
                 # Calculate depth at 1% price impact
                 target_price = best_ask * 1.01
-                total_depth = sum(float(q) for p, q in asks if float(p) <= target_price)
+                total_depth = sum(item['quantity'] for item in asks if item['price'] <= target_price)
                 print(f"Ask depth to +1%: {total_depth:.4f} BTC")
                 
             elif "file_path" in order_book:
@@ -1182,6 +1195,17 @@ class BinanceToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
             asks = data.get("asks", [])
             size = len(bids) + len(asks)
             
+            # Validate data structure before processing
+            if bids and asks:
+                if not isinstance(bids[0], (list, tuple)) or not isinstance(asks[0], (list, tuple)):
+                    logger.error(f"Unexpected data format - bids[0]: {type(bids[0])}, asks[0]: {type(asks[0])}")
+                    return ResponseBuilder.error_response(
+                        message="Invalid order book data format received from API",
+                        error_type="data_format_error",
+                        symbol=symbol,
+                        market_type=market_type
+                    )
+            
             base_response = {
                 "success": True,
                 "symbol": params["symbol"],
@@ -1193,17 +1217,29 @@ class BinanceToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
             # Calculate basic analysis
             analysis = {}
             if bids and asks:
-                best_bid = float(bids[0][0])
-                best_ask = float(asks[0][0])
-                spread = best_ask - best_bid
-                mid_price = (best_bid + best_ask) / 2
-                
-                bid_depth = sum(float(q) for _, q in bids[:5])
-                ask_depth = sum(float(q) for _, q in asks[:5])
+                try:
+                    # Binance API returns bids/asks as arrays of [price, quantity] strings
+                    best_bid = float(bids[0][0])  # First bid price
+                    best_ask = float(asks[0][0])  # First ask price
+                    spread = best_ask - best_bid
+                    mid_price = (best_bid + best_ask) / 2
+                    
+                    # Calculate depth for top 5 levels
+                    bid_depth = sum(float(qty) for price, qty in bids[:5])
+                    ask_depth = sum(float(qty) for price, qty in asks[:5])
+                except (IndexError, ValueError, TypeError, KeyError) as e:
+                    logger.error(f"Error parsing order book data: {e}. First bid: {bids[0] if bids else 'None'}, First ask: {asks[0] if asks else 'None'}")
+                    # Log more details about the data structure
+                    if bids:
+                        logger.error(f"Bid data types: {[type(item) for item in bids[:3]]}")
+                    if asks:
+                        logger.error(f"Ask data types: {[type(item) for item in asks[:3]]}")
+                    # Set default values if parsing fails
+                    best_bid = best_ask = spread = mid_price = bid_depth = ask_depth = 0
                 
                 analysis = {
                     "spread": spread,
-                    "spread_pct": spread / mid_price,
+                    "spread_pct": spread / mid_price if mid_price > 0 else 0,
                     "bid_depth": bid_depth,
                     "ask_depth": ask_depth,
                     "imbalance_ratio": bid_depth / ask_depth if ask_depth > 0 else 0
@@ -1211,10 +1247,20 @@ class BinanceToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
             
             # Convert to structured format for Parquet storage
             book_data = []
-            for price, qty in bids:
-                book_data.append({"side": "bid", "price": float(price), "quantity": float(qty)})
-            for price, qty in asks:
-                book_data.append({"side": "ask", "price": float(price), "quantity": float(qty)})
+            try:
+                for price, qty in bids:
+                    book_data.append({"side": "bid", "price": float(price), "quantity": float(qty)})
+                for price, qty in asks:
+                    book_data.append({"side": "ask", "price": float(price), "quantity": float(qty)})
+            except (ValueError, TypeError, KeyError) as e:
+                logger.error(f"Error processing bid/ask data for Parquet storage: {e}")
+                logger.error(f"Sample bid: {bids[0] if bids else 'None'}, Sample ask: {asks[0] if asks else 'None'}")
+                if bids:
+                    logger.error(f"Bid data sample types: {[type(item) for item in bids[:2]]}")
+                if asks:
+                    logger.error(f"Ask data sample types: {[type(item) for item in asks[:2]]}")
+                # Fallback: create minimal book_data
+                book_data = []
             
             # Use standardized data response builder
             filename_template = FileNameGenerator.generate_data_filename(
@@ -1742,8 +1788,7 @@ class BinanceToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
                 
                 # Validate timestamps in kline data
                 timestamp_validation = DataValidator.validate_timestamps(
-                    [c.get("open_time") for c in structured_data[:5]],  # Sample first 5
-                    field_name="kline_timestamps"
+                    [c.get("open_time") for c in structured_data[:5]]  # Sample first 5
                 )
                 if not timestamp_validation["valid"]:
                     logger.warning(f"Kline timestamp validation failed: {timestamp_validation['errors']}")
@@ -2033,14 +2078,13 @@ class BinanceToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
                         "liquidity_score": "high" if spread / bid < 0.001 else "moderate" if spread / bid < 0.01 else "low"
                     }
                 
-                return {
-                    "success": True,
-                    "symbol_count": 1,
-                    "symbols": symbols_upper,
-                    "market_type": market_type,
-                    "data": data,
-                    "analysis": analysis
-                }
+                return ResponseBuilder.success_response(
+                    data=data,
+                    symbol_count=1,
+                    symbols=symbols_upper,
+                    market_type=market_type,
+                    analysis=analysis
+                )
             else:
                 # Multiple symbols request
                 symbols_param = f'["{"\",\"".join(symbols_upper)}"]'

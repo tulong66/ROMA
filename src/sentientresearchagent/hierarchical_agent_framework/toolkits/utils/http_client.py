@@ -334,6 +334,47 @@ class DataHTTPClient:
         """
         return {name: config["base_url"] for name, config in self._endpoints.items()}
 
+    async def update_endpoint_headers(self, endpoint_name: str, headers: Dict[str, str]) -> None:
+        """Update headers for an existing endpoint.
+        
+        Args:
+            endpoint_name: Name of the endpoint to update
+            headers: New headers to merge with existing ones
+            
+        Raises:
+            ValueError: If endpoint is not configured
+        """
+        if endpoint_name not in self._endpoints:
+            available = list(self._endpoints.keys())
+            raise ValueError(f"Endpoint '{endpoint_name}' not configured. Available: {available}")
+        
+        # Update headers in endpoint configuration
+        self._endpoints[endpoint_name]["headers"].update(headers)
+        
+        # If client exists, close it so it gets recreated with new headers
+        if endpoint_name in self._clients:
+            await self._clients[endpoint_name].aclose()
+            del self._clients[endpoint_name]
+        
+        logger.debug(f"Updated headers for endpoint '{endpoint_name}'")
+
+    async def remove_endpoint(self, endpoint_name: str) -> None:
+        """Remove an endpoint and close its associated client.
+        
+        Args:
+            endpoint_name: Name of the endpoint to remove
+        """
+        # Close client if it exists
+        if endpoint_name in self._clients:
+            await self._clients[endpoint_name].aclose()
+            del self._clients[endpoint_name]
+        
+        # Remove endpoint configuration
+        if endpoint_name in self._endpoints:
+            del self._endpoints[endpoint_name]
+        
+        logger.debug(f"Removed endpoint '{endpoint_name}'")
+
     async def aclose(self) -> None:
         """Close all HTTP clients and clean up resources.
         

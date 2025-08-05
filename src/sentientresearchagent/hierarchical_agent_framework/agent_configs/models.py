@@ -16,11 +16,11 @@ from sentientresearchagent.hierarchical_agent_framework.types import TaskType, T
 
 # Re-export for convenience
 __all__ = [
-    "ModelConfig", "ToolConfig", "BinanceToolkitParams", "ToolkitConfig",
-    "ActionKey", "RegistrationConfig", "AgnoParams", "AdapterParams",
-    "AgentConfig", "AgentsYAMLConfig", "ProfileConfig", "ProfileYAMLConfig",
-    "validate_agent_config", "validate_agents_yaml", "validate_profile_yaml",
-    "validate_toolkit_config"
+    "ModelConfig", "ToolConfig", "BaseDataToolkitParams", "BinanceToolkitParams", 
+    "CoingeckoToolkitParams", "ToolkitConfig", "ActionKey", "RegistrationConfig", 
+    "AgnoParams", "AdapterParams", "AgentConfig", "AgentsYAMLConfig", 
+    "ProfileConfig", "ProfileYAMLConfig", "validate_agent_config", 
+    "validate_agents_yaml", "validate_profile_yaml", "validate_toolkit_config"
 ]
 
 # Model provider types
@@ -146,17 +146,45 @@ class ToolConfig(BaseModel):
         return self
 
 
-class BinanceToolkitParams(BaseModel):
-    """Parameters for BinanceToolkit configuration."""
+class BaseDataToolkitParams(BaseModel):
+    """Base class for data related toolkit parameters with common validation logic."""
+        
+    data_dir: Union[str, Path] = Field(
+        "./data",
+        description="Directory for storing parquet files"
+    )
+    parquet_threshold: int = Field(
+        500,
+        gt=0,
+        description="Minimum size to trigger parquet storage"
+    )
+
+    model_config = ConfigDict(extra='forbid')
     
-    default_market_type: MarketType = Field(
-        "spot",
-        description="Default market type for API calls"
-    )
-    symbols: Optional[List[str]] = Field(
-        None,
-        description="List of trading symbols to filter"
-    )
+    @classmethod
+    def get_valid_tools(cls) -> List[str]:
+        """Return list of valid tools for this toolkit. Override in subclasses."""
+        return []
+    
+    @field_validator("data_dir", mode='before')
+    @classmethod
+    def validate_data_dir(cls, v):
+        """Convert to Path and handle relative paths."""
+        if isinstance(v, str):
+            path = Path(v)
+            # If relative path, convert to absolute relative to project root
+            if not path.is_absolute():
+                # Go up from this file to project root
+                project_root = Path(__file__).resolve().parents[4]
+                path = project_root / path
+            return str(path)
+        return str(v)
+
+
+class BinanceToolkitParams(BaseDataToolkitParams):
+    """Parameters for BinanceToolkit configuration."""
+
+    # Override defaults from base class
     data_dir: Union[str, Path] = Field(
         "./data/binance",
         description="Directory for storing parquet files"
@@ -166,8 +194,46 @@ class BinanceToolkitParams(BaseModel):
         gt=0,
         description="Minimum size to trigger parquet storage"
     )
-    api_key: Optional[str] = Field(None, description="Binance API key")
-    api_secret: Optional[str] = Field(None, description="Binance API secret")
+    
+    # Binance-specific fields
+    default_market_type: MarketType = Field(
+        "spot",
+        description="Default market type for API calls"
+    )
+    symbols: Optional[List[str]] = Field(
+        None,
+        description="List of trading symbols to filter"
+    )
+    api_key: str = Field(
+        default_factory=lambda: os.getenv("BINANCE_API_KEY") or "",
+        min_length=60,
+        max_length=68,
+        description="Binance API key (typically 64 characters)"
+    )
+    api_secret: str = Field(
+        default_factory=lambda: os.getenv("BINANCE_API_SECRET") or "",
+        min_length=60,
+        max_length=68,
+        description="Binance API secret (typically 64 characters)"
+    )
+    
+    @model_validator(mode='after')
+    def validate_required_credentials(self):
+        """Validate that required API credentials are provided and meet format requirements."""
+        if not self.api_key:
+            raise ValueError("Binance API key is required. Set BINANCE_API_KEY environment variable.")
+        if not self.api_secret:
+            raise ValueError("Binance API secret is required. Set BINANCE_API_SECRET environment variable.")
+        
+        # Validate API key format (alphanumeric characters)
+        if not self.api_key.replace("-", "").replace("_", "").isalnum():
+            raise ValueError("Binance API key must contain only alphanumeric characters, hyphens, and underscores.")
+        
+        # Validate API secret format (alphanumeric characters)
+        if not self.api_secret.replace("-", "").replace("_", "").isalnum():
+            raise ValueError("Binance API secret must contain only alphanumeric characters, hyphens, and underscores.")
+        
+        return self
     
     @field_validator("symbols")
     @classmethod
@@ -186,19 +252,58 @@ class BinanceToolkitParams(BaseModel):
             validated.append(symbol_upper)
         return validated
     
-    @field_validator("data_dir", mode='before')
     @classmethod
-    def validate_data_dir(cls, v):
-        """Convert to Path and handle relative paths."""
-        if isinstance(v, str):
-            path = Path(v)
-            # If relative path, convert to absolute relative to project root
-            if not path.is_absolute():
-                # Go up from this file to project root
-                project_root = Path(__file__).resolve().parents[4]
-                path = project_root / path
-            return str(path)
-        return str(v)
+    def get_valid_tools(cls) -> List[str]:
+        """Return list of valid tools for BinanceToolkit."""
+        return [
+            "reload_symbols", "validate_symbol", "get_symbol_ticker_change",
+            "get_current_price", "get_order_book", "get_recent_trades", 
+            "get_klines", "get_book_ticker"
+        ]
+
+
+class CoingeckoToolkitParams(BaseDataToolkitParams):
+    """Parameters for CoingeckoToolkit configuration."""
+        
+    # Override defaults from base class
+    data_dir: Union[str, Path] = Field(
+        "./data/coingecko",
+        description="Directory for storing parquet files"
+    )
+    
+    api_key: str = Field(
+        default_factory=lambda: os.getenv("COINGECKO_API_KEY") or "",
+        min_length=25,
+        max_length=29,
+        description="CoinGecko API key (format: CG-xxxxxxxxxxxxxxxxxxxxxx)"
+    )
+    
+    @model_validator(mode='after')
+    def validate_required_credentials(self):
+        """Validate that required API credentials are provided and meet format requirements."""
+        if not self.api_key:
+            raise ValueError("CoinGecko API key is required. Set COINGECKO_API_KEY environment variable.")
+        
+        # Validate API key format (must start with "CG-" followed by alphanumeric characters)
+        if not self.api_key.startswith("CG-"):
+            raise ValueError("CoinGecko API key must start with 'CG-' followed by alphanumeric characters.")
+        
+        # Validate the part after "CG-" contains only alphanumeric characters
+        key_suffix = self.api_key[3:]  # Remove "CG-" prefix
+        if not key_suffix.isalnum():
+            raise ValueError("CoinGecko API key suffix (after 'CG-') must contain only alphanumeric characters.")
+        
+        return self
+
+    @classmethod
+    def get_valid_tools(cls) -> List[str]:
+        """Return list of valid tools for CoingeckoToolkit."""
+        return [
+            "get_coin_info", "get_coin_price", "get_coin_market_chart",
+            "get_multiple_coins_data", "get_historical_price", "get_token_price_by_contract",
+            "search_coins_exchanges_categories", "get_coins_list", "get_coins_markets",
+            "get_coin_ohlc", "get_global_crypto_data"
+        ]
 
 
 class ToolkitConfig(BaseModel):
@@ -213,6 +318,15 @@ class ToolkitConfig(BaseModel):
         None,
         description="Specific tools to extract from toolkit"
     )
+
+    @classmethod
+    def get_toolkit_params_class(cls, name: str) -> Type[BaseModel]:
+        """Get the appropriate parameter class for a toolkit name."""
+        toolkit_registry = {
+            "BinanceToolkit": BinanceToolkitParams,
+            "CoingeckoToolkit": CoingeckoToolkitParams,
+        }
+        return toolkit_registry.get(name)
     
     @model_validator(mode='after')
     def validate_toolkit_config(self):
@@ -221,26 +335,23 @@ class ToolkitConfig(BaseModel):
         params = self.params or {}
         available_tools = self.available_tools or []
         
-        if name == "BinanceToolkit":
-            # Validate using BinanceToolkitParams model
-            validated_params = BinanceToolkitParams(**params)
+        param_class = self.get_toolkit_params_class(name)
+        if param_class:
+            # Validate using the appropriate toolkit params model
+            validated_params = param_class(**params)
             self.params = validated_params.model_dump(exclude_none=True)
             
-            # Validate available tools
+            # Validate available tools using the class method
             if available_tools:
-                valid_binance_tools = [
-                    "reload_symbols", "validate_symbol", "get_symbol_ticker_change",
-                    "get_current_price", "get_order_book", "get_recent_trades", 
-                    "get_klines", "get_book_ticker"
-                ]
-                invalid_tools = [tool for tool in available_tools if tool not in valid_binance_tools]
+                valid_tools = param_class.get_valid_tools()
+                invalid_tools = [tool for tool in available_tools if tool not in valid_tools]
                 if invalid_tools:
                     raise ValueError(
-                        f"Invalid BinanceToolkit tools: {invalid_tools}. "
-                        f"Valid tools: {valid_binance_tools}"
+                        f"Invalid {name} tools: {invalid_tools}. "
+                        f"Valid tools: {valid_tools}"
                     )
         
-        # Add validation for other toolkits as needed
+        # If toolkit not in registry, just pass through (for backward compatibility)
         
         return self
 

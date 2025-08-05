@@ -97,8 +97,8 @@ class ConfigFactory:
     
     @staticmethod
     def binance_toolkit_params(
-        api_key: str = "${BINANCE_API_KEY}",
-        api_secret: str = "${BINANCE_SECRET_KEY}",
+        api_key: str = "a" * 64,  # Mock 64-character Binance API key
+        api_secret: str = "b" * 64,  # Mock 64-character Binance API secret  
         default_market_type: str = "spot",
         **kwargs
     ) -> Dict[str, Any]:

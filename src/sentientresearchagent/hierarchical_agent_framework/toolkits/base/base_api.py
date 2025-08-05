@@ -258,16 +258,16 @@ class BaseAPIToolkit:
     # =========================================================================
     
     def _init_cache_system(self, cache_ttl_seconds: int = 3600) -> None:
-        """Initialize caching system for identifiers and configuration data.
+        """Initialize caching system for any data types (identifiers, lists, objects).
         
         Args:
             cache_ttl_seconds: Time-to-live for cached data in seconds
         """
         self._cache_ttl = cache_ttl_seconds
-        self._identifier_caches: Dict[str, Dict[str, Any]] = {}
+        self._data_caches: Dict[str, Dict[str, Any]] = {}
         self._cache_timestamps: Dict[str, float] = {}
         
-        logger.debug(f"Initialized cache system with TTL: {cache_ttl_seconds}s")
+        logger.debug(f"Initialized generic cache system with TTL: {cache_ttl_seconds}s")
 
     def _is_cache_valid(self, cache_key: str) -> bool:
         """Check if cache entry is still valid based on TTL.
@@ -284,48 +284,61 @@ class BaseAPIToolkit:
         age = time.time() - self._cache_timestamps[cache_key]
         return age < getattr(self, '_cache_ttl', 3600)
 
+    def _cache_data(
+        self, 
+        cache_key: str, 
+        data: Any, 
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> None:
+        """Cache any data type with optional metadata.
+        
+        Args:
+            cache_key: Unique key for this cache entry
+            data: Data to cache (can be list, set, dict, string, etc.)
+            metadata: Optional metadata to store with data
+        """
+        if not hasattr(self, '_data_caches'):
+            self._init_cache_system()
+            
+        self._data_caches[cache_key] = {
+            "data": data,
+            "metadata": metadata or {},
+            "data_type": type(data).__name__
+        }
+        self._cache_timestamps[cache_key] = time.time()
+        
+        size_info = f" ({len(data)} items)" if hasattr(data, '__len__') else ""
+        logger.debug(f"Cached {type(data).__name__} data{size_info} for key '{cache_key}'")
+
+    def _get_cached_data(self, cache_key: str) -> Optional[Any]:
+        """Retrieve cached data if still valid.
+        
+        Args:
+            cache_key: Cache key to retrieve
+            
+        Returns:
+            Any or None: Cached data if valid, None if expired/missing
+        """
+        if not self._is_cache_valid(cache_key):
+            return None
+            
+        cache_entry = self._data_caches.get(cache_key, {})
+        return cache_entry.get("data")
+
+    # Backward compatibility methods
     def _cache_identifiers(
         self, 
         cache_key: str, 
         identifiers: Union[Set[str], List[str]], 
         metadata: Optional[Dict[str, Any]] = None
     ) -> None:
-        """Cache a set of identifiers with optional metadata.
-        
-        Args:
-            cache_key: Unique key for this cache entry
-            identifiers: Set or list of identifiers to cache
-            metadata: Optional metadata to store with identifiers
-        """
-        if not hasattr(self, '_identifier_caches'):
-            self._init_cache_system()
-            
-        # Convert to set for efficient lookups
+        """Cache identifiers (backward compatibility wrapper)."""
         identifier_set = set(identifiers) if isinstance(identifiers, list) else identifiers
-        
-        self._identifier_caches[cache_key] = {
-            "identifiers": identifier_set,
-            "metadata": metadata or {},
-            "count": len(identifier_set)
-        }
-        self._cache_timestamps[cache_key] = time.time()
-        
-        logger.debug(f"Cached {len(identifier_set)} identifiers for key '{cache_key}'")
+        self._cache_data(cache_key, identifier_set, metadata)
 
     def _get_cached_identifiers(self, cache_key: str) -> Optional[Set[str]]:
-        """Retrieve cached identifiers if still valid.
-        
-        Args:
-            cache_key: Cache key to retrieve
-            
-        Returns:
-            set or None: Cached identifiers if valid, None if expired/missing
-        """
-        if not self._is_cache_valid(cache_key):
-            return None
-            
-        cache_entry = self._identifier_caches.get(cache_key, {})
-        return cache_entry.get("identifiers")
+        """Retrieve cached identifiers (backward compatibility wrapper)."""
+        return self._get_cached_data(cache_key)
 
     def _validate_configuration_enum(
         self,

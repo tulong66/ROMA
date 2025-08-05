@@ -11,11 +11,10 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - SENTIENT_CONFIG_PATH=/app/sentient.yaml
-      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
-      - EXA_API_KEY=${EXA_API_KEY}
-      - GOOGLE_GENAI_API_KEY=${GOOGLE_GENAI_API_KEY}
       - FLASK_ENV=${FLASK_ENV:-development}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    env_file:
+      - ../.env
     volumes:
       - ../sentient.yaml:/app/sentient.yaml:ro
       - ../src:/app/src:ro
@@ -35,9 +34,10 @@ services:
       dockerfile: docker/Dockerfile.frontend
     container_name: sentient-frontend
     ports:
-      - "5173:5173"
+      - "3000:3000"
     environment:
       - VITE_API_URL=http://localhost:5000
+      - DOCKER_ENV=true
     volumes:
       - ../frontend/src:/app/src:ro
       - ../frontend/public:/app/public:ro

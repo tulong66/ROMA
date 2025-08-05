@@ -135,8 +135,8 @@ class TestBinanceToolkitParams:
         params_data = config_factory.binance_toolkit_params()
         params = BinanceToolkitParams(**params_data)
         
-        assert params.api_key == "${BINANCE_API_KEY}"
-        assert params.api_secret == "${BINANCE_SECRET_KEY}"
+        assert params.api_key == "a" * 64
+        assert params.api_secret == "b" * 64
         assert params.default_market_type == "spot"
 
     @pytest.mark.parametrize("market_type", ["spot", "usdm", "coinm"])
