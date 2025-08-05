@@ -7,6 +7,7 @@ Allows gradual migration from definitions/ to agent_configs/.
 
 from typing import Dict, Any, List, Tuple, Optional
 from loguru import logger
+from pathlib import Path
 
 from .config_loader import AgentConfigLoader, load_agent_configs
 from .agent_factory import AgentFactory, create_agents_from_config
@@ -19,7 +20,7 @@ from sentientresearchagent.hierarchical_agent_framework.agent_blueprints import 
 class RegistryIntegrator:
     """Integrates YAML-configured agents into a specific registry instance."""
     
-    def __init__(self, agent_registry: AgentRegistry, config_loader: Optional[AgentConfigLoader] = None):
+    def __init__(self, agent_registry: AgentRegistry, config_loader: Optional['AgentConfigLoader'] = None):
         """
         Initialize the registry integrator.
         
@@ -395,4 +396,48 @@ def apply_blueprint_to_node(node: TaskNode, blueprint: AgentBlueprint, action_ve
             
     except Exception as e:
         logger.error(f"Error applying blueprint to node {node.task_id}: {e}")
-        return False 
+        return False
+
+
+def integrate_agents_with_global_registry(config_dir: Optional[Path] = None) -> Dict[str, Any]:
+    """
+    Convenience function to integrate agents with the global registry instance.
+    
+    Args:
+        config_dir: Directory containing agent configuration files
+        
+    Returns:
+        Dictionary with integration results
+    """
+    from sentientresearchagent.hierarchical_agent_framework.agents.registry import AgentRegistry
+    from .config_loader import AgentConfigLoader
+    
+    global_registry = AgentRegistry.get_instance()
+    config_loader = AgentConfigLoader(config_dir) if config_dir else AgentConfigLoader()
+    integrator = RegistryIntegrator(global_registry, config_loader)
+    
+    return integrator.load_and_register_agents()
+
+
+def integrate_agents_with_instance_registry(
+    agent_registry: AgentRegistry, 
+    config_dir: Optional[Path] = None,
+    config_loader: Optional['AgentConfigLoader'] = None
+) -> Dict[str, Any]:
+    """
+    Convenience function to integrate agents with a specific registry instance.
+    
+    Args:
+        agent_registry: The AgentRegistry instance to populate
+        config_dir: Directory containing agent configuration files
+        config_loader: Optional config loader instance
+        
+    Returns:
+        Dictionary with integration results
+    """
+    if config_loader is None and config_dir is not None:
+        from .config_loader import AgentConfigLoader
+        config_loader = AgentConfigLoader(config_dir)
+    
+    integrator = RegistryIntegrator(agent_registry, config_loader)
+    return integrator.load_and_register_agents() 

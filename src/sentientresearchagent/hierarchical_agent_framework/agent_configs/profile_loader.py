@@ -1,7 +1,8 @@
 """
 Agent Profile Loader
 
-Loads agent profiles from YAML files and creates AgentBlueprint instances.
+Loads agent profiles from YAML files with comprehensive Pydantic validation.
+Creates AgentBlueprint instances with enhanced validation and error handling.
 """
 
 import os
@@ -15,16 +16,19 @@ except ImportError:
     logger.error("OmegaConf not installed. Please install with: pip install omegaconf>=2.3.0")
     raise
 
-from ..agent_blueprints import AgentBlueprint
-from ..types import TaskType
+from sentientresearchagent.hierarchical_agent_framework.agent_blueprints import AgentBlueprint
+from sentientresearchagent.hierarchical_agent_framework.types import TaskType
+from sentientresearchagent.hierarchical_agent_framework.agent_configs.models import (
+    validate_profile_yaml, ProfileYAMLConfig, ProfileConfig
+)
 
 
 class ProfileLoader:
-    """Loads agent profiles from YAML configuration files."""
+    """Loads agent profiles from YAML configuration files with comprehensive Pydantic validation."""
     
     def __init__(self, profiles_dir: Optional[Path] = None):
         """
-        Initialize the profile loader.
+        Initialize the profile loader with validation.
         
         Args:
             profiles_dir: Directory containing profile YAML files.
@@ -38,6 +42,9 @@ class ProfileLoader:
         # Validate profiles directory exists
         if not self.profiles_dir.exists():
             raise FileNotFoundError(f"Profiles directory not found: {self.profiles_dir}")
+        
+        # Cache for validated profiles
+        self._profile_cache: Dict[str, ProfileYAMLConfig] = {}
     
     def list_available_profiles(self) -> List[str]:
         """
@@ -51,7 +58,7 @@ class ProfileLoader:
     
     def load_profile(self, profile_name: str) -> AgentBlueprint:
         """
-        Load a specific agent profile.
+        Load a specific agent profile with comprehensive validation and caching.
         
         Args:
             profile_name: Name of the profile to load (without .yaml extension)
@@ -63,83 +70,106 @@ class ProfileLoader:
             FileNotFoundError: If profile file doesn't exist
             ValueError: If profile configuration is invalid
         """
-        profile_file = self.profiles_dir / f"{profile_name}.yaml"
-        
-        if not profile_file.exists():
-            available = self.list_available_profiles()
-            raise FileNotFoundError(
-                f"Profile '{profile_name}' not found. Available profiles: {available}"
-            )
-        
-        try:
-            logger.info(f"Loading agent profile from: {profile_file}")
-            config = OmegaConf.load(profile_file)
+        # Check cache first
+        if profile_name in self._profile_cache:
+            logger.debug(f"Using cached profile: {profile_name}")
+            validated_config = self._profile_cache[profile_name]
+            profile_config = validated_config.profile
+        else:
+            profile_file = self.profiles_dir / f"{profile_name}.yaml"
             
-            # Validate basic structure
-            if "profile" not in config:
-                raise ValueError("Profile configuration must contain 'profile' section")
+            if not profile_file.exists():
+                available = self.list_available_profiles()
+                raise FileNotFoundError(
+                    f"Profile '{profile_name}' not found. Available profiles: {available}"
+                )
             
-            profile_config = config.profile
-            
-            # Convert TaskType strings to enums for planner_adapter_names
-            planner_adapter_names = {}
-            if "planner_adapter_names" in profile_config:
-                for task_type_str, agent_name in profile_config.planner_adapter_names.items():
-                    try:
-                        task_type = TaskType[task_type_str.upper()]
-                        planner_adapter_names[task_type] = agent_name
-                    except KeyError:
-                        logger.warning(f"Invalid task type '{task_type_str}' in planner_adapter_names for profile '{profile_name}'")
-            
-            # Convert TaskType strings to enums for executor_adapter_names
-            executor_adapter_names = {}
-            if "executor_adapter_names" in profile_config:
-                for task_type_str, agent_name in profile_config.executor_adapter_names.items():
-                    try:
-                        task_type = TaskType[task_type_str.upper()]
-                        executor_adapter_names[task_type] = agent_name
-                    except KeyError:
-                        logger.warning(f"Invalid task type '{task_type_str}' in executor_adapter_names for profile '{profile_name}'")
-            
-            # Convert TaskType strings to enums for aggregator_adapter_names
-            aggregator_adapter_names = {}
-            if "aggregator_adapter_names" in profile_config:
-                for task_type_str, agent_name in profile_config.aggregator_adapter_names.items():
-                    try:
-                        task_type = TaskType[task_type_str.upper()]
-                        aggregator_adapter_names[task_type] = agent_name
-                    except KeyError:
-                        logger.warning(f"Invalid task type '{task_type_str}' in aggregator_adapter_names for profile '{profile_name}'")
-            
-            # Create AgentBlueprint instance
-            blueprint = AgentBlueprint(
-                name=profile_config.get("name", profile_name),
-                description=profile_config.get("description", f"Agent profile: {profile_name}"),
-                root_planner_adapter_name=profile_config.get("root_planner_adapter_name"),
-                root_aggregator_adapter_name=profile_config.get("root_aggregator_adapter_name"),  # FIXED: Added missing field
-                planner_adapter_names=planner_adapter_names,
-                executor_adapter_names=executor_adapter_names,
-                aggregator_adapter_names=aggregator_adapter_names,
-                atomizer_adapter_name=profile_config.get("atomizer_adapter_name", "DefaultAtomizer"),
-                aggregator_adapter_name=profile_config.get("aggregator_adapter_name", "DefaultAggregator"),
-                plan_modifier_adapter_name=profile_config.get("plan_modifier_adapter_name", "PlanModifier"),
-                default_planner_adapter_name=profile_config.get("default_planner_adapter_name"),
-                default_executor_adapter_name=profile_config.get("default_executor_adapter_name"),
-                default_node_agent_name_prefix=profile_config.get("default_node_agent_name_prefix")
-            )
-            
-            # Log root-specific configurations if present
-            if blueprint.root_planner_adapter_name:
-                logger.info(f"  - Root planner: {blueprint.root_planner_adapter_name}")
-            if blueprint.root_aggregator_adapter_name:
-                logger.info(f"  - Root aggregator: {blueprint.root_aggregator_adapter_name}")
+            try:
+                logger.info(f"Loading agent profile from: {profile_file}")
+                config = OmegaConf.load(profile_file)
                 
-            logger.info(f"Successfully loaded profile '{profile_name}' with {len(planner_adapter_names)} planner mappings, {len(executor_adapter_names)} executor mappings, and {len(aggregator_adapter_names)} aggregator mappings")
-            return blueprint
+                # Validate using Pydantic model
+                try:
+                    config_dict = OmegaConf.to_container(config, resolve=True)
+                    validated_config = validate_profile_yaml(config_dict)
+                    profile_config = validated_config.profile
+                    
+                    # Cache the validated config
+                    self._profile_cache[profile_name] = validated_config
+                    
+                    logger.info(f"✅ Profile validated and cached: {profile_name}")
+                    
+                except Exception as e:
+                    logger.error(f"Profile validation failed for {profile_name}: {e}")
+                    raise ValueError(f"Invalid profile configuration: {e}") from e
+                    
+            except Exception as e:
+                if isinstance(e, ValueError):
+                    raise
+                logger.error(f"Failed to load profile '{profile_name}': {e}")
+                raise
+        
+        # Convert TaskType strings to enums (validated by Pydantic)
+        planner_adapter_names = {}
+        if profile_config.planner_adapter_names:
+            for task_type_str, agent_name in profile_config.planner_adapter_names.items():
+                task_type = TaskType[task_type_str.upper()]
+                planner_adapter_names[task_type] = agent_name
+        
+        # Convert TaskType strings to enums for executor_adapter_names
+        executor_adapter_names = {}
+        if profile_config.executor_adapter_names:
+            for task_type_str, agent_name in profile_config.executor_adapter_names.items():
+                task_type = TaskType[task_type_str.upper()]
+                executor_adapter_names[task_type] = agent_name
+        
+        # Convert TaskType strings to enums for aggregator_adapter_names
+        aggregator_adapter_names = {}
+        if profile_config.aggregator_adapter_names:
+            for task_type_str, agent_name in profile_config.aggregator_adapter_names.items():
+                task_type = TaskType[task_type_str.upper()]
+                aggregator_adapter_names[task_type] = agent_name
+        
+        # Create AgentBlueprint instance with validated data
+        blueprint = AgentBlueprint(
+            name=profile_config.name,
+            description=profile_config.description or f"Agent profile: {profile_name}",
+            root_planner_adapter_name=profile_config.root_planner_adapter_name,
+            root_aggregator_adapter_name=profile_config.root_aggregator_adapter_name,
+            planner_adapter_names=planner_adapter_names,
+            executor_adapter_names=executor_adapter_names,
+            aggregator_adapter_names=aggregator_adapter_names,
+            atomizer_adapter_name=profile_config.atomizer_adapter_name or "DefaultAtomizer",
+            aggregator_adapter_name=profile_config.aggregator_adapter_name or "DefaultAggregator",
+            plan_modifier_adapter_name=profile_config.plan_modifier_adapter_name or "PlanModifier",
+            default_planner_adapter_name=profile_config.default_planner_adapter_name,
+            default_executor_adapter_name=profile_config.default_executor_adapter_name,
+            default_node_agent_name_prefix=profile_config.default_node_agent_name_prefix
+        )
+        
+        # Log root-specific configurations if present
+        if blueprint.root_planner_adapter_name:
+            logger.info(f"  - Root planner: {blueprint.root_planner_adapter_name}")
+        if blueprint.root_aggregator_adapter_name:
+            logger.info(f"  - Root aggregator: {blueprint.root_aggregator_adapter_name}")
+                
+        logger.info(f"✅ Successfully loaded profile '{profile_name}' with {len(planner_adapter_names)} planner mappings, {len(executor_adapter_names)} executor mappings, and {len(aggregator_adapter_names)} aggregator mappings")
+        return blueprint
+    
+    def get_validated_profile_config(self, profile_name: str) -> ProfileYAMLConfig:
+        """
+        Get the validated Pydantic profile configuration.
+        
+        Args:
+            profile_name: Name of the profile
             
-        except Exception as e:
-            logger.error(f"Failed to load profile '{profile_name}': {e}")
-            raise
+        Returns:
+            ProfileYAMLConfig instance
+        """
+        if profile_name not in self._profile_cache:
+            # This will load and cache the profile
+            self.load_profile(profile_name)
+        return self._profile_cache[profile_name]
     
     def load_all_profiles(self) -> Dict[str, AgentBlueprint]:
         """
