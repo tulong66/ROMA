@@ -453,7 +453,7 @@ agents:
     description: "Comprehensive crypto research executor for deep blockchain and DeFi analysis"
     model:
       provider: "litellm"
-      model_id: "openrouter/google/gemini-2.5-flash:nitro"
+      model_id: "openrouter/google/gemini-2.5-flash:nitro" 
     # agno_params:
     #   reasoning: true
     prompt_source: "prompts.executor_prompts.CRYPTO_RESEARCH_EXECUTOR_SYSTEM_MESSAGE"

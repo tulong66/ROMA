@@ -9,6 +9,8 @@ from datetime import datetime
 import inspect
 import re
 import json
+from json_repair import repair_json
+from agno.agent import Agent as AgnoAgent
 
 from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode # For type hinting
 from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models import (
@@ -310,51 +312,40 @@ Ensure your output is a valid JSON conforming to the PlanOutput schema, containi
             
         return model_info
 
-    def _extract_and_parse_json(self, text: str, response_model: Type[OutputType]) -> Optional[OutputType]:
+    async def _extract_and_parse_json(self, text: str, response_model: Type[OutputType]) -> Optional[OutputType]:
         """
         Extracts a JSON object from a string and parses it into the response model.
-        This is a robust version that handles JSON in markdown, with surrounding text, or as a substring.
+        Uses the comprehensive OutputFixingParser with progressive strategies including LLM-based fixing.
         """
-        logger.critical("🚀🚀🚀 RUNNING FINAL ROBUST JSON PARSER 🚀🚀🚀")
-        logger.debug(f"Attempting to extract JSON from raw text (length: {len(text)}) for model {response_model.__name__}")
+        logger.critical("🚀🚀🚀 RUNNING COMPREHENSIVE OUTPUT FIXING PARSER 🚀🚀🚀")
+        logger.debug(f"Attempting to parse JSON from raw text (length: {len(text)}) for model {response_model.__name__}")
 
-        # Strategy 1: Look for JSON within a markdown code block (most reliable)
-        match = re.search(r"```(?:json)?\s*([\[\{].*?[\]\}])\s*```", text, re.DOTALL)
-        if match:
-            json_str = match.group(1).strip()
-            logger.info("Strategy 1: Found JSON in markdown block.")
-            try:
-                return response_model.model_validate_json(json_str)
-            except Exception as e:
-                logger.warning(f"Strategy 1 failed: Could not parse JSON from markdown block. Error: {e}")
-
-        # Strategy 2: Find the largest possible JSON blob from the first to last bracket
-        json_str = None
-        first_bracket = min(
-            (text.find('{') if text.find('{') != -1 else float('inf')),
-            (text.find('[') if text.find('[') != -1 else float('inf'))
-        )
-        if first_bracket != float('inf'):
-            last_bracket = max(text.rfind('}'), text.rfind(']'))
-            if last_bracket > first_bracket:
-                json_str = text[first_bracket:last_bracket+1].strip()
-                logger.info("Strategy 2: Found potential JSON blob from first to last bracket.")
-                try:
-                    return response_model.model_validate_json(json_str)
-                except Exception as e:
-                    logger.warning(f"Strategy 2 failed: Could not parse broad JSON blob. Error: {e}")
-
-        # Strategy 3: Use JSONDecoder to find the first valid JSON object in the string
-        logger.info("Strategy 3: Attempting to find first valid JSON object in the string.")
         try:
-            obj, _ = json.JSONDecoder().raw_decode(text.strip())
-            json_str = json.dumps(obj)
-            return response_model.model_validate_json(json_str)
-        except (json.JSONDecodeError, TypeError, AttributeError) as e:
-            logger.warning(f"Strategy 3 failed: JSONDecoder could not find a valid object. Error: {e}")
-
-        logger.error(f"All strategies failed. Could not extract or parse a valid JSON for {response_model.__name__} from the text.")
-        return None
+            # Import and use the OutputFixingParser from utils
+            from .utils import get_global_output_parser
+            
+            # Get the global parser instance 
+            output_parser = get_global_output_parser(max_previous_attempts_in_context=2)
+            
+            # Use the comprehensive parser with all strategies including LLM fixing
+            result = await output_parser.parse(
+                text=text,
+                response_model=response_model,
+                use_llm_fixing=True,  # Enable LLM-based fixing as last resort
+                original_error="Failed to parse LLM output with standard JSON parsing"
+            )
+            
+            if result:
+                logger.info(f"✅ OutputFixingParser successfully parsed {response_model.__name__}")
+                return result
+            else:
+                logger.error(f"❌ OutputFixingParser failed to parse {response_model.__name__} from text")
+                return None
+                
+        except Exception as e:
+            logger.error(f"OutputFixingParser encountered error: {e}")
+            logger.error(f"Falling back to None for {response_model.__name__}")
+            return None
 
     # @handle_agent_errors(agent_name_param="self.agent_name", component="llm_adapter") # Removed to avoid circular import
     # @cache_agent_response(ttl_seconds=3600) # Removed to avoid circular import
