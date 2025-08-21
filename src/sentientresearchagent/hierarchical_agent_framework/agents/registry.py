@@ -1,7 +1,9 @@
-from typing import Dict, Tuple, Optional, Any
-from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode, TaskType
-from sentientresearchagent.hierarchical_agent_framework.agents.base_adapter import BaseAdapter
+from typing import Dict, Tuple, Optional, Any, TYPE_CHECKING
 from loguru import logger
+
+if TYPE_CHECKING:
+    from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode, TaskType
+    from sentientresearchagent.hierarchical_agent_framework.agents.base_adapter import BaseAdapter
 
 class AgentRegistry:
     """
@@ -11,16 +13,17 @@ class AgentRegistry:
     """
     def __init__(self):
         # AGENT_REGISTRY: Maps (action_verb, TaskType enum) to an adapter instance
-        self._agent_registry: Dict[Tuple[str, Optional[TaskType]], BaseAdapter] = {}
+        self._agent_registry: Dict[Tuple[str, Optional["TaskType"]], "BaseAdapter"] = {}
         # NAMED_AGENTS: Maps a string name to an adapter instance
         self._named_agents: Dict[str, Any] = {}
         logger.trace("AgentRegistry instance created.")
 
-    def register_agent_adapter(self, adapter: BaseAdapter,
+    def register_agent_adapter(self, adapter: "BaseAdapter",
                                action_verb: Optional[str] = None,
-                               task_type: Optional[TaskType] = None,
+                               task_type: Optional["TaskType"] = None,
                                name: Optional[str] = None):
         """Register an adapter instance in the agent registry."""
+        from sentientresearchagent.hierarchical_agent_framework.agents.base_adapter import BaseAdapter
         if not isinstance(adapter, BaseAdapter):
             logger.error(f"Registration failed: Expected BaseAdapter, got {type(adapter)}. Adapter: {adapter}")
             return
@@ -56,8 +59,9 @@ class AgentRegistry:
         if not registered:
             logger.warning(f"Adapter '{adapter_name_attr}' was not registered. Provide action/task_type or a name.")
 
-    def get_agent_adapter(self, node: TaskNode, action_verb: str) -> Optional[BaseAdapter]:
+    def get_agent_adapter(self, node: "TaskNode", action_verb: str) -> Optional["BaseAdapter"]:
         """Retrieve an appropriate adapter for a given TaskNode and action verb."""
+        from sentientresearchagent.hierarchical_agent_framework.agents.base_adapter import BaseAdapter
         logger.trace(f"🔍 AgentRegistry: Looking for adapter for node {node.task_id} with action '{action_verb}'")
 
         node_agent_name = getattr(node, 'agent_name', None)
@@ -91,8 +95,9 @@ class AgentRegistry:
             logger.trace(f"🔍 Available keys: {list(self._agent_registry.keys())}")
             return None
 
-    def _resolve_task_type(self, node: TaskNode) -> Optional[TaskType]:
+    def _resolve_task_type(self, node: "TaskNode") -> Optional["TaskType"]:
         """Safely resolves the task_type of a node to a TaskType enum."""
+        from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskType
         task_type = getattr(node, 'task_type', None)
         if isinstance(task_type, TaskType):
             return task_type
@@ -104,7 +109,7 @@ class AgentRegistry:
                 return None
         return None
 
-    def get_named_agent(self, name: str) -> Optional[BaseAdapter]:
+    def get_named_agent(self, name: str) -> Optional["BaseAdapter"]:
         """Retrieves a registered agent by its specific name."""
         return self._named_agents.get(name)
 
@@ -112,7 +117,7 @@ class AgentRegistry:
         """Returns the dictionary of all named agents."""
         return self._named_agents.copy()
 
-    def get_all_registered_agents(self) -> Dict[Tuple[str, Optional[TaskType]], BaseAdapter]:
+    def get_all_registered_agents(self) -> Dict[Tuple[str, Optional["TaskType"]], "BaseAdapter"]:
         """Returns the dictionary of all action-based registered agents."""
         return self._agent_registry.copy()
 
@@ -121,6 +126,7 @@ class AgentRegistry:
         Iterates through all registered adapters and calls their close() method
         to release underlying resources like network connections.
         """
+        from sentientresearchagent.hierarchical_agent_framework.agents.base_adapter import BaseAdapter
         logger.info("AgentRegistry: Closing all registered agent adapters...")
         closed_adapters = set()
         
