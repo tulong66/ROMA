@@ -5,7 +5,7 @@
 groups = ["default"]
 strategy = []
 lock_version = "4.5.0"
-content_hash = "sha256:a6fedcb6dc66bf369732a944d3c1569b469532999b2200a8f0263c457e3b995b"
+content_hash = "sha256:dc76f9e0a9d02ea6493a6dd815034b27523850caba05a4b116a872801fe15f9b"
 
 [[metadata.targets]]
 requires_python = ">=3.12"
@@ -912,6 +912,15 @@ files = [
     {file = "jiter-0.10.0-cp314-cp314t-macosx_11_0_arm64.whl", hash = "sha256:5ed975b83a2b8639356151cef5c0d597c68376fc4922b45d0eb384ac058cfa00"},
     {file = "jiter-0.10.0-cp314-cp314t-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:3aa96f2abba33dc77f79b4cf791840230375f9534e5fac927ccceb58c5e604a5"},
     {file = "jiter-0.10.0.tar.gz", hash = "sha256:07a7142c38aacc85194391108dc91b5b57093c978a9932bd86a36862759d9500"},
+]
+
+[[package]]
+name = "json-repair"
+version = "0.50.0"
+summary = ""
+files = [
+    {file = "json_repair-0.50.0-py3-none-any.whl", hash = "sha256:b15da2c42deb43419b182d97dcfde6cd86d0b18ccd18ed1a887104ce85e7a364"},
+    {file = "json_repair-0.50.0.tar.gz", hash = "sha256:1d42a3f353e389cf6051941b45fa44b6d130af3c91406a749e88586d830adb89"},
 ]
 
 [[package]]

@@ -1,10 +1,13 @@
 <div align="center">
-
-<h1>🧠 SentientResearchAgent</h1>
+<div align="center">
+    <img src="./assets/sentient-logo.png" alt="alt text" width="60%"/>
+</div>
+<h1>ROMA: Recursive Open Meta-Agents</h1>
 
 <p align="center">
-  <strong>Build ANY hierarchical AI agent with just three building blocks: Think, Write, and Search</strong>
+  <strong>Building hierarchical high-performance multi-agent systems made easy! </strong>
 </p>
+
 
 <p align="center">
   <a href="https://github.com/salzubi401/SentientResearchAgent/releases">
@@ -40,9 +43,85 @@
 
 ---
 
-## 🎯 What is SentientResearchAgent?
+## 📖 Documentation
 
-SentientResearchAgent is a **general-purpose hierarchical task execution framework** that decomposes complex tasks using the MECE (Mutually Exclusive, Collectively Exhaustive) principle. Whether you're building a podcast generator, market analyzer, or code reviewer—if you can think of it in terms of **Think 🤔**, **Write ✍️**, and **Search 🔍** operations, you can build it here.
+
+### Getting Started
+- **[🚀 Introduction](docs/INTRODUCTION.md)** - Understand the vision and architecture behind ROMA
+
+### Core Framework
+- **[🧠 Core Concepts](docs/CORE_CONCEPTS.md)** - Master the MECE framework and hierarchical task decomposition
+- **[🤖 Agents Guide](docs/AGENTS_GUIDE.md)** - Learn how to create and customize your own agents
+
+- **[⚙️ Configuration](docs/CONFIGURATION.md)** - Detailed configuration options and environment setup
+
+## 🎯 What is ROMA?
+
+**ROMA** is a **meta-agent framework** that uses recursive hierarchical structures to solve complex problems. By breaking down tasks into parallelizable components, ROMA enables agents to tackle sophisticated reasoning challenges while maintaining transparency that makes context-engineering and iteration straightforward. The framework offers **parallel problem solving** where agents work simultaneously on different parts of complex tasks, **transparent development** with a clear structure for easy debugging, and **proven performance** demonstrated through our search agent's strong benchmark results. We've shown the framework's effectiveness, but this is just the beginning. As an **open-source and extensible** platform, ROMA is designed for community-driven development, allowing you to build and customize agents for your specific needs while benefiting from the collective improvements of the community.
+
+## 🏗️ How It Works
+
+
+**ROMA** framework processes tasks through a recursive **plan–execute loop**:
+
+```python
+def solve(task):
+    if is_atomic(task):                 # Step 1: Atomizer
+        return execute(task)            # Step 2: Executor
+    else:
+        subtasks = plan(task)           # Step 2: Planner
+        results = []
+        for subtask in subtasks:
+            results.append(solve(subtask))  # Recursive call
+        return aggregate(results)       # Step 3: Aggregator
+
+# Entry point:
+answer = solve(initial_request)
+```
+1. **Atomizer** – Decides whether a request is **atomic** (directly executable) or requires **planning**.  
+2. **Planner** – If planning is needed, the task is broken into smaller **subtasks**. Each subtask is fed back into the **Atomizer**, making the process recursive.  
+3. **Executors** – Handle atomic tasks. Executors can be **LLMs, APIs, or even other agents** — as long as they implement an `agent.execute()` interface.  
+4. **Aggregator** – Collects and integrates results from subtasks. Importantly, the Aggregator produces the **answer to the original parent task**, not just raw child outputs.  
+
+
+
+#### 📐 Information Flow  
+- **Top-down:** Tasks are decomposed into subtasks recursively.  
+- **Bottom-up:** Subtask results are aggregated upwards into solutions for parent tasks.  
+- **Left-to-right:** If a subtask depends on the output of a previous one, it waits until that subtask completes before execution.  
+
+This structure makes the system flexible, recursive, and dependency-aware — capable of decomposing complex problems into smaller steps while ensuring results are integrated coherently. 
+
+<details>
+<summary>Click to view the system flow diagram</summary>
+
+```mermaid
+flowchart TB
+    A[Your Request] --> B{Atomizer}
+    B -->|Plan Needed| C[Planner]
+    B -->|Atomic Task| D[Executor]
+
+    %% Planner spawns subtasks
+    C --> E[Subtasks]
+    E --> G[Aggregator]
+
+    %% Recursion
+    E -.-> B  
+
+    %% Execution + Aggregation
+    D --> F[Final Result]
+    G --> F
+
+    style A fill:#e1f5fe
+    style F fill:#c8e6c9
+    style B fill:#fff3e0
+    style C fill:#ffe0b2
+    style D fill:#d1c4e9
+    style G fill:#c5cae9
+
+```
+
+</details><br>
 
 ### 🚀 30-Second Quick Start
 
@@ -71,13 +150,13 @@ result = await agent.run("Create a podcast about AI safety")
 <td width="50%">
 
 ### 🔄 **Recursive Task Decomposition**
-Automatically breaks down complex tasks into manageable subtasks with intelligent dependency management
+Automatically breaks down complex tasks into manageable subtasks with intelligent dependency management. Runs independent sub-tasks in **parallel**.
 
 </td>
 <td width="50%">
 
-### 🤖 **LLM Agnostic**
-Works with any LLM provider (OpenAI, Anthropic, Google, local models) through unified interface
+### 🤖 **Agent Agnostic**
+Works with any provider (OpenAI, Anthropic, Google, local models) through unified interface, as long as it has an `agent.run()` command, then you can use it!
 
 </td>
 </tr>
@@ -90,216 +169,34 @@ Stage tracing shows exactly what happens at each step - debug and optimize with 
 </td>
 <td width="50%">
 
-### 👥 **Human-in-the-Loop**
-Review and modify plans before execution with configurable intervention points
+### 🔌 Connect Any Tool
+
+Seamlessly integrate external tools and protocols with configurable intervention points. Already includes production-grade connectors such as E2B, file-read-write, and more.
 
 </td>
 </tr>
 </table>
 
-## 🏗️ How It Works
 
-```mermaid
-graph TB
-    A[Your Request] --> B{Atomizer}
-    B -->|Complex Task| C[Plan Node]
-    B -->|Simple Task| D[Execute Node]
-    
-    C --> E[Think Task]
-    C --> F[Search Task]
-    C --> G[Write Task]
-    
-    E --> B1{Atomizer}
-    F --> B2{Atomizer}
-    G --> B3{Atomizer}
-    
-    B1 --> H[Execute/Plan]
-    B2 --> I[Execute/Plan]
-    B3 --> J[Execute/Plan]
-    
-    H --> K[Aggregator]
-    I --> K
-    J --> K
-    
-    K --> L[Final Result]
-    D --> L
-    
-    style A fill:#e1f5fe
-    style L fill:#c8e6c9
-    style B fill:#fff3e0
-    style B1 fill:#fff3e0
-    style B2 fill:#fff3e0
-    style B3 fill:#fff3e0
-```
-
-The framework uses three fundamental operations that can be recursively combined:
-
-- **🤔 THINK** - Reasoning, analysis, and decision making
-- **✍️ WRITE** - Content generation and synthesis
-- **🔍 SEARCH** - Information retrieval and research
-
-## 📊 Example Applications
-
-<details>
-<summary><b>🎙️ Podcast Generator</b></summary>
-
-```python
-agent = SentientAgent.create()
-podcast = await agent.run("""
-    Create a 10-minute podcast episode about renewable energy.
-    Include intro, 3 segments, and outro with timestamps.
-""")
-```
-
-**Output**: Complete script with host dialogue, research citations, timestamps, and show notes.
-</details>
-
-<details>
-<summary><b>📈 Market Analyzer</b></summary>
-
-```python
-agent = ProfiledSentientAgent.create_with_profile("market_analysis")
-analysis = await agent.run("""
-    Analyze the current state of the EV market and predict 
-    trends for the next 5 years.
-""")
-```
-
-**Output**: Comprehensive market report with data visualizations, competitor analysis, and trend predictions.
-</details>
-
-<details>
-<summary><b>📝 Content Creator</b></summary>
-
-```python
-agent = SentientAgent.create()
-content = await agent.run("""
-    Write a viral LinkedIn post about remote work productivity tips.
-    Make it engaging and include relevant statistics.
-""")
-```
-
-**Output**: Optimized post with hooks, statistics, hashtags, and engagement strategies.
-</details>
-
-## 🛠️ Installation
-
-### Prerequisites
-
-- Python 3.12+
-- Node.js 18+ (for web interface)
-- Docker (optional, for containerized setup)
-
-### Option 1: Quick Setup (Recommended)
-
-```bash
-curl -sSL https://raw.githubusercontent.com/salzubi401/SentientResearchAgent/main/setup.sh | bash
-```
-
-### Option 2: Manual Installation
-
-<details>
-<summary>Click to expand manual installation steps</summary>
-
-```bash
-# Clone repository
-git clone https://github.com/salzubi401/SentientResearchAgent.git
-cd SentientResearchAgent
-
-# Setup Python environment
-pip install pdm
-pdm install
-
-# Setup frontend (optional)
-cd frontend
-npm install
-cd ..
-
-# Configure environment
-cp .env.example .env
-# Edit .env with your API keys
-
-# Start the server
-python -m sentientresearchagent
-```
-
-</details>
-
-### Option 3: Docker
-
-```bash
-docker run -p 5000:5000 -p 5173:5173 \
-  -e OPENROUTER_API_KEY=your_key \
-  sentient/research-agent:latest
-```
-
-## 📖 Documentation
-
-| Document | Description |
-|----------|-------------|
-| [🚀 Introduction](docs/INTRODUCTION.md) | Understand the vision and architecture |
-| [🍳 Quick Start Cookbook](docs/QUICKSTART_COOKBOOK.md) | Ready-to-use agent recipes |
-| [🧠 Core Concepts](docs/CORE_CONCEPTS.md) | Master the MECE framework |
-| [🤖 Agents Guide](docs/AGENTS_GUIDE.md) | Create custom agents |
-| [⚙️ Configuration](docs/CONFIGURATION.md) | Detailed configuration options |
-| [📚 API Reference](docs/API.md) | Complete API documentation |
-
-## 🌟 Why SentientResearchAgent?
-
-<table>
-<tr>
-<th>Traditional AI Tools</th>
-<th>SentientResearchAgent</th>
-</tr>
-<tr>
-<td>❌ Single-purpose tools</td>
-<td>✅ Universal framework for any task</td>
-</tr>
-<tr>
-<td>❌ Black box operation</td>
-<td>✅ Complete transparency with stage tracing</td>
-</tr>
-<tr>
-<td>❌ Limited to simple queries</td>
-<td>✅ Handles complex multi-step workflows</td>
-</tr>
-<tr>
-<td>❌ Vendor lock-in</td>
-<td>✅ Works with any LLM provider</td>
-</tr>
-<tr>
-<td>❌ No human oversight</td>
-<td>✅ Built-in human-in-the-loop</td>
-</tr>
-</table>
-
-## 🤝 Community
-
-Join our growing community of agent builders!
-
-- 💬 [Discord](https://discord.gg/sentientagent) - Get help and share ideas
-- 📢 [Twitter](https://twitter.com/sentientagent) - Latest updates
-- 🎯 [Roadmap](https://github.com/salzubi401/SentientResearchAgent/projects) - See what's coming
-
-### 🏆 Community Showcase
-
-Check out amazing agents built by our community:
-- [Awesome SentientAgent](https://github.com/community/awesome-sentientagent) - Curated list of agents
-- [Agent Marketplace](https://sentientagent.xyz/marketplace) - Share and discover agents
 
 ## 👥 Contributors
 
-<a href="https://github.com/salzubi401/SentientResearchAgent/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=salzubi401/SentientResearchAgent" />
-</a>
+Salaheddin Alzu'bi -- Project Lead & Core Contributor
 
-## 📄 License
+Baran Nama -- Core Contributor
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+Arda Kaz -- Core Contributor
+
+Sewoong Oh -- Research Oversight
+
 
 ## 🙏 Acknowledgments
 
-Inspired by the hierarchical planning approach described in ["Beyond Outlining: Heterogeneous Recursive Planning"](https://arxiv.org/abs/2503.08275) by Xiong et al.
+This framework would not have been possible if it wasn't for these amazing open-source contributions!
+- Inspired by the hierarchical planning approach described in ["Beyond Outlining: Heterogeneous Recursive Planning"](https://arxiv.org/abs/2503.08275) by Xiong et al.
+- [Pydantic](https://github.com/pydantic/pydantic) - Data validation using Python type annotations
+- [Agno](https://github.com/agno-ai/agno) - Framework for building AI agents
+- [E2B](https://github.com/e2b-dev/e2b) - Cloud runtime for AI agents
 
 ## 📚 Citation
 
@@ -314,15 +211,6 @@ If you use SentientResearchAgent in your research, please cite:
 }
 ```
 
----
+## 📄 License
 
-<div align="center">
-  <p>
-    <b>Build something amazing today!</b><br>
-    If you can think it, you can build it with Think, Write, and Search 🚀
-  </p>
-  
-  <a href="https://github.com/salzubi401/SentientResearchAgent">
-    <img src="https://img.shields.io/github/stars/salzubi401/SentientResearchAgent?style=social" alt="Star on GitHub">
-  </a>
-</div>
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

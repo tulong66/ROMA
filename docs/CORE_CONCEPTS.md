@@ -17,7 +17,6 @@ Understanding these fundamental concepts will help you master SentientResearchAg
 - [Context Propagation](#-context-propagation)
 - [Knowledge Store](#-knowledge-store)
 - [Execution Strategies](#-execution-strategies)
-- [Human-in-the-Loop (HITL)](#-human-in-the-loop-hitl)
 
 ## 🎯 The MECE Framework
 
@@ -114,51 +113,6 @@ Tasks can depend on siblings for context:
      (First)           (Uses research)    (Uses both)
 ```
 
-### Execution Flow Visualization
-
-```
-     ┌─────────────────┐
-     │   Root Goal     │ 
-     └────────┬────────┘
-              │
-     ┌────────▼────────┐
-     │    ATOMIZER     │ ← Decides: PLAN or EXECUTE?
-     └────────┬────────┘
-              │ If PLAN
-     ┌────────▼────────┐
-     │   PLAN NODE     │ ← Decomposes into subtasks
-     └────────┬────────┘
-              │ Showcasing all three building blocks:
-     ┌────────┴────────┬──────────────┐
-     ▼                 ▼              ▼
-┌─────────┐      ┌─────────┐    ┌─────────┐
-│ SEARCH  │      │ THINK   │───▶│ WRITE   │ Left-Right
-│Gather   │      │Analyze  │    │Create   │ Dependency
-│Data     │      │Results  │    │Report   │ (optional)
-└────┬────┘      └────┬────┘    └────┬────┘
-     │                 │              │
-     ▼                 ▼              ▼
-[ATOMIZER]        [ATOMIZER]     [ATOMIZER] ← 🔄 RECURSIVE
-     │                 │              │        Each subtask
-     ▼                 ▼              ▼        repeats process
-[EXECUTE or       [EXECUTE or     [EXECUTE or
- PLAN again]       PLAN again]     PLAN again]
-     │                 │              │
-     └─────────────────┴──────────────┘
-                       │
-              ┌────────▼────────┐
-              │   AGGREGATOR    │ ← Combines all results
-              └────────┬────────┘
-                       │ Returns to parent
-              ┌────────▼────────┐
-              │  Final Result   │
-              └─────────────────┘
-
-📌 Key Points:
-- ➡️ Horizontal arrows show dependencies (task waits for predecessor)
-- 🔄 RECURSIVE: Each node can spawn its own subtree
-- Tasks without dependencies execute in parallel
-```
 
 ### The Recursive Process
 
@@ -193,60 +147,8 @@ Tasks can depend on siblings for context:
 
 One of SentientResearchAgent's most powerful features is **customizable recursion depth**, allowing you to control the granularity of task decomposition.
 
-### Depth Levels Explained
+*Note: at the moment, we have found most use-cases work well for depths **<= 3***
 
-#### **Depth 1 - Direct Execution**
-```
-Goal: "Summarize this article"
-→ WRITE: Create summary (Done)
-```
-- Single operation
-- No decomposition
-- Fastest execution
-
-#### **Depth 2 - Basic Decomposition**
-```
-Goal: "Research and summarize quantum computing"
-├── SEARCH: Find quantum computing information
-└── WRITE: Create summary
-```
-- Simple two-step process
-- Minimal overhead
-- Good for straightforward tasks
-
-#### **Depth 3-4 - Balanced Approach**
-```
-Goal: "Create a blog post about AI ethics"
-├── SEARCH: Research AI ethics topics
-├── THINK: Identify key themes
-├── WRITE: Create outline
-├── WRITE: Develop each section
-└── THINK: Review and refine
-```
-- Thorough but efficient
-- Good balance of depth and speed
-- Suitable for most use cases
-
-#### **Depth 5+ - Comprehensive Analysis**
-```
-Goal: "Develop a business strategy for entering Asian markets"
-├── SEARCH: Market research for each country
-│   ├── SEARCH: Japan market data
-│   ├── SEARCH: China market data
-│   └── SEARCH: Southeast Asia data
-├── THINK: Analyze market opportunities
-│   ├── THINK: Evaluate market sizes
-│   ├── THINK: Assess competition
-│   └── THINK: Identify barriers
-├── WRITE: Country-specific strategies
-│   ├── WRITE: Japan entry plan
-│   ├── WRITE: China entry plan
-│   └── WRITE: SEA entry plan
-└── WRITE: Comprehensive strategy document
-```
-- Maximum thoroughness
-- Complex multi-level analysis
-- For critical, high-stakes tasks
 
 ### Controlling Depth
 
@@ -268,10 +170,9 @@ result = await agent.run("Your task here")
 
 | Task Complexity | Recommended Depth | Use Cases |
 |----------------|-------------------|-----------|
-| Simple | 1-2 | Summaries, quick searches, basic writing |
-| Moderate | 3-4 | Blog posts, reports, standard analysis |
-| Complex | 5-6 | Research papers, business strategies |
-| Very Complex | 7+ | Multi-domain projects, comprehensive systems |
+| Simple | 1 | Summaries, quick searches, basic writing |
+| Moderate | 2-3 | Blog posts, reports, standard analysis |
+| Complex | 3-4 | in-depth reports, comprehensive story generation |
 
 ## 🔍 Stage Tracing & Transparency
 
@@ -308,84 +209,6 @@ Stage Tracing provides a detailed log of:
    - Test different approaches quickly
    - Build confidence in your agents
 
-### Stage Tracing Example
-
-```json
-{
-  "stage": "task_planning",
-  "node_id": "root.1",
-  "timestamp": "2024-01-15T10:30:00Z",
-  "input": {
-    "goal": "Create a podcast about renewable energy",
-    "context": {
-      "user_preferences": "engaging, 10 minutes, general audience"
-    }
-  },
-  "agent": "PodcastPlanner",
-  "processing": {
-    "identified_subtasks": [
-      "Research trending renewable energy topics",
-      "Select most engaging angle",
-      "Create episode structure",
-      "Write script with timestamps"
-    ],
-    "reasoning": "Podcast creation requires research, planning, and writing phases"
-  },
-  "output": {
-    "plan": {
-      "tasks": [
-        {"id": "1", "type": "SEARCH", "goal": "Research trending renewable energy topics"},
-        {"id": "2", "type": "THINK", "goal": "Select most engaging angle for general audience"},
-        {"id": "3", "type": "WRITE", "goal": "Create episode structure with segments"},
-        {"id": "4", "type": "WRITE", "goal": "Write full script with timestamps"}
-      ]
-    }
-  },
-  "metrics": {
-    "processing_time": 1.2,
-    "tokens_used": 450
-  }
-}
-```
-
-### Accessing Stage Traces
-
-```python
-# Enable detailed tracing
-agent = SentientAgent.create(enable_tracing=True)
-result = await agent.run("Your task")
-
-# Access the trace
-trace = result.execution_trace
-for stage in trace.stages:
-    print(f"Stage: {stage.name}")
-    print(f"Input: {stage.input}")
-    print(f"Output: {stage.output}")
-    print(f"Duration: {stage.duration}s")
-```
-
-### Using Traces for Improvement
-
-1. **Identify Slow Stages**
-   ```python
-   slow_stages = [s for s in trace.stages if s.duration > 5.0]
-   ```
-
-2. **Find Failed Operations**
-   ```python
-   failures = [s for s in trace.stages if s.status == "failed"]
-   ```
-
-3. **Analyze Token Usage**
-   ```python
-   total_tokens = sum(s.tokens_used for s in trace.stages)
-   ```
-
-4. **Export for Analysis**
-   ```python
-   trace.export_to_json("execution_trace.json")
-   trace.export_to_csv("execution_metrics.csv")
-   ```
 
 ## 🌳 Hierarchical Task Decomposition
 
@@ -638,46 +461,6 @@ TaskType.THINK
 
 **Typical Agents**: Analyzers, planners, evaluators, strategists, decision makers
 
-### The MECE Guarantee
-
-These three task types are:
-- **Mutually Exclusive**: A task is always exactly one type
-- **Collectively Exhaustive**: Every possible task fits into one category
-
-This clean separation enables:
-- Clear agent specialization
-- Predictable execution patterns
-- Easy debugging and optimization
-- Universal applicability
-
-## 🔄 Task Status Lifecycle
-
-Tasks progress through specific states:
-
-```mermaid
-stateDiagram-v2
-    [*] --> PENDING: Created
-    PENDING --> READY: Dependencies met
-    READY --> RUNNING: Execution starts
-    RUNNING --> DONE: Success
-    RUNNING --> FAILED: Error
-    RUNNING --> PLAN_DONE: Plan created
-    PLAN_DONE --> AGGREGATING: Children complete
-    AGGREGATING --> DONE: Aggregation complete
-    FAILED --> [*]
-    DONE --> [*]
-```
-
-### Status Definitions
-
-- **PENDING**: Created but waiting for dependencies
-- **READY**: All dependencies met, ready to execute
-- **RUNNING**: Currently being processed
-- **PLAN_DONE**: Planning complete, waiting for subtasks
-- **AGGREGATING**: Combining results from subtasks
-- **DONE**: Successfully completed
-- **FAILED**: Encountered an error
-- **CANCELLED**: Aborted by user
 
 ## 🤖 Agent System
 
@@ -870,73 +653,6 @@ Root ──→│                 ├──→ [Analysis] ──→ [Report]
         └─→ [Research B] ─┘
 ```
 
-### 4. Depth-First vs Breadth-First
-
-**Depth-First**: Complete one branch before starting another
-- Lower memory usage
-- Better for deep hierarchies
-
-**Breadth-First**: Process all nodes at same level first
-- Better parallelization
-- Good for wide, shallow trees
-
-## 🎮 Human-in-the-Loop (HITL)
-
-HITL enables human oversight and intervention at critical points.
-
-### Intervention Points
-
-#### 1. Plan Review
-Before executing a generated plan:
-```python
-{
-  "checkpoint": "plan_generation",
-  "node_id": "root",
-  "plan": {
-    "subtasks": [...],
-    "strategy": "parallel_research_then_synthesis"
-  }
-}
-```
-
-#### 2. Atomization Review
-When deciding task complexity:
-```python
-{
-  "checkpoint": "atomization",
-  "node_id": "root.1",
-  "decision": "too_complex_needs_planning",
-  "reasoning": "Task requires multiple research steps"
-}
-```
-
-#### 3. Pre-Execution Review
-Before executing atomic tasks:
-```python
-{
-  "checkpoint": "pre_execution",
-  "node_id": "root.2.1",
-  "agent": "WebSearcher",
-  "action": "search_academic_papers"
-}
-```
-
-### HITL Configuration
-
-```yaml
-execution:
-  enable_hitl: true
-  hitl_root_plan_only: true  # Only review top-level plans
-  hitl_timeout_seconds: 300  # 5-minute timeout
-```
-
-### HITL Benefits
-
-- **Quality Control**: Catch issues before execution
-- **Learning**: System improves from corrections
-- **Trust**: Users maintain control
-- **Flexibility**: Adapt to changing requirements
-
 ## 🎯 Putting It All Together
 
 Here's how these concepts work in practice:
@@ -972,81 +688,3 @@ Here's how these concepts work in practice:
 - Plan for failure at each level
 - Implement retry strategies
 - Provide meaningful error messages
-
-## 🔧 Built on AgnoAgents
-
-SentientResearchAgent leverages the power of [AgnoAgents](https://github.com/your/agnoagents), a lightweight and flexible agentic framework that provides the foundation for our hierarchical system.
-
-### What AgnoAgents Provides
-
-1. **LLM Provider Flexibility**
-   - Support for OpenAI, Anthropic, Google, and more
-   - Easy provider switching
-   - Unified interface across providers
-
-2. **Multi-Modal Capabilities**
-   - Text processing (built-in)
-   - Image understanding
-   - Code interpretation
-   - Data analysis
-
-3. **Tool Integration**
-   - Connect to any API
-   - Custom tool creation
-   - Tool calling standardization
-
-4. **MCP (Model Context Protocol)**
-   - Advanced context management
-   - Efficient token usage
-   - Context window optimization
-
-5. **Hooks System**
-   - Pre/post processing hooks
-   - Custom middleware
-   - Event-driven extensions
-
-### How SentientResearchAgent Extends AgnoAgents
-
-```python
-# AgnoAgents provides the base
-from agnoagents import Agent, Tool, Hook
-
-# SentientResearchAgent adds hierarchy
-from sentientresearchagent import HierarchicalAgent, TaskGraph
-
-# Combined power
-agent = HierarchicalAgent(
-    base_agent=Agent(...),  # AgnoAgents foundation
-    task_decomposer=TaskGraph(...),  # Our hierarchical layer
-    execution_flow=ExecutionEngine(...)  # Our orchestration
-)
-```
-
-### Benefits of This Architecture
-
-1. **Best of Both Worlds**
-   - AgnoAgents: Robust agent primitives
-   - SentientResearchAgent: Hierarchical orchestration
-
-2. **Future-Proof**
-   - New LLM providers automatically supported
-   - Multi-modal features inherited
-   - Tool ecosystem compatibility
-
-3. **Community Leverage**
-   - AgnoAgents community tools work here
-   - Shared improvements benefit both projects
-   - Larger ecosystem of extensions
-
----
-
-## 📚 Next Steps
-
-Now that you understand the core concepts:
-
-- [Agents Guide](AGENTS_GUIDE.md) - Deep dive into the agent system
-- [Execution Flow](EXECUTION_FLOW.md) - Step-by-step execution walkthrough
-- [Examples](../examples/) - See these concepts in action
-- [Quick Start Cookbook](QUICKSTART_COOKBOOK.md) - Start building immediately
-
-Remember: The power of SentientResearchAgent comes from combining these simple concepts into sophisticated systems. With the MECE framework (Think, Write, Search), hierarchical decomposition, and transparent execution, you can build ANY intelligent agent you can imagine. Start simple, experiment, and build your way up to complex workflows! 🚀
