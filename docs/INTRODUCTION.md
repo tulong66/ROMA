@@ -142,16 +142,8 @@ One of SentientResearchAgent's most powerful features is **customizable recursio
 
 ```python
 # Shallow depth for quick tasks
-agent = SentientAgent.create(max_depth=2)
+agent = SentientAgent.create(max_depth=1)
 quick_result = await agent.run("Summarize this article")
-
-# Deep depth for comprehensive analysis
-agent = SentientAgent.create(max_depth=5)
-detailed_result = await agent.run("Create a complete business plan")
-
-# Automatic depth (recommended)
-agent = SentientAgent.create()  # System determines optimal depth
-result = await agent.run("Your task here")
 ```
 
 ### Depth Guidelines
