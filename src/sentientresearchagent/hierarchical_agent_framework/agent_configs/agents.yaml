@@ -407,14 +407,11 @@ agents:
     #   reasoning: true
     prompt_source: "prompts.executor_prompts.CRYPTO_MARKET_ANALYZER_SYSTEM_MESSAGE"
     tools: 
-      - name: "PythonTools"
-        params:
-          save_and_run: false
       - "ReasoningTools"
     toolkits:
       - name: "E2BTools"
         params:
-          timeout: 0
+          timeout: 86400
           filesystem: true
           command_execution: true
           sandbox_options:
