@@ -11,6 +11,8 @@ old_project_runs/
 old_projects/
 # Runtime directory (contains all runtime files)
 runtime/
+experiments/
+notebooks/
 
 # Agent runtime data and cache (legacy - to be migrated)
 .agent_cache/
