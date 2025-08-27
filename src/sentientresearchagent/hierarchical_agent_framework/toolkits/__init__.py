@@ -15,7 +15,7 @@ Usage:
     from sentientresearchagent.hierarchical_agent_framework.toolkits import (
         BaseDataToolkit, BaseAPIToolkit,  # Base classes
         DataValidator, ResponseBuilder,   # Utilities
-        BinanceToolkit, CoinGeckoToolkit  # Data toolkits
+        BinanceToolkit, CoinGeckoToolkit, ArkhamToolkit, DefiLlamaToolkit  # Data toolkits
     )
 """
 
@@ -39,6 +39,8 @@ from .utils import (
 from .data import (
     BinanceToolkit,
     CoinGeckoToolkit,
+    ArkhamToolkit,
+    DefiLlamaToolkit,
 )
 
 # Comprehensive exports for easy importing
@@ -58,4 +60,6 @@ __all__ = [
     # Data toolkits
     "BinanceToolkit",
     "CoinGeckoToolkit",
+    "ArkhamToolkit",
+    "DefiLlamaToolkit",
 ]

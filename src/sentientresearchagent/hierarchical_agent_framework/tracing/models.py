@@ -50,6 +50,11 @@ class ProcessingStage(BaseModel):
     user_input: Optional[str] = None
     llm_response: Optional[str] = None
     
+    # Tool execution data
+    tool_calls: Optional[List[Dict[str, Any]]] = None
+    tool_execution_count: Optional[int] = None
+    tool_call_duration_ms: Optional[float] = None
+    
     # Context and processing data
     input_context: Optional[Dict[str, Any]] = None
     processing_parameters: Optional[Dict[str, Any]] = None

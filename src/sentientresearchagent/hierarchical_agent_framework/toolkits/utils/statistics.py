@@ -85,25 +85,38 @@ class StatisticalAnalyzer:
         if len(prices) <= 1:
             return {}
             
-        returns = _np.diff(prices) / prices[:-1]
-        total_return = (prices[-1] - prices[0]) / prices[0]
+        # Calculate returns with protection against division by zero
+        with _np.errstate(divide='ignore', invalid='ignore'):
+            returns = _np.diff(prices) / prices[:-1]
+            returns = _np.nan_to_num(returns, nan=0.0, posinf=0.0, neginf=0.0)
+            total_return = (prices[-1] - prices[0]) / prices[0] if prices[0] != 0 else 0.0
         
-        # Calculate max drawdown
+        # Calculate max drawdown with protection against division by zero
         running_max = _np.maximum.accumulate(prices)
-        drawdowns = (prices - running_max) / running_max
+        with _np.errstate(divide='ignore', invalid='ignore'):
+            drawdowns = (prices - running_max) / running_max
+            drawdowns = _np.nan_to_num(drawdowns, nan=0.0, posinf=0.0, neginf=0.0)
         max_drawdown = float(_np.min(drawdowns))
         
         # Determine period length for annualization
-        period_days = len(prices)
+        period_days = len(prices)  # Default assumption: 1 price point = 1 day
         if timestamps is not None and len(timestamps) >= 2:
             period_seconds = (timestamps[-1] - timestamps[0]) / 1000  # Assuming milliseconds
             period_days = period_seconds / 86400  # Convert to days
         
+        # Calculate annualization factor with safeguards
+        # Note: Without timestamps, we assume each price represents 1 day
+        # This may not be accurate for intraday data (hourly, minutely, etc.)
         annualization_factor = 365 / period_days if period_days > 0 else 1
+        
+        # Cap unrealistic annualized returns (occurs when period is very short)
+        raw_annualized_return = ((1 + total_return) ** annualization_factor - 1) * 100
+        # If annualized return is extreme (>1000% or <-90%), mark as unreliable
+        annualized_return_pct = raw_annualized_return if abs(raw_annualized_return) < 1000 else float('nan')
         
         return {
             "total_return_pct": float(total_return * 100),
-            "annualized_return_pct": float(((1 + total_return) ** annualization_factor - 1) * 100),
+            "annualized_return_pct": annualized_return_pct,
             "daily_returns_mean": float(_np.mean(returns) * 100),
             "daily_returns_std": float(_np.std(returns) * 100),
             "sharpe_ratio": float(_np.mean(returns) / _np.std(returns)) if _np.std(returns) != 0 else 0,
@@ -126,7 +139,10 @@ class StatisticalAnalyzer:
         if len(prices) <= 1:
             return {}
             
-        returns = _np.diff(prices) / prices[:-1]
+        # Calculate returns with numerical stability  
+        with _np.errstate(divide='ignore', invalid='ignore'):
+            returns = _np.diff(prices) / prices[:-1]
+            returns = _np.nan_to_num(returns, nan=0.0, posinf=0.0, neginf=0.0)
         daily_vol = _np.std(returns) * 100
         annualized_vol = daily_vol * _np.sqrt(365)
         
@@ -171,13 +187,32 @@ class StatisticalAnalyzer:
         
         # Price-volume correlation if prices provided
         if prices is not None and len(prices) > 1 and len(volumes) > 1:
-            price_returns = _np.diff(prices) / prices[:-1] if len(prices) > 1 else _np.array([0])
-            volume_changes = _np.diff(volumes) / volumes[:-1] if len(volumes) > 1 else _np.array([0])
+            # Calculate price returns with protection against division by zero
+            with _np.errstate(divide='ignore', invalid='ignore'):
+                price_returns = _np.diff(prices) / prices[:-1] if len(prices) > 1 else _np.array([0])
+                # Replace inf and -inf with 0, and handle NaN
+                price_returns = _np.nan_to_num(price_returns, nan=0.0, posinf=0.0, neginf=0.0)
+                
+                # Calculate volume changes with protection against division by zero
+                volume_changes = _np.diff(volumes) / volumes[:-1] if len(volumes) > 1 else _np.array([0])
+                # Replace inf and -inf with 0, and handle NaN
+                volume_changes = _np.nan_to_num(volume_changes, nan=0.0, posinf=0.0, neginf=0.0)
             
             if len(price_returns) > 1 and len(volume_changes) > 1:
                 min_len = min(len(price_returns), len(volume_changes))
-                correlation = _np.corrcoef(price_returns[:min_len], volume_changes[:min_len])[0, 1]
-                stats["volume_price_correlation"] = float(correlation) if not _np.isnan(correlation) else 0
+                # Additional check to ensure we have valid data for correlation
+                price_slice = price_returns[:min_len]
+                volume_slice = volume_changes[:min_len]
+                
+                # Only calculate correlation if we have non-zero variance in both arrays
+                if _np.var(price_slice) > 1e-10 and _np.var(volume_slice) > 1e-10:
+                    try:
+                        correlation = _np.corrcoef(price_slice, volume_slice)[0, 1]
+                        stats["volume_price_correlation"] = float(correlation) if not _np.isnan(correlation) else 0.0
+                    except (ValueError, ZeroDivisionError):
+                        stats["volume_price_correlation"] = 0.0
+                else:
+                    stats["volume_price_correlation"] = 0.0
         
         return stats
 
@@ -578,6 +613,71 @@ class StatisticalAnalyzer:
             return "moderate"
         else:
             return "low"
+    
+    @staticmethod
+    def calculate_gini_coefficient(values: _np.ndarray) -> float:
+        """Calculate Gini coefficient for wealth/asset distribution.
+        
+        The Gini coefficient is a measure of inequality within a distribution.
+        It ranges from 0 (perfect equality) to 1 (perfect inequality).
+        
+        Args:
+            values: Array of values (e.g., token balances, wealth amounts)
+            
+        Returns:
+            float: Gini coefficient between 0 and 1
+        """
+        if len(values) == 0:
+            return 0.0
+        
+        # Sort values
+        sorted_values = _np.sort(values)
+        n = len(sorted_values)
+        
+        # Calculate total sum
+        total = _np.sum(sorted_values)
+        if total == 0:
+            return 0.0
+        
+        # Calculate cumulative sum weighted by index
+        cumsum = _np.sum((2 * _np.arange(1, n + 1) - n - 1) * sorted_values)
+        
+        # Gini coefficient formula
+        gini = cumsum / (n * total)
+        
+        return float(max(0.0, min(1.0, gini)))  # Clamp between 0 and 1
+    
+    @staticmethod
+    def calculate_distribution_stats(values: _np.ndarray) -> Dict[str, float]:
+        """Calculate distribution statistics for any array of values.
+        
+        Args:
+            values: Array of numeric values
+            
+        Returns:
+            dict: Distribution statistics including percentiles and spread
+        """
+        if len(values) == 0:
+            return {}
+        
+        percentiles = [10, 25, 50, 75, 90, 95, 99]
+        stats = {}
+        
+        for p in percentiles:
+            stats[f"p{p}"] = float(_np.percentile(values, p))
+        
+        stats.update({
+            "mean": float(_np.mean(values)),
+            "median": float(_np.median(values)),  # Added median field
+            "std": float(_np.std(values)),
+            "min": float(_np.min(values)),
+            "max": float(_np.max(values)),
+            "range": float(_np.max(values) - _np.min(values)),
+            "iqr": float(_np.percentile(values, 75) - _np.percentile(values, 25)),
+            "gini_coefficient": StatisticalAnalyzer.calculate_gini_coefficient(values)
+        })
+        
+        return stats
 
     # =========================================================================
     # Generic Analysis Orchestration (leverages existing methods)

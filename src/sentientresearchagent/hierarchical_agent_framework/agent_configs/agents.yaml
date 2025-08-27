@@ -407,17 +407,21 @@ agents:
     #   reasoning: true
     prompt_source: "prompts.executor_prompts.CRYPTO_MARKET_ANALYZER_SYSTEM_MESSAGE"
     tools: 
-      - name: "PythonTools"
-        params:
-          save_and_run: false
       - "ReasoningTools"
     toolkits:
+      - name: "E2BTools"
+        params:
+          timeout: 86400
+          filesystem: true
+          command_execution: true
+          sandbox_options:
+            template: "sentient-e2b-s3"
       - name: "BinanceToolkit"
         params:
           default_market_type: "spot"
           symbols: ['ICPUSD', 'POLUSD', 'LTCUSD', 'IOTAUSD', 'CRVUSDT', 'MKRUSDT', 'WBTCBTC', 'ASTRUSDT', 'OPUSDT', 'MASKUSDT', 'CHZUSDT', 'SHIBUSD', 'ARBUSDT', 'JTOUSDT', 'TUSDT', 'BTCUSD', 'RENDERUSD', 'ONGUSDT', 'PEPEUSD', 'FILUSDT', 'VTHOUSDT', 'XRPUSD', 'FORTUSDT', 'AIXBTUSDT', 'NEARUSDT', 'TRUMPUSDT', 'XRPUSDT', 'OPUSD', 'MEUSDT', 'POLUSDT', 'ORCAUSDT', 'BOSONUSDT', 'GUSDT', 'SOLBTC', 'ONEUSD', 'ADABTC', 'FLOWUSDT', 'OCEANUSDT', 'ENSUSD', 'SUIUSD', 'SUSDT', 'STMXUSDT', 'ETHUSD', 'ALPINEUSDT', 'BNBUSD', 'PEPEUSDT', 'AVAXUSD', 'CRVUSD', 'YFIUSDT', 'FLOKIUSD', 'CTSIUSDT', 'ENAUSDT', 'SUSHIUSDT', 'JAMUSDT', 'ICPUSDT', 'ALGOUSDT', 'GTCUSDT', 'XECUSDT', 'FLUXUSDT', '1INCHUSDT', 'NMRUSDT', 'CELRUSDT', 'KDAUSDT', 'XLMUSD', 'MEUSD', 'IOSTUSDT', 'ADAUSDT', 'BONKUSD', 'ACHUSDT', 'STORJUSDT', 'ZECUSDT', 'FILUSD', 'MANAUSD', 'ALGOUSD', 'DGBUSDT', 'PORTOUSDT', 'MANAUSDT', 'FLOKIUSDT', 'ONEUSDT', 'LINKUSD', 'JUPUSDT', 'OGNUSDT', 'EOSUSDT', 'WIFUSDT', 'ETHBTC', 'GALAUSDT', 'LDOUSDT', 'PONDUSDT', 'SUSD', 'LAYERUSDT', 'VIRTUALUSDT', 'APEUSDT', 'ICXUSDT', 'FETUSD', 'LTCUSDT', 'BANDUSDT', 'TLMUSDT', 'FETUSDT', 'DASHUSDT', 'LTOUSDT', 'CELOUSDT', 'EGLDUSDT', 'BCHUSD', 'TRUMPUSD', 'HBARUSDT', 'RLCUSDT', 'REEFUSDT', 'SANDUSD', 'PROMUSDT', 'SOLUSDC', 'TFUELUSDT', 'ETCUSD', 'GALAUSD', 'METISUSD', 'XNOUSDT', 'XTZUSDT', 'LRCUSDT', 'EIGENUSD', 'VETUSD', 'LPTUSD', 'NEOUSDT', 'BONKUSDT', 'RAREUSDT', 'DOGEUSDT', 'XLMUSDT', 'EIGENUSDT', 'LAZIOUSDT', 'AAVEUSD', 'HYPEUSDT', 'HBARUSD', 'ZENUSDT', 'POLYXUSDT', 'SUIUSDT', 'KNCUSDT', 'BNBBTC', 'SHIBUSDT', 'COTIUSDT', 'SANDUSDT', 'AUDIOUSDT', 'SOLUSDT', 'ONTUSDT', 'QTUMUSDT', 'RVNUSD', 'VOXELUSDT', 'ENSUSDT', 'UNIUSDT', 'DAIUSDT', 'SNXUSDT', 'KDAUSD', 'BATUSDT', 'GLMUSDT', 'ZILUSD', 'ENJUSDT', 'COMPUSDT', 'BTCUSDC', 'SYSUSDT', 'ALICEUSDT', 'SKLUSDT', 'TURBOUSDT', 'BCHUSDT', 'ORBSUSDT', 'SUSHIUSD', 'BTRSTUSDT', 'FARTCOINUSDT', 'BLURUSDT', 'IMXUSDT', 'ZILUSDT', 'DATAUSDT', 'AVAXUSDT', 'SANTOSUSDT', 'DOTUSDT', 'MAGICUSDT', 'DUSDT', 'BNBUSDT', 'GRTUSD', 'SOLUSD', 'OXTUSDT', 'PNUTUSDT', 'KAVAUSDT', 'BICOUSDT', 'ETHUSDT', 'LPTUSDT', 'FORTHUSDT', 'LOOMUSDT', 'APTUSDT', 'TRACUSDT', 'QNTUSDT', 'ADAUSD', 'ILVUSDT', 'RVNUSDT', 'HYPEUSD', 'SPXUSDT', 'ADXUSDT', 'ETCUSDT', 'ZRXUSDT', 'LOKAUSDT', 'LINKUSDT', 'ATOMUSD', 'AXLUSDT', 'ROSEUSDT', 'CLVUSDT', 'PAXGUSDT', 'VETUSDT', 'BNTUSDT', 'IOTAUSDT', 'ATOMUSDT', 'USDTUSD', 'DGBUSD', 'RENDERUSDT', 'AXSUSDT', 'DOTUSD', 'REQUSDT', 'USDCUSDT', 'METISUSDT', 'DOGEUSD', 'API3USDT', 'APTUSD', 'KAITOUSDT', 'THETAUSD', 'WAXPUSDT', 'LSKUSDT', 'AAVEUSDT', 'GRTUSDT', 'THETAUSDT', 'NEIROUSDT', 'KSMUSDT', 'SLPUSDT', 'STGUSDT', 'DIAUSDT', 'UNIUSD', 'IOTXUSDT', 'JUPUSD', 'ANKRUSDT', 'NEARUSD', 'ADAUSDC', 'ETHUSDC', 'PENGUUSDT', 'BALUSDT', 'VTHOUSD', 'USDCUSD', 'RADUSDT', 'BTCUSDT']
           data_dir: "./data/binance"
-          parquet_threshold: 500
+          parquet_threshold: 100
         available_tools:
           - "get_current_price"
           - "get_klines"
@@ -427,7 +431,7 @@ agents:
       - name: "CoingeckoToolkit"
         params:
           data_dir: "./data/coingecko"
-          parquet_threshold: 500
+          parquet_threshold: 100
         available_tools:
           - "get_coin_info"
           - "get_coin_price"
@@ -440,6 +444,37 @@ agents:
           - "get_coins_markets"
           - "get_coin_ohlc"
           - "get_global_crypto_data"
+      - name: "DefiLlamaToolkit"
+        params:
+          data_dir: "./data/defillama"
+          base_url: "https://api.llama.fi"
+          pro_base_url: "https://pro-api.llama.fi"
+          parquet_threshold: 100
+        available_tools:
+          - "get_protocols"
+          - "get_protocol_tvl"
+          - "get_protocol_fees"
+          - "get_chain_fees"
+          - "get_yield_pools"
+          - "get_active_users"
+          - "get_chain_assets"
+          - "get_protocol_detail"
+          - "get_chains"
+          - "get_chain_historical_tvl"
+      - name: "ArkhamToolkit"
+        params:
+          default_chain: "ethereum"
+          data_dir: "./data/arkham"
+          parquet_threshold: 100
+          supported_chains: ["ethereum", "bitcoin", "polygon", "avalanche", "bsc"]
+          include_entity_data: true
+        available_tools:
+          - "get_top_tokens"
+          - "get_token_holders"
+          - "get_token_top_flow"
+          - "get_supported_chains"
+          - "get_transfers"
+          - "get_token_balances"
     registration:
       action_keys:
         - action_verb: "execute"

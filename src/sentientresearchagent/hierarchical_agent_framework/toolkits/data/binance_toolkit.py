@@ -118,7 +118,7 @@ from loguru import logger
 
 from sentientresearchagent.hierarchical_agent_framework.toolkits.base import BaseDataToolkit, BaseAPIToolkit
 from sentientresearchagent.hierarchical_agent_framework.toolkits.utils import (
-    DataHTTPClient, StatisticalAnalyzer, DataValidator, ResponseBuilder, FileNameGenerator
+    DataHTTPClient, StatisticalAnalyzer, DataValidator, FileNameGenerator
 )
 
 __all__ = ["BinanceToolkit"]
@@ -150,6 +150,18 @@ _MARKET_CONFIG = {
 
 DEFAULT_DATA_DIR = Path(__file__).resolve().parent / "binance"
 BIG_DATA_THRESHOLD = int(os.getenv("BINANCE_BIG_DATA_THRESHOLD", "1000"))
+
+# API endpoint mappings
+_API_ENDPOINTS = {
+    "ticker_price": "/ticker/price",
+    "ticker_24hr": "/ticker/24hr", 
+    "order_book": "/depth",
+    "klines": "/klines",
+    "book_ticker": "/ticker/bookTicker",
+    "exchange_info": "/exchangeInfo",
+    "ping": "/ping",
+    "server_time": "/time"
+}
 
 
 class BinanceAPIError(Exception):
@@ -187,6 +199,11 @@ class BinanceToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
     efficient downstream processing with pandas/polars.
     """
 
+    # Toolkit metadata for enhanced display
+    _toolkit_category = "trading"
+    _toolkit_type = "data_api" 
+    _toolkit_icon = "📈"
+
     def __init__(
         self,
         symbols: Optional[Sequence[str]] = None,
@@ -214,9 +231,10 @@ class BinanceToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
                        Not required for public endpoints.
             data_dir: Directory path where Parquet files will be stored for large
                      responses. Defaults to tools/data/binance/
-            parquet_threshold: Minimum number of items in response to trigger
-                             Parquet storage. Responses larger than this will be
+            parquet_threshold: Size threshold in KB for Parquet storage.
+                             Responses with JSON payload > threshold KB will be
                              saved to disk and file path returned instead of data.
+                             Recommended: 50-200 KB for exchange data (many records).
             name: Name identifier for this toolkit instance
             **kwargs: Additional arguments passed to Toolkit
             
@@ -278,6 +296,7 @@ class BinanceToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
             data_dir=data_dir,
             parquet_threshold=parquet_threshold,
             file_prefix="binance_",
+            toolkit_name="binance",
         )
         
         # Initialize statistical analyzer
@@ -479,7 +498,7 @@ class BinanceToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
         
         try:
             # Use standardized API request method
-            response_data = await self._make_api_request("/exchangeInfo", market_type)
+            response_data = await self._make_api_request(_API_ENDPOINTS["exchange_info"], market_type)
             symbols = {s["symbol"] for s in response_data.get("symbols", []) if s.get("status") == "TRADING"}
 
             # Use enhanced caching from BaseAPIToolkit
@@ -496,7 +515,7 @@ class BinanceToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
                 f"Loaded {len(symbols)} symbols for {config['description']}"
             )
             
-            return ResponseBuilder.success_response(
+            return self.response_builder.success_response(
                 message=f"Successfully loaded {len(symbols)} symbols for {config['description']}",
                 symbol_count=len(symbols),
                 market_type=market_type,
@@ -506,8 +525,8 @@ class BinanceToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
             )
         except Exception as e:
             logger.error(f"Failed to reload symbols for {market_type}: {e}")
-            return ResponseBuilder.api_error_response(
-                api_endpoint="/exchangeInfo",
+            return self.response_builder.api_error_response(
+                api_endpoint=_API_ENDPOINTS["exchange_info"],
                 api_message=f"Failed to reload symbols: {str(e)}",
                 market_type=market_type
             )
@@ -606,7 +625,7 @@ class BinanceToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
                 
         # Check user symbols filter if configured
         if is_valid and self._user_symbols and symbol not in self._user_symbols:
-            return ResponseBuilder.validation_error_response(
+            return self.response_builder.validation_error_response(
                 field_name="symbol",
                 field_value=symbol,
                 validation_errors=[f"Symbol '{symbol}' not in configured allowlist"],
@@ -737,7 +756,7 @@ class BinanceToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
             
             # Use standardized API request method
             price_data = await self._make_api_request(
-                "/ticker/price", 
+                _API_ENDPOINTS["ticker_price"], 
                 params["market_type"], 
                 {"symbol": params["symbol"]}
             )
@@ -783,18 +802,18 @@ class BinanceToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
             }
             
             # Use ResponseBuilder for standardized success response with analysis
-            return ResponseBuilder.success_response(
+            return self.response_builder.success_response(
                 data=response_data,
                 symbol=params["symbol"],
                 market_type=params["market_type"],
-                endpoint="/ticker/price",
+                endpoint=_API_ENDPOINTS["ticker_price"],
                 analysis=analysis
             )
             
         except Exception as e:
             logger.error(f"Failed to get current price for {symbol} on {market_type or self.default_market_type}: {e}")
-            return ResponseBuilder.api_error_response(
-                api_endpoint="/ticker/price",
+            return self.response_builder.api_error_response(
+                api_endpoint=_API_ENDPOINTS["ticker_price"],
                 api_message=f"Failed to get current price: {str(e)}",
                 symbol=symbol,
                 market_type=market_type or self.default_market_type
@@ -940,7 +959,7 @@ class BinanceToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
         try:
             params = await self._validate_symbol_and_prepare_params(symbol, market_type)
         except ValueError as e:
-            return ResponseBuilder.validation_error_response(
+            return self.response_builder.validation_error_response(
                 field_name="symbol",
                 field_value=symbol,
                 validation_errors=[str(e)],
@@ -961,7 +980,7 @@ class BinanceToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
         else:
             # For usdm/coinm, only 24h is supported
             if window_size != "24h":
-                return ResponseBuilder.error_response(
+                return self.response_builder.error_response(
                     message=f"Window size '{window_size}' not supported for {market_type} market. Only '24h' is supported.",
                     error_type="unsupported_period",
                     details={
@@ -972,7 +991,7 @@ class BinanceToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
                     }
                 )
             api_params = {"symbol": params["symbol"]}
-            endpoint = "/ticker/24hr"
+            endpoint = _API_ENDPOINTS["ticker_24hr"]
 
         try:
             data = await self._make_api_request(endpoint, market_type, api_params)
@@ -1013,7 +1032,7 @@ class BinanceToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
                 "volume_rating": "high" if volume > 1000 else "moderate" if volume > 100 else "low"
             }
 
-            return ResponseBuilder.success_response(
+            return self.response_builder.success_response(
                 data=data,
                 symbol=params["symbol"],
                 market_type=market_type,
@@ -1022,8 +1041,8 @@ class BinanceToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
             )
         except Exception as e:
             logger.error(f"Failed to get ticker change for {symbol} on {market_type}: {e}")
-            return ResponseBuilder.api_error_response(
-                api_endpoint="/ticker/24hr",
+            return self.response_builder.api_error_response(
+                api_endpoint=_API_ENDPOINTS["ticker_24hr"],
                 api_message=f"Failed to get ticker statistics: {str(e)}",
                 symbol=symbol,
                 market_type=market_type
@@ -1177,7 +1196,7 @@ class BinanceToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
         try:
             params = await self._validate_symbol_and_prepare_params(symbol, market_type)
         except ValueError as e:
-            return ResponseBuilder.validation_error_response(
+            return self.response_builder.validation_error_response(
                 field_name="symbol",
                 field_value=symbol,
                 validation_errors=[str(e)],
@@ -1186,7 +1205,7 @@ class BinanceToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
             )
         
         try:
-            data = await self._make_api_request("/depth", market_type, {
+            data = await self._make_api_request(_API_ENDPOINTS["order_book"], market_type, {
                 "symbol": params["symbol"],
                 "limit": str(limit)
             })
@@ -1199,7 +1218,7 @@ class BinanceToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
             if bids and asks:
                 if not isinstance(bids[0], (list, tuple)) or not isinstance(asks[0], (list, tuple)):
                     logger.error(f"Unexpected data format - bids[0]: {type(bids[0])}, asks[0]: {type(asks[0])}")
-                    return ResponseBuilder.error_response(
+                    return self.response_builder.error_response(
                         message="Invalid order book data format received from API",
                         error_type="data_format_error",
                         symbol=symbol,
@@ -1268,7 +1287,7 @@ class BinanceToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
                 file_prefix=self._file_prefix
             )
             
-            return ResponseBuilder.build_data_response_with_storage(
+            return self.response_builder.build_data_response_with_storage(
                 data=book_data,
                 storage_threshold=self._parquet_threshold,
                 storage_callback=lambda data, filename: self._store_parquet(data, filename),
@@ -1279,8 +1298,8 @@ class BinanceToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
             )
         except Exception as e:
             logger.error(f"Failed to get order book for {symbol} on {market_type}: {e}")
-            return ResponseBuilder.api_error_response(
-                api_endpoint="/depth",
+            return self.response_builder.api_error_response(
+                api_endpoint=_API_ENDPOINTS["order_book"],
                 api_message=f"Failed to get order book: {str(e)}",
                 symbol=symbol,
                 market_type=market_type,
@@ -1445,7 +1464,7 @@ class BinanceToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
         try:
             params = await self._validate_symbol_and_prepare_params(symbol, market_type)
         except ValueError as e:
-            return ResponseBuilder.validation_error_response(
+            return self.response_builder.validation_error_response(
                 field_name="symbol",
                 field_value=symbol,
                 validation_errors=[str(e)],
@@ -1521,7 +1540,7 @@ class BinanceToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
                 file_prefix=self._file_prefix
             )
             
-            return ResponseBuilder.build_data_response_with_storage(
+            return self.response_builder.build_data_response_with_storage(
                 data=data,
                 storage_threshold=self._parquet_threshold,
                 storage_callback=lambda data, filename: self._store_parquet(data, filename),
@@ -1532,7 +1551,7 @@ class BinanceToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
             )
         except Exception as e:
             logger.error(f"Failed to get recent trades for {symbol} on {market_type}: {e}")
-            return ResponseBuilder.api_error_response(
+            return self.response_builder.api_error_response(
                 api_endpoint="/trades",
                 api_message=f"Failed to get recent trades: {str(e)}",
                 symbol=symbol,
@@ -1742,7 +1761,7 @@ class BinanceToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
         try:
             params = await self._validate_symbol_and_prepare_params(symbol, market_type)
         except ValueError as e:
-            return ResponseBuilder.validation_error_response(
+            return self.response_builder.validation_error_response(
                 field_name="symbol",
                 field_value=symbol,
                 validation_errors=[str(e)],
@@ -1756,7 +1775,7 @@ class BinanceToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
                 "interval": interval,
                 "limit": str(limit)
             }
-            raw_data = await self._make_api_request("/klines", market_type, api_params)
+            raw_data = await self._make_api_request(_API_ENDPOINTS["klines"], market_type, api_params)
             
             # Convert to structured format
             columns = [
@@ -1827,7 +1846,7 @@ class BinanceToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
                 file_prefix=self._file_prefix
             )
             
-            response = ResponseBuilder.build_data_response_with_storage(
+            response = self.response_builder.build_data_response_with_storage(
                 data=df,  # Use DataFrame for parquet storage
                 storage_threshold=self._parquet_threshold,
                 storage_callback=lambda data, filename: self._store_parquet(data, filename),
@@ -1844,8 +1863,8 @@ class BinanceToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
             return response
         except Exception as e:
             logger.error(f"Failed to get klines for {symbol} on {market_type}: {e}")
-            return ResponseBuilder.api_error_response(
-                api_endpoint="/klines",
+            return self.response_builder.api_error_response(
+                api_endpoint=_API_ENDPOINTS["klines"],
                 api_message=f"Failed to get candlestick data: {str(e)}",
                 symbol=symbol,
                 market_type=market_type,
@@ -2045,7 +2064,7 @@ class BinanceToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
                 symbols[i] for i, result in enumerate(validation_results)
                 if result["success"]
             ]
-            return ResponseBuilder.validation_error_response(
+            return self.response_builder.validation_error_response(
                 field_name="symbols",
                 field_value=invalid_symbols,
                 validation_errors=[f"Invalid symbols found: {', '.join(invalid_symbols)}"],
@@ -2059,7 +2078,7 @@ class BinanceToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
         try:
             if len(symbols_upper) == 1:
                 # Single symbol request
-                data = await self._make_api_request("/ticker/bookTicker", market_type, {
+                data = await self._make_api_request(_API_ENDPOINTS["book_ticker"], market_type, {
                     "symbol": symbols_upper[0]
                 })
                 
@@ -2078,7 +2097,7 @@ class BinanceToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
                         "liquidity_score": "high" if spread / bid < 0.001 else "moderate" if spread / bid < 0.01 else "low"
                     }
                 
-                return ResponseBuilder.success_response(
+                return self.response_builder.success_response(
                     data=data,
                     symbol_count=1,
                     symbols=symbols_upper,
@@ -2088,7 +2107,7 @@ class BinanceToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
             else:
                 # Multiple symbols request
                 symbols_param = f'["{"\",\"".join(symbols_upper)}"]'
-                data = await self._make_api_request("/ticker/bookTicker", market_type, {
+                data = await self._make_api_request(_API_ENDPOINTS["book_ticker"], market_type, {
                     "symbols": symbols_param
                 })
                 
@@ -2128,7 +2147,7 @@ class BinanceToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
                     file_prefix=self._file_prefix
                 )
                 
-                return ResponseBuilder.build_data_response_with_storage(
+                return self.response_builder.build_data_response_with_storage(
                     data=data,
                     storage_threshold=self._parquet_threshold,
                     storage_callback=lambda data, filename: self._store_parquet(data, filename),
@@ -2139,8 +2158,8 @@ class BinanceToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
                 )
         except Exception as e:
             logger.error(f"Failed to get book ticker for {symbols} on {market_type}: {e}")
-            return ResponseBuilder.api_error_response(
-                api_endpoint="/ticker/bookTicker",
+            return self.response_builder.api_error_response(
+                api_endpoint=_API_ENDPOINTS["book_ticker"],
                 api_message=f"Failed to get book ticker: {str(e)}",
                 symbols=symbols,
                 market_type=market_type

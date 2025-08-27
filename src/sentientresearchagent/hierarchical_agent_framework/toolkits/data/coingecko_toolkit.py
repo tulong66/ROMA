@@ -131,7 +131,7 @@ from loguru import logger
 
 from sentientresearchagent.hierarchical_agent_framework.toolkits.base import BaseDataToolkit, BaseAPIToolkit
 from sentientresearchagent.hierarchical_agent_framework.toolkits.utils import (
-    DataHTTPClient, HTTPClientError, StatisticalAnalyzer, DataValidator, ResponseBuilder, FileNameGenerator
+    DataHTTPClient, HTTPClientError, StatisticalAnalyzer, DataValidator, FileNameGenerator
 )
 
 __all__ = ["CoinGeckoToolkit", "CoinPlatform", "VsCurrency"]
@@ -173,6 +173,20 @@ DEFAULT_PRO_BASE_URL = "https://pro-api.coingecko.com/api/v3"
 DEFAULT_DATA_DIR = Path(__file__).resolve().parent / "coingecko"
 BIG_DATA_THRESHOLD = int(os.getenv("COINGECKO_BIG_DATA_THRESHOLD", "1000"))
 
+# API endpoint mappings
+_API_ENDPOINTS = {
+    "simple_price": "/simple/price",
+    "coin_info": "/coins/{coin_id}",
+    "market_chart": "/coins/{coin_id}/market_chart",
+    "market_chart_range": "/coins/{coin_id}/market_chart/range",
+    "coins_markets": "/coins/markets",
+    "coins_list": "/coins/list",
+    "ohlc": "/coins/{coin_id}/ohlc",
+    "search": "/search",
+    "global_data": "/global",
+    "contract_address": "/simple/token_price/{platform}"
+}
+
 
 class CoinGeckoAPIError(Exception):
     """Raised when the CoinGecko API returns an error response."""
@@ -212,6 +226,11 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
     efficient downstream processing with pandas/polars.
     """
 
+    # Toolkit metadata for enhanced display
+    _toolkit_category = "crypto"
+    _toolkit_type = "market_data" 
+    _toolkit_icon = "🪙"
+
     def __init__(
         self,
         coins: Optional[Sequence[str]] = None,
@@ -240,9 +259,10 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
                      Default: https://api.coingecko.com/api/v3
             data_dir: Directory path where Parquet files will be stored for large
                      responses. Defaults to tools/data/coingecko/
-            parquet_threshold: Minimum number of items in response to trigger
-                             Parquet storage. Responses larger than this will be
+            parquet_threshold: Size threshold in KB for Parquet storage.
+                             Responses with JSON payload > threshold KB will be
                              saved to disk and file path returned instead of data.
+                             Recommended: 50-200 KB for market data.
             include_community_data: Include community statistics in coin info requests
             include_developer_data: Include developer activity data in coin info requests
             name: Name identifier for this toolkit instance
@@ -346,6 +366,7 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
             data_dir=data_dir,
             parquet_threshold=parquet_threshold,
             file_prefix="coingecko_",
+            toolkit_name="coingecko",
         )
         
         # Initialize statistical analyzer
@@ -545,7 +566,7 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
         - Caching: Results cached until manual reload
         """
         try:
-            coins_list = await self._make_api_request("/coins/list")
+            coins_list = await self._make_api_request(_API_ENDPOINTS["coins_list"])
             
             # Use enhanced caching from BaseAPIToolkit
             cache_key = "coins_list"
@@ -559,7 +580,7 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
             
             logger.info(f"Loaded {len(coins_list)} coins from CoinGecko")
             
-            return ResponseBuilder.success_response(
+            return self.response_builder.success_response(
                 message="Coins list reloaded successfully",
                 coin_count=len(coins_list),
                 fetched_at=self.unix_to_iso(time.time()),
@@ -567,8 +588,8 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
             )
         except Exception as e:
             logger.error(f"Failed to reload coins list: {e}")
-            return ResponseBuilder.api_error_response(
-                api_endpoint="/coins/list",
+            return self.response_builder.api_error_response(
+                api_endpoint=_API_ENDPOINTS["coins_list"],
                 api_message=f"Failed to reload coins list: {str(e)}",
                 error_type="coins_reload_error"
             )
@@ -668,7 +689,7 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
                 
         # Check user coins filter if configured
         if is_valid and self._user_coins and coin_id not in self._user_coins:
-            return ResponseBuilder.error_response(
+            return self.response_builder.error_response(
                 message=f"Coin '{coin_id}' not in configured allowlist",
                 error_type="coin_filtered",
                 coin_id=coin_id,
@@ -782,7 +803,7 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
         base_response = {"coin_name": coin_name}
         
         if not coin_name:
-            return ResponseBuilder.validation_error_response(
+            return self.response_builder.validation_error_response(
                 field_name="coin_name",
                 field_value=coin_name,
                 validation_errors=["Coin name cannot be empty"],
@@ -791,7 +812,7 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
         
         # Get coin lookup from cache metadata for name resolution
         if not hasattr(self, '_data_caches') or 'coins_list' not in self._data_caches:
-            return ResponseBuilder.error_response(
+            return self.response_builder.error_response(
                 message="Coins list cache not available",
                 error_type="cache_unavailable",
                 **base_response
@@ -802,7 +823,7 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
         coin_lookup = metadata.get('coin_lookup', {})
         
         if not coin_lookup:
-            return ResponseBuilder.error_response(
+            return self.response_builder.error_response(
                 message="Coin lookup data not available",
                 error_type="lookup_unavailable",
                 **base_response
@@ -819,16 +840,15 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
         
         if len(exact_matches) == 1:
             coin_data = exact_matches[0]
-            return {
+            return self.response_builder.success_response(
                 **base_response,
-                "success": True,
-                "coin_id": coin_data["id"],
-                "match_type": "exact",
-                "confidence": 1.0,
-                "coin_data": coin_data
-            }
+                coin_id=coin_data["id"],
+                match_type="exact",
+                confidence=1.0,
+                coin_data=coin_data
+            )
         elif len(exact_matches) > 1:
-            return ResponseBuilder.error_response(
+            return self.response_builder.error_response(
                 message=f"Multiple coins found with exact name '{coin_name}'",
                 error_type="multiple_matches",
                 details={
@@ -847,15 +867,14 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
         
         if len(partial_matches) == 1:
             coin_data = partial_matches[0]
-            return {
+            return self.response_builder.success_response(
                 **base_response,
-                "success": True,
-                "coin_id": coin_data["id"],
-                "match_type": "partial",
-                "confidence": 0.95,
-                "coin_data": coin_data,
-                "note": f"Found partial match for '{coin_name}' -> '{coin_data['name']}'"
-            }
+                coin_id=coin_data["id"],
+                match_type="partial",
+                confidence=0.95,
+                coin_data=coin_data,
+                note=f"Found partial match for '{coin_name}' -> '{coin_data['name']}'"
+            )
         elif len(partial_matches) > 1:
             # Filter to best partial matches (prefer starts_with over contains)
             starts_with_matches = [
@@ -865,18 +884,17 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
             
             if len(starts_with_matches) == 1:
                 coin_data = starts_with_matches[0]
-                return {
+                return self.response_builder.success_response(
                     **base_response,
-                    "success": True,
-                    "coin_id": coin_data["id"],
-                    "match_type": "partial",
-                    "confidence": 0.95,
-                    "coin_data": coin_data,
-                    "note": f"Found partial match for '{coin_name}' -> '{coin_data['name']}'"
-                }
+                    coin_id=coin_data["id"],
+                    match_type="partial",
+                    confidence=0.95,
+                    coin_data=coin_data,
+                    note=f"Found partial match for '{coin_name}' -> '{coin_data['name']}'"
+                )
             
             # Multiple partial matches - return top 5 for disambiguation
-            return ResponseBuilder.error_response(
+            return self.response_builder.error_response(
                 message=f"Multiple coins found matching '{coin_name}'",
                 error_type="multiple_matches",
                 details={
@@ -936,7 +954,7 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
                             match_coin_with_confidence = {**match_coin, "confidence": round(match_similarity, 3)}
                             fuzzy_match_coins.append(match_coin_with_confidence)
                     
-                    return ResponseBuilder.error_response(
+                    return self.response_builder.error_response(
                         message=f"Multiple similar coins found for '{coin_name}'",
                         error_type="multiple_fuzzy_matches",
                         details={
@@ -964,7 +982,7 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
                 "note": f"Matched by symbol: '{coin_name}' -> '{coin_data['name']}'"
             }
         elif len(symbol_matches) > 1:
-            return ResponseBuilder.error_response(
+            return self.response_builder.error_response(
                 message=f"Multiple coins found with symbol '{coin_name}'",
                 error_type="multiple_symbol_matches",
                 details={
@@ -975,7 +993,7 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
             )
         
         # No matches found
-        return ResponseBuilder.error_response(
+        return self.response_builder.error_response(
             message=f"No coin found matching '{coin_name}'",
             error_type="no_match",
             details={
@@ -1223,7 +1241,7 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
             coin_id = validation_params["coin_id"]
             api_params = {k: v for k, v in validation_params.items() if k not in ["coin_name_or_id", "coin_id", "vs_currency"]}
             
-            data = await self._make_api_request(f"/coins/{coin_id}", api_params)
+            data = await self._make_api_request(_API_ENDPOINTS["coin_info"].format(coin_id=coin_id), api_params)
             
             # Validate coin data structure using DataValidator
             coin_validation = DataValidator.validate_structure(
@@ -1234,7 +1252,7 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
             
             if not coin_validation["valid"]:
                 logger.warning(f"Coin info data validation failed: {coin_validation['errors']}")
-                return ResponseBuilder.validation_error_response(
+                return self.response_builder.validation_error_response(
                     field_name="coin_info_data",
                     field_value=data,
                     validation_errors=coin_validation["errors"],
@@ -1273,7 +1291,7 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
             if self.include_developer_data and "developer_data" in coin_data:
                 structured_data["developer_data"] = coin_data["developer_data"]
             
-            return ResponseBuilder.success_response(
+            return self.response_builder.success_response(
                 data=structured_data,
                 coin_id=coin_id,
                 fetched_at=self.unix_to_iso(time.time())
@@ -1281,8 +1299,8 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
                 
         except Exception as e:
             logger.error(f"Failed to get coin info for {coin_name_or_id}: {e}")
-            return ResponseBuilder.api_error_response(
-                api_endpoint=f"/coins/{coin_name_or_id}",
+            return self.response_builder.api_error_response(
+                api_endpoint=_API_ENDPOINTS["coin_info"],
                 api_message=f"Failed to get coin information: {str(e)}",
                 coin_name_or_id=coin_name_or_id
             )
@@ -1435,7 +1453,7 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
             api_params = {k: v for k, v in params.items() if k not in ["coin_name_or_id", "coin_id"]}
             api_params["ids"] = coin_id
             
-            data = await self._make_api_request("/simple/price", api_params)
+            data = await self._make_api_request(_API_ENDPOINTS["simple_price"], api_params)
             
             # Validate price data structure using DataValidator
             price_validation = DataValidator.validate_structure(
@@ -1445,7 +1463,7 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
             
             if not price_validation["valid"]:
                 logger.warning(f"Price data validation failed: {price_validation['errors']}")
-                return ResponseBuilder.validation_error_response(
+                return self.response_builder.validation_error_response(
                     field_name="price_data",
                     field_value=data,
                     validation_errors=price_validation["errors"],
@@ -1456,7 +1474,7 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
             price_data = data
             
             if coin_id not in price_data:
-                return ResponseBuilder.error_response(
+                return self.response_builder.error_response(
                     f"No price data returned for coin '{coin_id}'",
                     error_type="no_data_error",
                     coin_id=coin_id,
@@ -1498,7 +1516,7 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
                     "low"
                 )
             
-            return ResponseBuilder.success_response(
+            return self.response_builder.success_response(
                 data=price_data,
                 coin_id=coin_id,
                 vs_currency=params["vs_currency"],
@@ -1508,8 +1526,8 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
             
         except Exception as e:
             logger.error(f"Failed to get coin price for {coin_name_or_id}: {e}")
-            return ResponseBuilder.api_error_response(
-                api_endpoint="/simple/price",
+            return self.response_builder.api_error_response(
+                api_endpoint=_API_ENDPOINTS["simple_price"],
                 api_message=f"Failed to get coin price: {str(e)}",
                 coin_name_or_id=coin_name_or_id,
                 vs_currency=vs_currency or self.default_vs_currency.value
@@ -1739,7 +1757,7 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
             
             api_params["vs_currency"] = validation_params["vs_currency"]
             
-            data = await self._make_api_request(f"/coins/{coin_id}/market_chart", api_params)
+            data = await self._make_api_request(_API_ENDPOINTS["market_chart"].format(coin_id=coin_id), api_params)
             
             chart_data = data
             
@@ -1752,7 +1770,7 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
             
             if not chart_validation["valid"]:
                 logger.warning(f"Market chart data validation failed: {chart_validation['errors']}")
-                return ResponseBuilder.validation_error_response(
+                return self.response_builder.validation_error_response(
                     field_name="market_chart_data",
                     field_value=chart_data,
                     validation_errors=chart_validation["errors"],
@@ -1766,7 +1784,7 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
             volumes = chart_data.get("total_volumes", [])
             
             if not prices:
-                return ResponseBuilder.error_response(
+                return self.response_builder.error_response(
                     "No market chart data returned",
                     error_type="no_data_error",
                     coin_id=coin_id,
@@ -1822,7 +1840,7 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
                     file_prefix=self._file_prefix
                 )
                 
-                return ResponseBuilder.build_data_response_with_storage(
+                return self.response_builder.build_data_response_with_storage(
                     data=structured_data,
                     storage_threshold=self._parquet_threshold,
                     storage_callback=lambda data, filename: self._store_parquet(data, filename),
@@ -1842,8 +1860,8 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
                 
         except Exception as e:
             logger.error(f"Failed to get market chart for {coin_id}: {e}")
-            return ResponseBuilder.api_error_response(
-                api_endpoint=f"/coins/{coin_id}/market_chart",
+            return self.response_builder.api_error_response(
+                api_endpoint=_API_ENDPOINTS["market_chart"],
                 api_message=f"Failed to get market chart: {str(e)}",
                 coin_id=coin_id,
                 vs_currency=vs_currency
@@ -1986,7 +2004,7 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
                 coin_names_or_ids[i] for i, result in enumerate(resolution_results)
                 if result["success"]
             ]
-            return ResponseBuilder.error_response(
+            return self.response_builder.error_response(
                 message=f"Could not resolve coins: {', '.join(failed_resolutions)}",
                 error_type="resolution_error",
                 details={
@@ -2012,7 +2030,7 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
                 "include_last_updated_at": "true"
             }
             
-            data = await self._make_api_request("/simple/price", params)
+            data = await self._make_api_request(_API_ENDPOINTS["simple_price"], params)
             
             price_data = data
             
@@ -2079,7 +2097,7 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
                 file_prefix=self._file_prefix
             )
             
-            return ResponseBuilder.build_data_response_with_storage(
+            return self.response_builder.build_data_response_with_storage(
                 data=structured_data,
                 storage_threshold=self._parquet_threshold,
                 storage_callback=lambda data, filename: self._store_parquet(data, filename),
@@ -2090,8 +2108,8 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
                 
         except Exception as e:
             logger.error(f"Failed to get multiple coins data: {e}")
-            return ResponseBuilder.api_error_response(
-                api_endpoint="/simple/price",
+            return self.response_builder.api_error_response(
+                api_endpoint=_API_ENDPOINTS["simple_price"],
                 api_message=f"Failed to get multiple coins data: {str(e)}",
                 vs_currency=vs_currency
             )
@@ -2183,7 +2201,7 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
         and simplified response format focused on price history analysis.
         """
         if not from_date:
-            return ResponseBuilder.validation_error_response(
+            return self.response_builder.validation_error_response(
                 field_name="from_date",
                 field_value=from_date,
                 validation_errors=["from_date parameter is required for historical price queries"],
@@ -2213,10 +2231,10 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
             }
             
             # Use the /market_chart/range endpoint for date range queries
-            chart_data = await self._make_api_request(f"/coins/{coin_id}/market_chart/range", api_params)
+            chart_data = await self._make_api_request(_API_ENDPOINTS["market_chart_range"].format(coin_id=coin_id), api_params)
             
             if not chart_data:
-                return ResponseBuilder.error_response(
+                return self.response_builder.error_response(
                     "No chart data returned for specified date range",
                     error_type="no_data_error",
                     coin_id=coin_id,
@@ -2237,8 +2255,8 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
             
         except Exception as e:
             logger.error(f"Failed to get historical price for {coin_name_or_id}: {e}")
-            return ResponseBuilder.api_error_response(
-                api_endpoint=f"/coins/{{id}}/market_chart/range",
+            return self.response_builder.api_error_response(
+                api_endpoint=_API_ENDPOINTS["market_chart_range"],
                 api_message=f"Failed to get historical price data: {str(e)}",
                 coin_name_or_id=coin_name_or_id,
                 vs_currency=vs_currency,
@@ -2410,7 +2428,7 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
         # Validate platform
         valid_platforms = [p.value for p in CoinPlatform]
         if platform not in valid_platforms:
-            return ResponseBuilder.error_response(
+            return self.response_builder.error_response(
                 message=f"Unsupported platform '{platform}'",
                 error_type="invalid_platform",
                 platform=platform,
@@ -2427,7 +2445,7 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
                 "include_last_updated_at": "true"
             }
             
-            data = await self._make_api_request(f"/simple/token_price/{platform}", params)
+            data = await self._make_api_request(_API_ENDPOINTS["contract_address"].format(platform=platform), params)
             
             # Validate token price data structure using DataValidator
             token_validation = DataValidator.validate_structure(
@@ -2437,7 +2455,7 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
             
             if not token_validation["valid"]:
                 logger.warning(f"Token price data validation failed: {token_validation['errors']}")
-                return ResponseBuilder.validation_error_response(
+                return self.response_builder.validation_error_response(
                     field_name="token_price_data",
                     field_value=data,
                     validation_errors=token_validation["errors"],
@@ -2449,7 +2467,7 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
             price_data = data
             
             if not price_data:
-                return ResponseBuilder.error_response(
+                return self.response_builder.error_response(
                     f"No price data found for contract {contract_address} on {platform}",
                     error_type="no_data_error",
                     platform=platform,
@@ -2477,7 +2495,7 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
                 else:
                     analysis["price_tier"] = "large"
             
-            return ResponseBuilder.success_response(
+            return self.response_builder.success_response(
                 data=price_data,
                 platform=platform,
                 contract_address=contract_address,
@@ -2488,8 +2506,8 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
             
         except Exception as e:
             logger.error(f"Failed to get token price for {contract_address}: {e}")
-            return ResponseBuilder.api_error_response(
-                endpoint=f"/simple/token_price/{platform}",
+            return self.response_builder.api_error_response(
+                api_endpoint=_API_ENDPOINTS["contract_address"],
                 error=e,
                 platform=platform,
                 contract_address=contract_address,
@@ -2670,7 +2688,7 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
         and competitive intelligence across the entire digital asset ecosystem.
         """
         if len(query.strip()) < 3:
-            return ResponseBuilder.error_response(
+            return self.response_builder.error_response(
                 message="Search query must be at least 3 characters long",
                 error_type="invalid_query",
                 query=query,
@@ -2679,7 +2697,7 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
         
         try:
             params = {"query": query.strip()}
-            data = await self._make_api_request("/search", params)
+            data = await self._make_api_request(_API_ENDPOINTS["search"], params)
             
             # Validate search data structure using DataValidator
             search_validation = DataValidator.validate_structure(
@@ -2689,7 +2707,7 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
             
             if not search_validation["valid"]:
                 logger.warning(f"Search data validation failed: {search_validation['errors']}")
-                return ResponseBuilder.validation_error_response(
+                return self.response_builder.validation_error_response(
                     field_name="search_data",
                     field_value=data,
                     validation_errors=search_validation["errors"],
@@ -2750,8 +2768,8 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
             
         except Exception as e:
             logger.error(f"Failed to search for '{query}': {e}")
-            return ResponseBuilder.api_error_response(
-                api_endpoint="/search",
+            return self.response_builder.api_error_response(
+                api_endpoint=_API_ENDPOINTS["search"],
                 api_message=f"Failed to search for '{query}': {str(e)}",
                 query=query
             )
@@ -2974,7 +2992,7 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
             # Force storage for large datasets or when platform data included
             storage_threshold = 0 if include_platform else self._parquet_threshold
             
-            return ResponseBuilder.build_data_response_with_storage(
+            return self.response_builder.build_data_response_with_storage(
                 data=coins_list,
                 storage_threshold=storage_threshold,
                 storage_callback=lambda data, filename: self._store_parquet(data, filename),
@@ -2989,8 +3007,8 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
                 
         except Exception as e:
             logger.error(f"Failed to get coins list: {e}")
-            return ResponseBuilder.api_error_response(
-                api_endpoint="/coins/list",
+            return self.response_builder.api_error_response(
+                api_endpoint=_API_ENDPOINTS["coins_list"],
                 api_message=f"Failed to get coins list: {str(e)}",
                 include_platform=include_platform
             )
@@ -3182,7 +3200,7 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
         
         # Validate parameters
         if per_page < 1 or per_page > 250:
-            return ResponseBuilder.validation_error_response(
+            return self.response_builder.validation_error_response(
                 field_name="per_page",
                 field_value=per_page,
                 validation_errors=["per_page must be between 1 and 250"],
@@ -3190,7 +3208,7 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
             )
         
         if page < 1:
-            return ResponseBuilder.validation_error_response(
+            return self.response_builder.validation_error_response(
                 field_name="page",
                 field_value=page,
                 validation_errors=["page must be 1 or greater"],
@@ -3210,7 +3228,7 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
             if category:
                 params["category"] = category
             
-            data = await self._make_api_request("/coins/markets", params)
+            data = await self._make_api_request(_API_ENDPOINTS["coins_markets"], params)
             
             markets_data = data
             
@@ -3266,7 +3284,7 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
                 file_prefix=self._file_prefix
             )
             
-            return ResponseBuilder.build_data_response_with_storage(
+            return self.response_builder.build_data_response_with_storage(
                 data=markets_data,
                 storage_threshold=self._parquet_threshold,
                 storage_callback=lambda data, filename: self._store_parquet(data, filename),
@@ -3277,8 +3295,8 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
                 
         except Exception as e:
             logger.error(f"Failed to get coins markets: {e}")
-            return ResponseBuilder.api_error_response(
-                api_endpoint="/coins/markets",
+            return self.response_builder.api_error_response(
+                api_endpoint=_API_ENDPOINTS["coins_markets"],
                 api_message=f"Failed to get coins markets: {str(e)}",
                 vs_currency=vs_currency,
                 order=order,
@@ -3465,7 +3483,7 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
                 "days": str(days)
             }
             
-            data = await self._make_api_request(f"/coins/{coin_id}/ohlc", api_params)
+            data = await self._make_api_request(_API_ENDPOINTS["ohlc"].format(coin_id=coin_id), api_params)
             
             ohlc_data = data
             
@@ -3478,7 +3496,7 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
                 
                 if not ohlc_validation["valid"]:
                     logger.warning(f"OHLC data validation failed: {ohlc_validation['errors']}")
-                    return ResponseBuilder.validation_error_response(
+                    return self.response_builder.validation_error_response(
                         field_name="ohlc_data",
                         field_value=ohlc_data,
                         validation_errors=ohlc_validation["errors"],
@@ -3487,7 +3505,7 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
                     )
             
             if not ohlc_data:
-                return ResponseBuilder.error_response(
+                return self.response_builder.error_response(
                     "No OHLC data returned",
                     error_type="no_data_error",
                     coin_id=coin_id,
@@ -3523,7 +3541,7 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
                 file_prefix=self._file_prefix
             )
             
-            return ResponseBuilder.build_data_response_with_storage(
+            return self.response_builder.build_data_response_with_storage(
                 data=structured_data if self._should_store_as_parquet(ohlc_data) else ohlc_data,
                 storage_threshold=self._parquet_threshold,
                 storage_callback=lambda data, filename: self._store_parquet(data, filename),
@@ -3534,8 +3552,8 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
                 
         except Exception as e:
             logger.error(f"Failed to get OHLC for {coin_name_or_id}: {e}")
-            return ResponseBuilder.api_error_response(
-                api_endpoint="/coins/{id}/ohlc",
+            return self.response_builder.api_error_response(
+                api_endpoint=_API_ENDPOINTS["ohlc"],
                 api_message=f"Failed to get OHLC data: {str(e)}",
                 coin_name_or_id=coin_name_or_id,
                 vs_currency=vs_currency
@@ -3830,12 +3848,12 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
         investment and trading decisions.
         """
         try:
-            data = await self._make_api_request("/global")
+            data = await self._make_api_request(_API_ENDPOINTS["global_data"])
             
             global_data = data.get("data", {})
             
             if not global_data:
-                return ResponseBuilder.error_response(
+                return self.response_builder.error_response(
                     message="No global data returned from API",
                     error_type="no_data_error"
                 )
@@ -3851,7 +3869,7 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
                 "volume_vs_avg_30d_pct": mcap_change_24h * 0.5  # Approximation
             }
             
-            return ResponseBuilder.success_response(
+            return self.response_builder.success_response(
                 data=global_data,
                 market_insights=market_insights,
                 historical_comparison=historical_comparison,
@@ -3860,8 +3878,8 @@ class CoinGeckoToolkit(Toolkit, BaseDataToolkit, BaseAPIToolkit):
             
         except Exception as e:
             logger.error(f"Failed to get global crypto data: {e}")
-            return ResponseBuilder.api_error_response(
-                api_endpoint="/global",
+            return self.response_builder.api_error_response(
+                api_endpoint=_API_ENDPOINTS["global_data"],
                 api_message=f"Failed to get global crypto data: {str(e)}"
             )
     

@@ -65,16 +65,14 @@ class BaseAPIToolkit:
                     # Use HTTP client for transport
                     result = await self.http_client.get("main", f"/coins/{coin_id}")
                     
-                    # Use ResponseBuilder for response formatting
-                    from sentientresearchagent.hierarchical_agent_framework.toolkits.utils.response_builder import ResponseBuilder
-                    return ResponseBuilder.success_response(
+                    # Use ResponseBuilder for response formatting (automatic toolkit info injection)
+                    return self.response_builder.success_response(
                         data=result,
                         coin_id=coin_id,
                         endpoint=f"/coins/{coin_id}"
                     )
                 except Exception as e:
-                    from sentientresearchagent.hierarchical_agent_framework.toolkits.utils.response_builder import ResponseBuilder
-                    return ResponseBuilder.api_error_response(
+                    return self.response_builder.api_error_response(
                         api_endpoint=f"/coins/{coin_id}",
                         api_message=str(e),
                         coin_id=coin_id
@@ -499,25 +497,22 @@ class BaseAPIToolkit:
         
         if is_valid:
             message = f"{identifier_type.title()} is valid"
-            # Use direct response building since methods were moved to utils
-            return {
-                "success": True,
-                "data": base_data,
-                "validation_type": "identifier",
-                "analysis": {"message": message},
-                "timestamp": int(time.time())
-            }
+            # Use ResponseBuilder for proper toolkit info injection
+            return self.response_builder.success_response(
+                data=base_data,
+                message=message,
+                validation_type="identifier",
+                analysis={"message": message}
+            )
         else:
             message = f"{identifier_type.title()} '{identifier}' not found in '{config_context}'"
-            # Use direct response building since methods were moved to utils  
-            response = {
-                "success": False,
-                "error": message,
-                "error_type": "identifier_not_found",
-                "validation_type": "identifier",
-                "timestamp": int(time.time()),
-                **base_data
-            }
+            # Use ResponseBuilder for proper toolkit info injection
+            response = self.response_builder.error_response(
+                message=message,
+                error_type="identifier_not_found",
+                details=base_data,
+                validation_type="identifier"
+            )
             if suggestions:
                 response["suggestions"] = suggestions
             return response

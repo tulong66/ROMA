@@ -22,6 +22,13 @@ from typing import Any, Dict, List, Union, Optional
 import pandas as _pd
 from loguru import logger
 
+# E2B detection and integration
+try:
+    import e2b
+    _E2B_AVAILABLE = True
+except ImportError:
+    _E2B_AVAILABLE = False
+
 __all__ = ["BaseDataToolkit"]
 
 
@@ -64,22 +71,215 @@ class BaseDataToolkit:
         data_dir: str | Path,
         parquet_threshold: int = 1000,
         file_prefix: str = "",
+        toolkit_name: str = "",
     ) -> None:
-        """Initialize data management helpers.
+        """Initialize data management helpers with project-specific folder structure.
         
         Args:
-            data_dir: Directory path for storing parquet files
+            data_dir: Base directory path for storing parquet files (used as fallback)
             parquet_threshold: Minimum size to trigger parquet storage
             file_prefix: Optional prefix for all generated files
+            toolkit_name: Name of the toolkit (used for folder organization)
         """
-        # Ensure data_dir is a Path object
-        self.data_dir = Path(data_dir)
+        # Persist base fallback directory for future reconfiguration on project change
+        try:
+            self._base_data_dir_fallback = Path(data_dir)
+        except Exception:
+            self._base_data_dir_fallback = Path(str(data_dir))
+
+        # Get project ID from environment variable, default to "default" if not set
+        project_id = os.getenv("CURRENT_PROJECT_ID", "default")
+        
+        # Check if S3 mounting is enabled and use configured directory (flexible boolean parsing)
+        s3_mount_env = os.getenv("S3_MOUNT_ENABLED", "false").lower().strip()
+        s3_mount_enabled = s3_mount_env in ("true", "yes", "1", "on", "enabled")
+        s3_mount_dir = os.getenv("S3_MOUNT_DIR")
+        
+        if s3_mount_enabled and s3_mount_dir and os.path.exists(s3_mount_dir):
+            # Use S3 mounted directory as base
+            base_dir = Path(s3_mount_dir)
+            logger.info(f"Using S3 mounted directory for {toolkit_name}: {base_dir}")
+        else:
+            # Use fallback local directory
+            base_dir = Path(data_dir)
+            if s3_mount_enabled:
+                logger.warning(f"S3 mounting enabled but directory {s3_mount_dir} not found, using fallback: {base_dir}")
+        
+        # Create project-specific folder structure: project_id/toolkit_name/
+        if toolkit_name:
+            self.data_dir = base_dir / project_id / toolkit_name
+        else:
+            # Fallback: just use project_id folder if no toolkit name
+            self.data_dir = base_dir / project_id
+        
+        # Create directory structure
         self.data_dir.mkdir(parents=True, exist_ok=True)
         
         self._parquet_threshold = parquet_threshold
         self._file_prefix = file_prefix
+        self._project_id = project_id
+        self._toolkit_name = toolkit_name
         
-        logger.debug(f"Initialized data helpers: dir={self.data_dir}, threshold={parquet_threshold}")
+        # S3 integration detection and path configuration
+        self._detect_e2b_context()
+        
+        # Initialize ResponseBuilder with toolkit information
+        from ..utils.response_builder import ResponseBuilder
+        toolkit_info = self._get_toolkit_info()
+        self.response_builder = ResponseBuilder(toolkit_info)
+        
+        logger.info(f"Data helpers initialized - Project: {project_id}, Toolkit: {toolkit_name or 'unknown'}, Dir: {self.data_dir}, S3: {self._s3_available}")
+
+    def _maybe_refresh_project_context(self) -> None:
+        """Refresh data directories if CURRENT_PROJECT_ID changed after initialization.
+
+        This ensures that toolkits created before a project starts will switch to the
+        correct project-scoped directory as soon as they are used.
+        """
+        try:
+            current_env_project_id = os.getenv("CURRENT_PROJECT_ID", "default")
+            # If uninitialized or project changed, re-init helpers with the same settings
+            if getattr(self, "_project_id", None) != current_env_project_id:
+                prev = getattr(self, "_project_id", None)
+                logger.debug(f"Refreshing data context for project change: {prev} -> {current_env_project_id}")
+                self._init_data_helpers(
+                    self._base_data_dir_fallback,
+                    getattr(self, "_parquet_threshold", 1000),
+                    getattr(self, "_file_prefix", ""),
+                    getattr(self, "_toolkit_name", ""),
+                )
+        except Exception as e:
+            logger.warning(f"Failed to refresh project context: {e}")
+
+    def _detect_e2b_context(self) -> None:
+        """Detect if we're running in an E2B execution context and configure S3 paths."""
+        # Check for S3 integration first (works for both local and E2B)
+        s3_bucket = os.getenv("S3_BUCKET_NAME")
+        if s3_bucket:
+            # Use S3-mounted directory structure
+            # Local: mounted via goofys at configured mount point
+            # E2B: mounted at /home/user/s3-bucket via startup script
+            self._s3_available = True
+            logger.info(f"S3 integration detected with bucket: {s3_bucket}")
+        else:
+            self._s3_available = False
+            logger.debug("No S3 integration - using local storage only")
+
+    def _get_storage_path(self, subdirectory: Optional[str] = None) -> Path:
+        """Get storage path - always use local data_dir for actual file operations.
+        
+        Args:
+            subdirectory: Optional subdirectory within data folder
+            
+        Returns:
+            Path: Local storage path for file operations
+        """
+        # Ensure project context is up to date before returning paths
+        self._maybe_refresh_project_context()
+
+        # Always use local data_dir for actual file storage
+        # S3 sync happens automatically via goofys if configured
+        if subdirectory:
+            return self.data_dir / subdirectory
+        return self.data_dir
+    
+    def _translate_path_for_e2b(self, local_path: str) -> str:
+        """Translate local file path to E2B-compatible path.
+        
+        Args:
+            local_path: Local file path where file was saved
+            
+        Returns:
+            str: E2B-compatible path if in E2B context, original path otherwise
+        """
+        # Ensure project context is current for translation
+        self._maybe_refresh_project_context()
+
+        if not self._s3_available:
+            return local_path
+            
+        # Check if we're in E2B execution context
+        in_e2b_context = any([
+            os.path.exists("/tmp/.template-id"),  # Our E2B template marker
+            os.getenv("E2B_SANDBOX_ID"),
+            os.getenv("AGNO_E2B_ACTIVE"),  # AgnoAgent E2B context
+        ])
+        
+        if in_e2b_context:
+            # Translate local path to E2B S3 mount path preserving directory structure
+            # Local: ./data/project-id/toolkit/[subdir/]file.parquet  
+            # E2B:   /home/user/s3-bucket/data/project-id/toolkit/[subdir/]file.parquet
+            
+            local_path_obj = Path(local_path)
+            
+            # Find the relative path from the data directory
+            try:
+                # Get path relative to data directory by finding project_id
+                path_parts = local_path_obj.parts
+                if self._project_id in path_parts:
+                    project_index = path_parts.index(self._project_id)
+                    # Get everything from project_id onwards (includes subdirs)
+                    relative_parts = path_parts[project_index:]
+                    relative_path = "/".join(relative_parts)
+                    
+                    # Construct E2B path preserving full structure
+                    e2b_path = f"/home/user/s3-bucket/data/{relative_path}"
+                else:
+                    # Fallback: construct path with known structure
+                    # This handles cases where project_id isn't in path parts
+                    relative_to_toolkit = local_path_obj.relative_to(self.data_dir)
+                    e2b_path = f"/home/user/s3-bucket/data/{self._project_id}/{self._toolkit_name or 'unknown'}/{relative_to_toolkit}"
+                
+                logger.debug(f"Translated path for E2B: {local_path} -> {e2b_path}")
+                return e2b_path
+                
+            except Exception as e:
+                # If path parsing fails, fall back to simple construction
+                logger.warning(f"Path translation failed: {e}, using fallback")
+                filename = local_path_obj.name
+                e2b_path = f"/home/user/s3-bucket/data/{self._project_id}/{self._toolkit_name or 'unknown'}/{filename}"
+                return e2b_path
+        
+        return local_path
+
+    def _clean_data_for_parquet(self, data: Union[List[Dict[str, Any]], Dict[str, Any]]) -> Union[List[Dict[str, Any]], Dict[str, Any]]:
+        """Clean data to handle mixed data types that cause Parquet conversion errors.
+        
+        This method provides generic handling for any column that contains mixed data types
+        (e.g., lists mixed with strings/None values) which breaks Parquet serialization.
+        
+        Args:
+            data: Raw data that may contain mixed types in columns
+            
+        Returns:
+            Cleaned data suitable for Parquet conversion
+        """
+        import json
+        
+        def normalize_value(value: Any) -> Any:
+            """Normalize a single value to be Parquet-compatible."""
+            if value is None:
+                return None
+            elif isinstance(value, (list, dict)):
+                # Convert complex objects to JSON strings
+                return json.dumps(value) if value else None
+            elif isinstance(value, (int, float, str, bool)):
+                # Keep primitive types as-is
+                return value
+            else:
+                # Convert other types to strings
+                return str(value)
+        
+        def clean_item(item: Dict[str, Any]) -> Dict[str, Any]:
+            """Clean a single data item by normalizing all values."""
+            return {key: normalize_value(value) for key, value in item.items()}
+        
+        if isinstance(data, list):
+            return [clean_item(item) for item in data if isinstance(item, dict)]
+        elif isinstance(data, dict):
+            return clean_item(data)
+        else:
+            return data
 
     def _store_parquet(
         self, 
@@ -115,6 +315,12 @@ class BaseDataToolkit:
         if isinstance(data, list):
             if not data:
                 raise ValueError("Cannot store empty list as parquet")
+            
+            # Clean data to handle mixed types before DataFrame conversion
+            if data and isinstance(data[0], dict):
+                logger.debug("Cleaning data for Parquet storage to handle mixed data types")
+                data = self._clean_data_for_parquet(data)
+            
             df = _pd.DataFrame(data)
         else:
             df = data
@@ -122,24 +328,73 @@ class BaseDataToolkit:
         if df.empty:
             raise ValueError("Cannot store empty DataFrame as parquet")
         
-        # Prepare file path
+        # Prepare file path - always use local storage for file operations
         ts = int(time.time())
         filename = f"{self._file_prefix}{prefix}_{ts}.parquet"
         
-        if subdirectory:
-            file_dir = self.data_dir / subdirectory
-            file_dir.mkdir(parents=True, exist_ok=True)
-            file_path = file_dir / filename
-        else:
-            file_path = self.data_dir / filename
+        # Get local storage path (S3 sync happens automatically via goofys)
+        storage_path = self._get_storage_path(subdirectory)
+        storage_path.mkdir(parents=True, exist_ok=True)
+        file_path = storage_path / filename
         
         try:
+            # Try direct write first (works for local filesystems)
             df.to_parquet(file_path, compression='snappy', index=False)
-            logger.info(f"Stored {len(df)} records to: {file_path}")
-            return str(file_path)
+            
+            file_path_str = str(file_path)
+            if self._s3_available:
+                logger.info(f"Stored {len(df)} records to S3-synced path: {file_path_str}")
+            else:
+                logger.info(f"Stored {len(df)} records to local path: {file_path_str}")
+            
+            return file_path_str
+            
         except Exception as e:
-            logger.error(f"Failed to write parquet file {file_path}: {e}")
-            raise IOError(f"Cannot write parquet file: {e}")
+            # Check if this is the "Operation not supported" error from S3 filesystem
+            if "Operation not supported" in str(e) or "errno 45" in str(e).lower():
+                logger.warning(f"Direct parquet write failed, using BytesIO buffer method: {e}")
+                return self._store_parquet_via_buffer(df, file_path)
+            else:
+                logger.error(f"Failed to write parquet file {file_path}: {e}")
+                raise IOError(f"Cannot write parquet file: {e}")
+
+    def _store_parquet_via_buffer(self, df: _pd.DataFrame, file_path: Path) -> str:
+        """Store parquet file using BytesIO buffer to avoid random write issues with goofys.
+        
+        Creates the parquet file in memory first, then writes it as a single sequential 
+        operation to avoid random write issues with S3 filesystem mounts.
+        
+        Args:
+            df: DataFrame to store
+            file_path: Complete path where the file should be stored
+            
+        Returns:
+            str: Path to the stored file
+        """
+        from io import BytesIO
+        
+        try:
+            # Create parquet file in memory to avoid random writes
+            buffer = BytesIO()
+            df.to_parquet(buffer, engine='pyarrow', compression='snappy', index=False)
+            
+            # Write complete file in single sequential operation
+            with open(file_path, 'wb') as f:
+                f.write(buffer.getvalue())
+            
+            buffer.close()
+            
+            file_path_str = str(file_path)
+            if self._s3_available:
+                logger.info(f"Stored {len(df)} records to S3-synced path via buffer: {file_path_str}")
+            else:
+                logger.info(f"Stored {len(df)} records to local path via buffer: {file_path_str}")
+            
+            return file_path_str
+            
+        except Exception as e:
+            logger.error(f"Failed to write parquet file via buffer {file_path}: {e}")
+            raise IOError(f"Buffer parquet storage failed: {e}")
 
     def _should_store_as_parquet(
         self, 
@@ -364,3 +619,20 @@ class BaseDataToolkit:
             "max_age_hours": max_age_hours,
             "old_files": old_files if dry_run else [],
         }
+
+    def _get_toolkit_info(self) -> Dict[str, Any]:
+        """Get toolkit identification information automatically.
+        
+        Returns:
+            dict: Toolkit identification info including name, category, type, and icon
+        """
+        class_name = self.__class__.__name__
+        
+        # Automatic toolkit information based on class name
+        return {
+            'toolkit_name': class_name,
+            'toolkit_category': getattr(self, '_toolkit_category', 'custom'),
+            'toolkit_type': getattr(self, '_toolkit_type', 'custom'),
+            'toolkit_icon': getattr(self, '_toolkit_icon', '🛠️')
+        }
+

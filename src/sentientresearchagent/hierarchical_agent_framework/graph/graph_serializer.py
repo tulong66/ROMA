@@ -100,8 +100,8 @@ class GraphSerializer:
             "timestamp_updated": node_obj.timestamp_updated.isoformat() if node_obj.timestamp_updated else None,
             "timestamp_completed": node_obj.timestamp_completed.isoformat() if node_obj.timestamp_completed else None,
             "model_display": model_display,
-            "model_info": model_info,
-            "execution_details": execution_details,
+            "model_info": self._process_value(model_info),
+            "execution_details": self._process_value(execution_details),
             
             # CRITICAL FIX: Include aux_data for frontend access, but process Pydantic models
             # Handle case where aux_data might be None
