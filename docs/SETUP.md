@@ -1,6 +1,6 @@
 # SentientResearchAgent Setup Guide
 
-This guide provides detailed instructions for setting up SentientResearchAgent using either Docker (recommended for production) or native installation (recommended for development).
+This guide provides detailed instructions for setting up ROMA using either Docker or native installation (recommended for development).
 
 ## Prerequisites
 
@@ -206,7 +206,7 @@ GOOGLE_GENAI_API_KEY=your_google_genai_api_key_here
 curl http://localhost:5000/api/health
 
 # Check frontend
-curl http://localhost:5173
+curl http://localhost:3000
 ```
 
 ### Logs
@@ -228,27 +228,3 @@ python -m sentientresearchagent --config sentient.yaml
 # With different profile
 python -m sentientresearchagent --profile deep_research_agent
 ```
-
-## Production Deployment
-
-For production, use Docker setup with:
-1. Proper SSL certificates (replace self-signed)
-2. Environment-specific `.env` file
-3. Production-grade database (if using PostgreSQL)
-4. Reverse proxy (nginx) configuration
-5. Monitoring and logging setup
-
-## Additional Resources
-
-- [Project README](../README.md)
-- [CLAUDE.md](../CLAUDE.md) - AI assistant instructions
-- [API Documentation](./API.md)
-- [Architecture Overview](./ARCHITECTURE.md)
-
-## Support
-
-If you encounter issues:
-1. Check the troubleshooting section
-2. Review logs for error messages
-3. Ensure all prerequisites are met
-4. Open an issue on GitHub with details
