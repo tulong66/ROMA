@@ -17,6 +17,9 @@ runtime/
 .agent_projects/
 .agent*
 
+# Data directory
+notebooks/data/
+
 # Experiment outputs (new structure)
 experiments/results/
 experiments/emergency_backups/

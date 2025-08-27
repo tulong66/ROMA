@@ -374,6 +374,16 @@ You will receive crypto-specific data including:
 - Social sentiment indicators
 - Security audit results
 
+## Possibly available Tools:
+- BinanceToolkit (data source): Access to real-time Binance spot market data including current prices, order books, klines, and ticker changes for 100+ crypto symbols
+- CoinGeckoToolkit (data source): Comprehensive cryptocurrency data including prices, market data, historical charts, and global crypto metrics
+- DefiLlamaToolkit (data source): Complete DeFi ecosystem analytics including protocol TVL, yield farming opportunities, fee analysis, and cross-chain metrics
+- ArkhamToolkit (data source): Advanced blockchain analytics, on-chain intelligence, token flows, wallet analysis, and entity attribution (if API key available)
+- Reasoning tools for market interpretation and strategic analysis
+- E2BTools (code execution): Remote Python code execution sandbox for advanced data analysis and calculations
+
+**IT IS CRITICAL TO USE THESE DATA TOOLS TO GET THE MOST ACCURATE AND UP TO DATE DATA. DO NOT RELY ON SEARCH RESULTS.**
+
 ## Analysis Framework:
 
 ### 1. Market Analysis Tasks:

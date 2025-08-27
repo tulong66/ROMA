@@ -17,7 +17,8 @@ from sentientresearchagent.hierarchical_agent_framework.types import TaskType, T
 # Re-export for convenience
 __all__ = [
     "ModelConfig", "ToolConfig", "BaseDataToolkitParams", "BinanceToolkitParams", 
-    "CoingeckoToolkitParams", "ToolkitConfig", "ActionKey", "RegistrationConfig", 
+    "CoingeckoToolkitParams", "ArkhamToolkitParams", "DefiLlamaToolkitParams", "E2BToolsParams", 
+    "ToolkitConfig", "ActionKey", "RegistrationConfig", 
     "AgnoParams", "AdapterParams", "AgentConfig", "AgentsYAMLConfig", 
     "ProfileConfig", "ProfileYAMLConfig", "validate_agent_config", 
     "validate_agents_yaml", "validate_profile_yaml", "validate_toolkit_config"
@@ -189,11 +190,6 @@ class BinanceToolkitParams(BaseDataToolkitParams):
         "./data/binance",
         description="Directory for storing parquet files"
     )
-    parquet_threshold: int = Field(
-        1000,
-        gt=0,
-        description="Minimum size to trigger parquet storage"
-    )
     
     # Binance-specific fields
     default_market_type: MarketType = Field(
@@ -306,6 +302,129 @@ class CoingeckoToolkitParams(BaseDataToolkitParams):
         ]
 
 
+class ArkhamToolkitParams(BaseDataToolkitParams):
+    """Parameters for ArkhamToolkit configuration."""
+        
+    # Override defaults from base class
+    data_dir: Union[str, Path] = Field(
+        "./data/arkham",
+        description="Directory for storing parquet files"
+    )
+    
+    # Arkham-specific fields
+    api_key: str = Field(
+        default_factory=lambda: os.getenv("ARKHAM_API_KEY") or "",
+        min_length=10,
+        description="Arkham Intelligence API key"
+    )
+    default_chain: str = Field(
+        "ethereum",
+        description="Default blockchain network for queries"
+    )
+    base_url: str = Field(
+        "https://api.arkhamintelligence.com",
+        description="Base URL for Arkham Intelligence API"
+    )
+    supported_chains: Optional[List[str]] = Field(
+        None,
+        description="List of blockchain networks to support"
+    )
+    include_entity_data: bool = Field(
+        True,
+        description="Include entity attribution data when available"
+    )
+    cache_ttl_seconds: int = Field(
+        1800,
+        gt=0,
+        description="Cache time-to-live for API responses"
+    )
+    
+    @model_validator(mode='after')
+    def validate_required_credentials(self):
+        """Validate that required API credentials are provided."""
+        if not self.api_key:
+            raise ValueError("Arkham API key is required. Set ARKHAM_API_KEY environment variable.")
+        return self
+    
+    @field_validator("default_chain")
+    @classmethod
+    def validate_default_chain(cls, v):
+        """Validate default chain is supported."""
+        valid_chains = [
+            "ethereum", "bitcoin", "bsc", "avalanche", "polygon", 
+            "tron", "arbitrum", "optimism"
+        ]
+        if v.lower() not in valid_chains:
+            raise ValueError(f"Unsupported default_chain '{v}'. Supported: {valid_chains}")
+        return v.lower()
+    
+    @field_validator("supported_chains")
+    @classmethod
+    def validate_supported_chains(cls, v):
+        """Validate supported chains list."""
+        if v is None:
+            return v
+        valid_chains = [
+            "ethereum", "bitcoin", "bsc", "avalanche", "polygon", 
+            "tron", "arbitrum", "optimism"
+        ]
+        validated = []
+        for chain in v:
+            if not isinstance(chain, str):
+                raise ValueError(f"Chain must be string, got {type(chain)}")
+            chain_lower = chain.lower()
+            if chain_lower not in valid_chains:
+                raise ValueError(f"Unsupported chain '{chain}'. Supported: {valid_chains}")
+            validated.append(chain_lower)
+        return validated
+    
+    @classmethod
+    def get_valid_tools(cls) -> List[str]:
+        """Return list of valid tools for ArkhamToolkit."""
+        return [
+            "get_top_tokens", "get_token_holders", "get_token_top_flow",
+            "get_supported_chains", "get_transfers", "get_token_balances"
+        ]
+
+
+class DefiLlamaToolkitParams(BaseDataToolkitParams):
+    """Parameters for DefiLlamaToolkit configuration."""
+    
+    # Override defaults from base class
+    data_dir: Union[str, Path] = Field(
+        "./data/defillama",
+        description="Directory for storing parquet files"
+    )
+    
+    # DefiLlama specific parameters
+    api_key: str = Field(
+        default_factory=lambda: os.getenv("DEFILLAMA_API_KEY") or "",
+        description="DefiLlama Pro API key (optional, enables Pro features)"
+    )
+    base_url: str = Field(
+        "https://api.llama.fi",
+        description="Base URL for DefiLlama free API"
+    )
+    pro_base_url: str = Field(
+        "https://pro-api.llama.fi", 
+        description="Base URL for DefiLlama Pro API"
+    )
+    
+    @model_validator(mode='after')
+    def validate_pro_features(self):
+        """Validate Pro API configuration."""
+        return self
+    
+    @classmethod
+    def get_valid_tools(cls) -> List[str]:
+        """Return list of valid tools for DefiLlamaToolkit."""
+        return [
+            "get_protocols", "get_protocol_tvl", "get_protocol_fees", "get_chain_fees",
+            "get_yield_pools", "get_active_users", "get_chain_assets", "get_protocol_detail",
+            "get_chains", "get_chain_historical_tvl"
+        ]
+
+
 class ToolkitConfig(BaseModel):
     """Configuration for toolkit instances."""
     
@@ -325,6 +444,8 @@ class ToolkitConfig(BaseModel):
         toolkit_registry = {
             "BinanceToolkit": BinanceToolkitParams,
             "CoingeckoToolkit": CoingeckoToolkitParams,
+            "ArkhamToolkit": ArkhamToolkitParams,
+            "DefiLlamaToolkit": DefiLlamaToolkitParams,
         }
         return toolkit_registry.get(name)
     

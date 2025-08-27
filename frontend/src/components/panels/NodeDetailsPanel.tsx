@@ -2,6 +2,8 @@ import React, { useState } from 'react'
 import { useTaskGraphStore } from '@/stores/taskGraphStore'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import ToolCallsDisplay from './ToolCallsDisplay'
+import ToolCallsModal from './ToolCallsModal'
 import { 
   Brain, 
   Play, 
@@ -243,7 +245,14 @@ const SubTasksList: React.FC<{ taskIds: string[], allNodes: Record<string, TaskN
 }
 
 const NodeDetailsPanel: React.FC = () => {
-  const { selectedNodeId, nodes, selectNode } = useTaskGraphStore()
+  const { 
+    selectedNodeId, 
+    nodes, 
+    selectNode,
+    isToolCallsModalOpen,
+    openToolCallsModal,
+    closeToolCallsModal
+  } = useTaskGraphStore()
   const [isFullResultModalOpen, setIsFullResultModalOpen] = useState(false)
   const [isFinalInputModalOpen, setIsFinalInputModalOpen] = useState(false)
   const [isNavigationExpanded, setIsNavigationExpanded] = useState(false)
@@ -507,6 +516,37 @@ const NodeDetailsPanel: React.FC = () => {
             </div>
           )}
 
+          {/* Tool Calls Section */}
+          {executionDetails?.tool_calls && executionDetails.tool_calls.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between pb-2 border-b border-border/50">
+                <div className="flex items-center space-x-2">
+                  <Cpu className="w-4 h-4 text-orange-600" />
+                  <h3 className="text-sm font-semibold text-foreground">
+                    Tool Calls ({executionDetails.tool_calls.length})
+                  </h3>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={openToolCallsModal}
+                  className="h-6 px-2 text-xs"
+                >
+                  <ExternalLink className="w-3 h-3 mr-1" />
+                  View All
+                </Button>
+              </div>
+              <div className="max-h-40 overflow-y-auto">
+                <ToolCallsDisplay toolCalls={executionDetails.tool_calls.slice(0, 3)} />
+                {executionDetails.tool_calls.length > 3 && (
+                  <div className="text-xs text-muted-foreground text-center mt-2 py-2 border-t">
+                    ... and {executionDetails.tool_calls.length - 3} more. Click "View All" to see everything.
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Timeline Section */}
           <div className="space-y-3">
             <div className="flex items-center space-x-2 pb-2 border-b border-border/50">
@@ -711,6 +751,14 @@ const NodeDetailsPanel: React.FC = () => {
           nodeGoal={selectedNode.goal}
         />
       )}
+      
+      {/* Tool Calls Modal */}
+      <ToolCallsModal
+        isOpen={isToolCallsModalOpen}
+        onClose={closeToolCallsModal}
+        node={selectedNode}
+        toolCalls={executionDetails?.tool_calls || []}
+      />
     </>
   )
 }

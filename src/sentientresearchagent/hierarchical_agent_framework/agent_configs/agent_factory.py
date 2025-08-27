@@ -21,9 +21,8 @@ try:
     from agno.agent import Agent as AgnoAgent
     from agno.models.litellm import LiteLLM
     from agno.models.openai import OpenAIChat
-    from agno.tools.duckduckgo import DuckDuckGoTools
-    from agno.tools.python import PythonTools
-    from agno.tools.reasoning import ReasoningTools
+    # Import agno.tools module for dynamic tool discovery
+    import agno.tools
 except ImportError as e:
     logger.error(f"Agno dependencies not available: {e}")
     raise
@@ -51,7 +50,7 @@ from ..types import TaskType
 from sentientresearchagent.hierarchical_agent_framework.agents.base_adapter import BaseAdapter
 from sentientresearchagent.hierarchical_agent_framework.agents.registry import AgentRegistry
 from sentientresearchagent.hierarchical_agent_framework.agent_blueprints import AgentBlueprint
-from sentientresearchagent.hierarchical_agent_framework.toolkits.data import BinanceToolkit, CoinGeckoToolkit
+from sentientresearchagent.hierarchical_agent_framework.toolkits.data import BinanceToolkit, CoinGeckoToolkit, ArkhamToolkit, DefiLlamaToolkit
 from .models import (
     AgentConfig, ModelConfig, ToolConfig, ToolkitConfig, 
     validate_agent_config, validate_toolkit_config
@@ -99,27 +98,52 @@ class AgentFactory:
             # Add more as needed
         }
         
-        # Enhanced tools mapping
-        self._tools = {
-            "DuckDuckGoTools": DuckDuckGoTools,
-            "PythonTools": PythonTools,
-            "ReasoningTools": ReasoningTools,
-        }
-        
+        # Custom toolkits (our own implementations)
         self._toolkits = {
             "BinanceToolkit": BinanceToolkit,
             "CoingeckoToolkit": CoinGeckoToolkit,
+            "ArkhamToolkit": ArkhamToolkit,
+            "DefiLlamaToolkit": DefiLlamaToolkit,
         }
-        
-        # Add WikipediaTools if available
-        if WIKIPEDIA_AVAILABLE and WikipediaTools:
-            self._tools["WikipediaTools"] = WikipediaTools
+
+        # Initialize tools mapping for individual tools (not toolkits)
+        self._tools = {}
+        self._initialize_common_tools()
         
         # Model providers mapping
         self._model_providers = {
             "litellm": LiteLLM,
             "openai": OpenAIChat,
         }
+                
+        # Log available toolkits for visibility
+        custom_toolkits = list(self._toolkits.keys())
+        logger.info(f"📦 Available custom toolkits: {custom_toolkits}")
+    
+    def _initialize_common_tools(self) -> None:
+        """Initialize common tools mapping for individual tool access."""
+        try:
+            # Import common tools from agno.tools
+            from agno.tools.python import PythonTools
+            from agno.tools.e2b import E2BTools
+            from agno.tools.duckduckgo import DuckDuckGoTools
+            from agno.tools.reasoning import ReasoningTools
+            
+            self._tools.update({
+                "PythonTools": PythonTools,
+                "E2BTools": E2BTools,
+                "DuckDuckGoTools": DuckDuckGoTools,  
+                "ReasoningTools": ReasoningTools,
+            })
+            
+            # Add WikipediaTools if available
+            if WIKIPEDIA_AVAILABLE and WikipediaTools:
+                self._tools["WikipediaTools"] = WikipediaTools
+                
+            logger.debug(f"Initialized {len(self._tools)} common tools: {list(self._tools.keys())}")
+            
+        except ImportError as e:
+            logger.warning(f"Could not initialize some common tools: {e}")
     
     def resolve_response_model(self, response_model_name: str) -> Optional[Type]:
         """
@@ -332,7 +356,7 @@ class AgentFactory:
                     
                     tools.append(tool_instance)
                 except Exception as e:
-                    logger.error(f"Failed to create tool {tool_name}: {e}")
+                    logger.error(f"Failed to create tool {tool_name} with params: {tool_params} - {e}")
                     # Continue with other tools
             elif tool_name == "web_search" and web_search is not None:
                 # Add the web_search function directly
@@ -351,6 +375,7 @@ class AgentFactory:
     def create_toolkits(self, toolkit_configs: List[Dict[str, Any]]) -> List[Any]:
         """
         Create toolkit instances and extract specified tools.
+        Supports both custom toolkits and agno toolkits with dynamic discovery.
         
         Args:
             toolkit_configs: List of toolkit configurations
@@ -370,9 +395,10 @@ class AgentFactory:
                 toolkit_name = validated_toolkit.name
                 logger.info(f"✅ Toolkit configuration validated: {toolkit_name}")
             except Exception as e:
-                logger.error(f"Invalid toolkit configuration for {toolkit_name}: {e}")
+                logger.error(f"Invalid toolkit configuration: {e}")
                 raise ValueError(f"Toolkit validation failed: {e}") from e
 
+            # Try custom toolkits first
             if toolkit_name in self._toolkits:
                 try:
                     toolkit_class = self._toolkits[toolkit_name]
@@ -386,16 +412,30 @@ class AgentFactory:
                         params["include_tools"] = available_tools
                     
                     toolkit_instance = toolkit_class(**params)
-                    logger.info(f"Created toolkit '{toolkit_name}' with params: {params}")
+                    logger.info(f"Created custom toolkit '{toolkit_name}' with params: {params}")
                     selected_toolkits.append(toolkit_instance)
                             
                 except Exception as e:
-                    logger.error(f"Failed to create toolkit {toolkit_name}: {e}")
-                    raise ValueError(f"Toolkit creation failed for {toolkit_name}: {e}")
+                    # Log error but continue - all toolkits are optional
+                    logger.warning(f"Custom toolkit '{toolkit_name}' failed to load - skipping: {e}")
+                    logger.info(f"💡 Check {toolkit_name} configuration and dependencies")
             else:
-                available_toolkits = list(self._toolkits.keys())
-                logger.error(f"Unknown toolkit: {toolkit_name}. Available: {available_toolkits}")
-                raise ValueError(f"Unknown toolkit: {toolkit_name}")
+                # Try to resolve as agno toolkit
+                try:
+                    agno_toolkit_instance = self._create_agno_toolkit(toolkit_name, validated_toolkit)
+                    if agno_toolkit_instance:
+                        selected_toolkits.append(agno_toolkit_instance)
+                        logger.info(f"Created agno toolkit '{toolkit_name}'")
+                    else:
+                        # Toolkit not found - log warning and continue
+                        available_custom = list(self._toolkits.keys())
+                        logger.warning(f"Toolkit '{toolkit_name}' not available - skipping")
+                        logger.info(f"💡 Available custom toolkits: {available_custom}")
+                        logger.info(f"💡 Please check default Agno toolkits for using pre-defined tools")
+                except Exception as e:
+                    # Log error but continue - all toolkits are optional
+                    logger.warning(f"Toolkit '{toolkit_name} with params {validated_toolkit.params}' failed to load - skipping: {e}")
+                    logger.info(f"💡 If you need {toolkit_name}, check that all dependencies are installed and configured")
                 
         return selected_toolkits
     
@@ -412,8 +452,8 @@ class AgentFactory:
         Returns:
             dict: Transformed parameters
         """
-        if toolkit_name == "BinanceToolkit":
-            # Convert relative data_dir to absolute if needed
+        if toolkit_name in self._toolkits:
+            # Convert relative data_dir to absolute if needed for data toolkits
             data_dir = params.get("data_dir")
             if data_dir and not os.path.isabs(data_dir):
                 # Make relative to project root
@@ -422,6 +462,108 @@ class AgentFactory:
                 logger.debug(f"Converted relative data_dir to absolute: {params['data_dir']}")
         
         return params
+    
+    def _create_agno_toolkit(self, toolkit_name: str, validated_toolkit) -> Optional[Any]:
+        """
+        Dynamically create an agno toolkit instance.
+        
+        Args:
+            toolkit_name: Name of the agno toolkit (e.g., "E2BTools")
+            validated_toolkit: Validated toolkit configuration
+            
+        Returns:
+            Agno toolkit instance or None if not found
+        """
+        try:
+            # Try to import the toolkit from agno.tools
+            module_path = f"agno.tools.{toolkit_name.lower().replace('tools', '')}"
+            if module_path.endswith('.'):
+                module_path = module_path[:-1]
+            
+            logger.debug(f"Attempting to import agno toolkit from: {module_path}")
+            
+            try:
+                # First try the calculated module path
+                module = importlib.import_module(module_path)
+                toolkit_class = getattr(module, toolkit_name, None)
+            except ImportError:
+                # Try common agno.tools locations
+                common_locations = [
+                    f"agno.tools.{toolkit_name.lower()}",
+                    f"agno.tools",
+                    f"agno.{toolkit_name.lower()}"
+                ]
+                
+                toolkit_class = None
+                for location in common_locations:
+                    try:
+                        module = importlib.import_module(location)
+                        toolkit_class = getattr(module, toolkit_name, None)
+                        if toolkit_class:
+                            logger.debug(f"Found {toolkit_name} in {location}")
+                            break
+                    except (ImportError, AttributeError):
+                        continue
+            
+            if not toolkit_class:
+                logger.warning(f"Agno toolkit class {toolkit_name} not found in any expected location")
+                return None
+            
+            # Create toolkit instance with parameters
+            params = validated_toolkit.params or {}
+            
+            # For E2B specifically, ensure template is set in sandbox_options
+            if toolkit_name == "E2BTools":
+                # Handle timeout parameter
+                if "timeout" not in params:
+                    timeout = int(os.getenv("E2B_TIMEOUT", "300"))
+                    params["timeout"] = timeout
+                    logger.debug(f"Set E2B timeout to: {timeout}s")
+                
+                # Handle template via sandbox_options
+                if "sandbox_options" not in params:
+                    params["sandbox_options"] = {}
+                
+                if "template" not in params["sandbox_options"]:
+                    template_id = os.getenv("E2B_TEMPLATE_ID", "sentient-e2b-s3")
+                    params["sandbox_options"]["template"] = template_id
+                    logger.debug(f"Set E2B template to: {template_id}")
+                
+                # # Add AWS credentials and S3 configuration to sandbox environment
+                # if "envs" not in params["sandbox_options"]:
+                #     params["sandbox_options"]["envs"] = {}
+                
+                # # Add AWS credentials from environment if available
+                # aws_vars = {
+                #     "AWS_ACCESS_KEY_ID": os.getenv("AWS_ACCESS_KEY_ID"),
+                #     "AWS_SECRET_ACCESS_KEY": os.getenv("AWS_SECRET_ACCESS_KEY"),
+                #     "AWS_REGION": os.getenv("AWS_REGION"),
+                #     "S3_BUCKET_NAME": os.getenv("S3_BUCKET_NAME"),
+                # }
+                
+                # # Only add non-None values to avoid cluttering environment
+                # for key, value in aws_vars.items():
+                #     if value:
+                #         params["sandbox_options"]["envs"][key] = value
+                #         logger.debug(f"Added AWS environment variable: {key}")
+                
+                # # Add project ID if available for data toolkit integration
+                # project_id = os.getenv("CURRENT_PROJECT_ID")
+                # if project_id:
+                #     params["sandbox_options"]["envs"]["CURRENT_PROJECT_ID"] = project_id
+                #     logger.debug(f"Added CURRENT_PROJECT_ID: {project_id}")
+            
+            # Create the toolkit instance
+            toolkit_instance = toolkit_class(**params)
+            logger.debug(f"Created agno toolkit {toolkit_name} with params: {params}")
+            
+            return toolkit_instance
+            
+        except Exception as e:
+            import traceback
+            logger.error(f"Failed to create agno toolkit {toolkit_name} with params {validated_toolkit.params}: {e}")
+            logger.error(f"Traceback:\n{traceback.format_exc()}")
+            return None
     
     def create_agno_agent(self, agent_config: DictConfig) -> Optional[AgnoAgent]:
         """

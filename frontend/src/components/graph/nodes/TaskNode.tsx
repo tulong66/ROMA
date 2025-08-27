@@ -3,6 +3,7 @@ import { Handle, Position, NodeProps } from 'reactflow'
 import { getStatusColor, truncateText } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { useTaskGraphStore } from '@/stores/taskGraphStore'
 import { 
   Brain, 
   Play, 
@@ -116,12 +117,25 @@ const TaskNodeComponent: React.FC<NodeProps<TaskNodeData>> = ({ data, selected }
     isMultiSelected
   } = data
   
+  const { selectNode, openToolCallsModal } = useTaskGraphStore()
+  
   const isPlanNode = node.node_type === 'PLAN'
   const backgroundColorClass = getNodeBackgroundColor(node.status, node.node_type, isHighlighted, isDimmed)
   
   const processingTime = node.execution_details ? 
     formatProcessingTime(node.execution_details.processing_started, node.execution_details.processing_completed) : 
     null
+    
+  // Get tool calls from execution details
+  const executionDetails = node.execution_details || (node as any).aux_data?.execution_details
+  const toolCalls = executionDetails?.tool_calls || []
+  const hasToolCalls = toolCalls.length > 0
+  
+  const handleToolCallsClick = (e: React.MouseEvent) => {
+    e.stopPropagation() // Prevent node selection
+    selectNode(node.task_id) // Select the node first
+    openToolCallsModal() // Then open the modal
+  }
 
   // Determine if node has been processed (and likely has tracing data)
   const hasBeenProcessed = ['RUNNING', 'DONE', 'FAILED', 'PLAN_DONE', 'AGGREGATING'].includes(node.status)
@@ -200,6 +214,17 @@ const TaskNodeComponent: React.FC<NodeProps<TaskNodeData>> = ({ data, selected }
           {node.agent_name && (
             <div className="text-xs text-muted-foreground bg-background/50 rounded px-2 py-1">
               🤖 {truncateText(node.agent_name, 25)}
+            </div>
+          )}
+          
+          {hasToolCalls && (
+            <div 
+              className="text-xs text-orange-600 bg-orange-50 dark:bg-orange-900/20 rounded px-2 py-1 flex items-center space-x-1 cursor-pointer hover:bg-orange-100 dark:hover:bg-orange-900/30 transition-colors"
+              onClick={handleToolCallsClick}
+              title={`Click to view ${toolCalls.length} tool calls`}
+            >
+              <Cpu className="w-3 h-3" />
+              <span>🔧 {toolCalls.length} tool calls</span>
             </div>
           )}
 

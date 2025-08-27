@@ -177,6 +177,13 @@ def setup_logging(config: 'LoggingConfig', console_filter: Optional[callable] = 
                 "{message}"
             )
             
+            # Get log file mode from environment variable (default: "a" for append)
+            import os
+            log_mode = os.getenv('LOG_FILE_MODE', 'a').lower()
+            # Validate mode - only allow 'w' (write/truncate) or 'a' (append)
+            if log_mode not in ['w', 'a']:
+                log_mode = 'a'
+            
             logger.add(
                 str(log_path),
                 format=file_format,
@@ -187,6 +194,7 @@ def setup_logging(config: 'LoggingConfig', console_filter: Optional[callable] = 
                 backtrace=True,
                 diagnose=False,  # No variable values in production logs
                 enqueue=True,
+                mode=log_mode,  # Configurable: "w" truncates, "a" appends
             )
     
     # Add custom log levels

@@ -115,6 +115,103 @@ Choose between:
 - **Docker Setup** (Recommended) - One-command setup with isolation
 - **Native Setup** - Direct installation for development
 
+### 🏗️ Optional: E2B Sandbox Integration
+
+For secure code execution capabilities, optionally set up E2B sandboxes:
+
+```bash
+# After main setup, configure E2B (requires E2B_API_KEY and AWS credentials in .env)
+./setup.sh --e2b
+
+# Test E2B integration
+./setup.sh --test-e2b
+```
+
+**E2B Features:**
+- 🔒 **Secure Code Execution** - Run untrusted code in isolated sandboxes
+- ☁️ **S3 Integration** - Automatic data sync between local and sandbox environments  
+- 🚀 **goofys Mounting** - High-performance S3 filesystem mounting
+- 🔧 **AWS Credentials** - Passed securely via Docker build arguments
+
+### 💾 S3 Data Persistence
+
+SentientResearchAgent includes a comprehensive S3 mounting solution for seamless data persistence across all environments:
+
+```bash
+# During setup, you'll be asked:
+# "Setup S3 mounting for data persistence? (y/n)"
+
+# Universal mount directory: /opt/sentient (identical across all platforms)
+```
+
+**🔒 Enterprise-Grade Security Features:**
+- 🛡️ **Path Injection Protection** - Validated mount directories prevent security vulnerabilities
+- 🔐 **AWS Credentials Validation** - Pre-flight checks ensure S3 bucket access before mounting
+- 📁 **Safe Environment Parsing** - Secure handling of configuration files and environment variables
+- 🔍 **Mount Verification** - Comprehensive testing of mount functionality before proceeding
+- ⚡ **FUSE Dependency Checking** - Automatic verification of macFUSE/FUSE requirements
+
+**🚀 Advanced Mounting Capabilities:**
+- 🔄 **Exact Path Matching** - Identical mount paths across local, Docker, and E2B environments
+- ⚡ **Zero-Sync Latency** - Live filesystem access via high-performance goofys mounting
+- 📁 **Dynamic Project Isolation** - Runtime project-based folders with configurable structures
+- 🛠 **Cross-Platform Support** - Seamless operation on macOS and Linux with auto-installation
+- 🔐 **Persistent Services** - Auto-mount on boot via systemd/launchd with proper configuration
+- 🔧 **Flexible Configuration** - Boolean values accept multiple formats (true/yes/1/on/enabled)
+
+**🏗️ Architecture Benefits:**
+1. **Unified Data Layer**: All environments access the exact same S3-mounted directory
+2. **No Path Translation**: Eliminates complexity with consistent `${S3_MOUNT_DIR}` across all systems
+3. **Instant Availability**: Files written by data toolkits appear immediately in E2B sandboxes
+4. **Secure Docker Integration**: Dynamic compose file selection with validated mount paths
+5. **Production-Ready**: Enterprise security validation with comprehensive error handling
+
+**How It Works:**
+```bash
+# Local System: Data toolkit saves to
+${S3_MOUNT_DIR}/project_123/binance/price_data_1642567890.parquet
+
+# Docker Container: Exact same path
+${S3_MOUNT_DIR}/project_123/binance/price_data_1642567890.parquet  
+
+# E2B Sandbox: Identical path structure
+${S3_MOUNT_DIR}/project_123/binance/price_data_1642567890.parquet
+```
+
+Make sure that S3_MOUNT_DIR is universal across all platform as absolute path so the path of the files would be consistent.
+
+**Perfect data consistency with zero configuration overhead!**
+
+### 🐳 Docker S3 mounting with goofys (setup.sh pipeline)
+
+When you run `./setup.sh` and choose Docker, the script:
+
+1. Validates `S3_MOUNT_ENABLED` and `S3_MOUNT_DIR` from your `.env`.
+2. If enabled and valid, starts Compose with `docker/docker-compose.yml` plus the S3 override `docker/docker-compose.s3.yml`.
+3. The override grants FUSE permissions (`/dev/fuse`, `SYS_ADMIN`, apparmor unconfined) required for `goofys` inside the container.
+4. The backend container entrypoint runs `/usr/local/bin/startup.sh`, which mounts S3 using `goofys` before launching the app.
+
+macOS note (Docker mode): Docker Desktop does not support FUSE mounts inside containers. Our setup mounts S3 on the host at the universal path (`/opt/sentient`) and bind-mounts it into the container. The container startup detects the existing mount and verifies it maps to the intended bucket, skipping in-container goofys. On Linux Docker engines, the container can mount directly.
+
+Pass additional `goofys` flags via the environment variable `GOOFYS_EXTRA_ARGS` in your `.env`:
+
+```bash
+# .env
+S3_MOUNT_ENABLED=true
+S3_MOUNT_DIR=/opt/sentient
+S3_BUCKET_NAME=your-s3-bucket
+AWS_ACCESS_KEY_ID=your_key
+AWS_SECRET_ACCESS_KEY=your_secret
+AWS_REGION=us-east-1
+
+# Optional: extra goofys flags
+GOOFYS_EXTRA_ARGS="--allow-other --stat-cache-ttl=10s --type-cache-ttl=10s"
+```
+
+Notes:
+- All variables from `.env` are injected into the backend container by Compose and read by `startup.sh`.
+- The command specified in the image (`uv run python -m sentientresearchagent`) is forwarded unchanged by `startup.sh` via `exec "$@"`.
+
 ### Your First Agent in 5 Minutes
 
 ```python
@@ -255,13 +352,37 @@ Special thanks to the WriteHERE project for pioneering the hierarchical approach
 - **Backend**: Python 3.12+ with FastAPI/Flask
 - **Frontend**: React + TypeScript with real-time WebSocket
 - **LLM Support**: Any provider via LiteLLM
+- **Data Persistence**: Enterprise S3 mounting with security validation
+  - 🔒 **goofys FUSE mounting** for zero-latency file access
+  - 🛡️ **Path injection protection** with comprehensive validation
+  - 🔐 **AWS credentials verification** before operations
+  - 📁 **Dynamic Docker Compose** with secure volume mounting
+- **Code Execution**: E2B sandboxes with unified S3 integration
+- **Security**: Production-grade validation and error handling
 - **Features**: Multi-modal, tools, MCP, hooks, caching
 
 ## 📦 Installation Options
 
 ### Quick Start (Recommended)
 ```bash
+# Main setup (choose Docker or Native)
 ./setup.sh
+
+# Optional: Setup E2B sandbox integration
+./setup.sh --e2b
+
+# Test E2B integration  
+./setup.sh --test-e2b
+```
+
+### Command Line Options
+```bash
+./setup.sh --docker     # Run Docker setup directly
+./setup.sh --docker-from-scratch  # Rebuild Docker images/containers from scratch (down -v, no cache)
+./setup.sh --native     # Run native setup directly (macOS/Ubuntu/Debian)
+./setup.sh --e2b        # Setup E2B template (requires E2B_API_KEY + AWS creds)
+./setup.sh --test-e2b   # Test E2B template integration
+./setup.sh --help       # Show all available options
 ```
 
 ### Manual Installation
@@ -270,7 +391,32 @@ See [docs/SETUP.md](docs/SETUP.md) for detailed instructions.
 ### Configuration
 1. Copy `.env.example` to `.env`
 2. Add your LLM API keys
-3. Customize `sentient.yaml` as needed
+3. **Optional**: Configure comprehensive S3 mounting:
+   ```bash
+   # ===== S3 Mounting Configuration =====
+   # Enable S3 mounting (accepts: true/yes/1/on/enabled)
+   S3_MOUNT_ENABLED=true
+   
+   # Universal mount directory (identical across all platforms)
+   S3_MOUNT_DIR=/opt/sentient
+   
+   # AWS S3 Configuration
+   S3_BUCKET_NAME=your-s3-bucket
+   AWS_ACCESS_KEY_ID=your_aws_key
+   AWS_SECRET_ACCESS_KEY=your_aws_secret
+   AWS_REGION=us-east-1
+   
+   # ===== E2B Integration (Optional) =====
+   E2B_API_KEY=your_e2b_api_key_here
+   ```
+4. Customize `sentient.yaml` as needed
+
+**🔒 Security Features in Configuration:**
+- **Path validation**: Mount directories are validated against injection attacks
+- **AWS verification**: Credentials are tested before mounting attempts
+- **FUSE checking**: System dependencies verified automatically
+- **Mount verification**: Comprehensive functionality testing before proceeding
+- **Flexible booleans**: `S3_MOUNT_ENABLED` accepts multiple true/false formats
 
 ## 🤝 Contributing
 
@@ -361,6 +507,9 @@ MIT License - see [LICENSE](LICENSE) file
 git clone https://github.com/yourusername/SentientResearchAgent.git
 cd SentientResearchAgent
 ./setup.sh
+
+# Optional: Enable secure code execution
+./setup.sh --e2b
 
 # Create your first agent
 python -m sentientresearchagent

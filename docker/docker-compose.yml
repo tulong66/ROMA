@@ -21,6 +21,9 @@ services:
       - ../project_results:/app/project_results
       - ../emergency_backups:/app/emergency_backups
       - ../logs:/app/logs
+      # S3 mount volume - only mount if S3_MOUNT_ENABLED=true and path is validated
+      # Fallback to local_data if S3 mounting is disabled
+      - ../local_data:/app/local_data
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
       interval: 30s

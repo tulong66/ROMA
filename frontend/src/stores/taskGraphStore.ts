@@ -60,6 +60,9 @@ interface TaskGraphState {
   comparisonView: 'cards' | 'table' | 'timeline' | 'metrics'
   isComparisonPanelOpen: boolean
   
+  // Tool Calls Modal State
+  isToolCallsModalOpen: boolean
+  
   // HITL State
   currentHITLRequest: HITLRequest | undefined
   isHITLModalOpen: boolean
@@ -104,6 +107,10 @@ interface TaskGraphState {
   invertSelection: () => void
   setMultiSelectMode: (enabled: boolean) => void
   setComparisonView: (view: 'cards' | 'table' | 'timeline' | 'metrics') => void
+  
+  // Tool Calls Modal actions
+  openToolCallsModal: () => void
+  closeToolCallsModal: () => void
   toggleComparisonPanel: () => void
   
   // Computed Properties
@@ -178,6 +185,9 @@ export const useTaskGraphStore = create<TaskGraphState>()(
     isMultiSelectMode: false,
     comparisonView: 'cards',
     isComparisonPanelOpen: false,
+    
+    // Tool Calls Modal state
+    isToolCallsModalOpen: false,
     
     currentHITLRequest: undefined,
     isHITLModalOpen: false,
@@ -608,6 +618,11 @@ export const useTaskGraphStore = create<TaskGraphState>()(
     toggleComparisonPanel: () => {
       set((state) => ({ isComparisonPanelOpen: !state.isComparisonPanelOpen }))
     },
+    
+    // Tool Calls Modal Actions
+    openToolCallsModal: () => set({ isToolCallsModalOpen: true }),
+    
+    closeToolCallsModal: () => set({ isToolCallsModalOpen: false }),
     
     // Computed Properties
     getFilteredNodes: () => {

@@ -74,3 +74,32 @@ The setup mounts source directories as volumes, so code changes are reflected im
 ### PDM issues
 - The Dockerfile configures PDM to use uv backend automatically
 - Dependencies are installed during build
+
+## S3 Mounting with goofys
+
+To enable S3 mounting inside the backend container:
+
+1. Add to your `.env` in project root:
+```bash
+S3_MOUNT_ENABLED=true
+S3_MOUNT_DIR=/opt/sentient
+S3_BUCKET_NAME=your-s3-bucket
+AWS_ACCESS_KEY_ID=your_key
+AWS_SECRET_ACCESS_KEY=your_secret
+AWS_REGION=us-east-1
+
+# Optional: extra goofys flags
+GOOFYS_EXTRA_ARGS="--allow-other --stat-cache-ttl=10s --type-cache-ttl=10s"
+```
+
+2. Start with the S3 override automatically included by `setup.sh`, or manually:
+```bash
+cd docker
+docker compose -f docker-compose.yml -f docker-compose.s3.yml up -d
+```
+
+Notes:
+- The S3 override grants FUSE permissions (`/dev/fuse`, `SYS_ADMIN`, apparmor unconfined).
+- The backend image runs `/usr/local/bin/startup.sh` which mounts the bucket using `goofys` before launching the app.
+- All variables from `.env` are injected into the container via `env_file` and read by the startup script.
+- macOS (Docker Desktop): FUSE mounts are not supported inside containers. `setup.sh` will mount S3 on the host at `/opt/sentient` and bind it into the container. The startup script detects this and skips in-container goofys after verifying it maps to the correct bucket. Ensure `/opt` is added under Docker Desktop → Settings → Resources → File Sharing.

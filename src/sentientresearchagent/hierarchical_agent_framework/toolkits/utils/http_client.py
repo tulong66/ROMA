@@ -19,6 +19,7 @@ import asyncio
 from typing import Any, Dict, Optional, Union
 from pathlib import Path
 import datetime
+import time
 import httpx
 from loguru import logger
 
@@ -66,6 +67,7 @@ class DataHTTPClient:
         default_headers: Optional[Dict[str, str]] = None,
         max_retries: int = 3,
         retry_delay: float = 1.0,
+        default_rate_limit: Optional[float] = None,
     ):
         """Initialize the HTTP client.
         
@@ -74,17 +76,22 @@ class DataHTTPClient:
             default_headers: Default headers applied to all requests
             max_retries: Maximum number of retry attempts for failed requests
             retry_delay: Delay between retry attempts in seconds
+            default_rate_limit: Default minimum seconds between requests (None = no limit)
         """
         self._default_timeout = default_timeout
         self._default_headers = default_headers or {}
         self._max_retries = max_retries
         self._retry_delay = retry_delay
+        self._default_rate_limit = default_rate_limit
         
         # Store endpoint configurations
         self._endpoints: Dict[str, Dict[str, Any]] = {}
         
         # Store active HTTP clients per endpoint
         self._clients: Dict[str, httpx.AsyncClient] = {}
+        
+        # Rate limiting tracking - store last request time per endpoint
+        self._last_request_times: Dict[str, float] = {}
         
         logger.debug(f"Initialized DataHTTPClient with {default_timeout}s timeout")
 
@@ -94,6 +101,7 @@ class DataHTTPClient:
         base_url: str,
         headers: Optional[Dict[str, str]] = None,
         timeout: Optional[float] = None,
+        rate_limit: Optional[float] = None,
         **client_kwargs: Any,
     ) -> None:
         """Add a new endpoint configuration.
@@ -103,6 +111,7 @@ class DataHTTPClient:
             base_url: Base URL for the endpoint
             headers: Additional headers specific to this endpoint
             timeout: Custom timeout for this endpoint (overrides default)
+            rate_limit: Minimum seconds between requests to this endpoint (overrides default)
             **client_kwargs: Additional arguments passed to httpx.AsyncClient
             
         Example:
@@ -131,6 +140,7 @@ class DataHTTPClient:
             "base_url": base_url,
             "headers": endpoint_headers,
             "timeout": timeout or self._default_timeout,
+            "rate_limit": rate_limit if rate_limit is not None else self._default_rate_limit,
             "client_kwargs": client_kwargs,
         }
         
@@ -165,6 +175,30 @@ class DataHTTPClient:
             logger.debug(f"Created HTTP client for endpoint '{endpoint_name}'")
         
         return self._clients[endpoint_name]
+
+    async def _apply_rate_limit(self, endpoint_name: str) -> None:
+        """Apply rate limiting for the specified endpoint.
+        
+        Args:
+            endpoint_name: Name of the endpoint to check rate limiting for
+        """
+        if endpoint_name not in self._endpoints:
+            return
+            
+        rate_limit = self._endpoints[endpoint_name].get("rate_limit")
+        if rate_limit is None:
+            return
+            
+        current_time = time.time()
+        last_request_time = self._last_request_times.get(endpoint_name, 0)
+        
+        time_since_last = current_time - last_request_time
+        if time_since_last < rate_limit:
+            sleep_time = rate_limit - time_since_last
+            logger.debug(f"Rate limiting: sleeping {sleep_time:.2f}s for endpoint '{endpoint_name}'")
+            await asyncio.sleep(sleep_time)
+        
+        self._last_request_times[endpoint_name] = time.time()
 
     async def get(
         self,
@@ -272,6 +306,9 @@ class DataHTTPClient:
         """
         client = self._get_client(endpoint_name)
         max_retries = retries if retries is not None else self._max_retries
+        
+        # Apply rate limiting if configured for this endpoint
+        await self._apply_rate_limit(endpoint_name)
         
         last_error = None
         

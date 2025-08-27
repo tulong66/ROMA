@@ -91,6 +91,8 @@ class ProjectManager:
         """Create a new project"""
         with self._lock:
             project_id = str(uuid.uuid4())
+            # Export project_id as environment variable for toolkits
+            os.environ['CURRENT_PROJECT_ID'] = project_id
             
             # Generate a smart title from the goal
             title = self._generate_title(goal)
