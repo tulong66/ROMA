@@ -19,7 +19,7 @@ This guide covers everything you need to know about agents in SentientResearchAg
 
 Agents are the intelligent workers in SentientResearchAgent. Each agent:
 - **Specializes** in specific types of tasks
-- **Encapsulates** prompts, models, and logic
+- **Encapsulates** prompts, models, tools and logic
 - **Processes** TaskNodes to produce results
 - **Integrates** with various LLM providers
 

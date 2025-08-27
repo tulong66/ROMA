@@ -2032,6 +2032,7 @@ dependencies = [
     { name = "agno" },
     { name = "datasets" },
     { name = "duckduckgo-search" },
+    { name = "e2b" },
     { name = "e2b-code-interpreter" },
     { name = "eventlet" },
     { name = "exa-py" },
@@ -2059,10 +2060,11 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "agno", specifier = ">=1.4.6" },
+    { name = "agno", specifier = ">=1.7" },
     { name = "datasets", specifier = ">=4.0.0" },
     { name = "duckduckgo-search", specifier = ">=8.0.1" },
-    { name = "e2b-code-interpreter", specifier = ">=1.5.2" },
+    { name = "e2b", specifier = "<2.0.0" },
+    { name = "e2b-code-interpreter", specifier = "<2.0.0" },
     { name = "eventlet", specifier = ">=0.40.0" },
     { name = "exa-py", specifier = ">=1.14.16" },
     { name = "flask", specifier = ">=3.1.1" },

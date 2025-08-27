@@ -141,6 +141,78 @@ Choose between:
 - **Docker Setup** (Recommended) - One-command setup with isolation
 - **Native Setup** - Direct installation for development
 
+## 🛠️ Technical Stack
+
+- **Framework**: Built on [AgnoAgents](https://github.com/your/agnoagents)
+- **Backend**: Python 3.12+ with FastAPI/Flask
+- **Frontend**: React + TypeScript with real-time WebSocket
+- **LLM Support**: Any provider via LiteLLM
+- **Data Persistence**: Enterprise S3 mounting with security validation
+  - 🔒 **goofys FUSE mounting** for zero-latency file access
+  - 🛡️ **Path injection protection** with comprehensive validation
+  - 🔐 **AWS credentials verification** before operations
+  - 📁 **Dynamic Docker Compose** with secure volume mounting
+- **Code Execution**: E2B sandboxes with unified S3 integration
+- **Security**: Production-grade validation and error handling
+- **Features**: Multi-modal, tools, MCP, hooks, caching
+
+## 📦 Installation Options
+
+### Quick Start (Recommended)
+```bash
+# Main setup (choose Docker or Native)
+./setup.sh
+
+# Optional: Setup E2B sandbox integration
+./setup.sh --e2b
+
+# Test E2B integration  
+./setup.sh --test-e2b
+```
+
+### Command Line Options
+```bash
+./setup.sh --docker     # Run Docker setup directly
+./setup.sh --docker-from-scratch  # Rebuild Docker images/containers from scratch (down -v, no cache)
+./setup.sh --native     # Run native setup directly (macOS/Ubuntu/Debian)
+./setup.sh --e2b        # Setup E2B template (requires E2B_API_KEY + AWS creds)
+./setup.sh --test-e2b   # Test E2B template integration
+./setup.sh --help       # Show all available options
+```
+
+### Manual Installation
+See [docs/SETUP.md](docs/SETUP.md) for detailed instructions.
+
+### Configuration
+1. Copy `.env.example` to `.env`
+2. Add your LLM API keys
+3. **Optional**: Configure comprehensive S3 mounting:
+   ```bash
+   # ===== S3 Mounting Configuration =====
+   # Enable S3 mounting (accepts: true/yes/1/on/enabled)
+   S3_MOUNT_ENABLED=true
+   
+   # Universal mount directory (identical across all platforms)
+   S3_MOUNT_DIR=/opt/sentient
+   
+   # AWS S3 Configuration
+   S3_BUCKET_NAME=your-s3-bucket
+   AWS_ACCESS_KEY_ID=your_aws_key
+   AWS_SECRET_ACCESS_KEY=your_aws_secret
+   AWS_REGION=us-east-1
+   
+   # ===== E2B Integration (Optional) =====
+   E2B_API_KEY=your_e2b_api_key_here
+   ```
+4. Customize `sentient.yaml` as needed
+
+**🔒 Security Features in Configuration:**
+- **Path validation**: Mount directories are validated against injection attacks
+- **AWS verification**: Credentials are tested before mounting attempts
+- **FUSE checking**: System dependencies verified automatically
+- **Mount verification**: Comprehensive functionality testing before proceeding
+- **Flexible booleans**: `S3_MOUNT_ENABLED` accepts multiple true/false formats
+
 ### 🏗️ Optional: E2B Sandbox Integration
 
 For secure code execution capabilities, optionally set up E2B sandboxes:
@@ -310,100 +382,6 @@ This framework would not have been possible if it wasn't for these amazing open-
 If you use SentientResearchAgent in your research, please cite:
 
 ```bibtex
-@misc{xiong2025heterogeneousrecursiveplanning,
-      title={Beyond Outlining: Heterogeneous Recursive Planning for Long-form Writing with Language Models}, 
-      author={Ruibin Xiong and Yimeng Chen and Dmitrii Khizbullin and Mingchen Zhuge and Jürgen Schmidhuber},
-      year={2025},
-      eprint={2503.08275},
-      archivePrefix={arXiv},
-      primaryClass={cs.AI},
-      url={https://arxiv.org/abs/2503.08275}
-}
-```
-
-Special thanks to the WriteHERE project for pioneering the hierarchical approach to AI task planning.
-
-## 🛠️ Technical Stack
-
-- **Framework**: Built on [AgnoAgents](https://github.com/your/agnoagents)
-- **Backend**: Python 3.12+ with FastAPI/Flask
-- **Frontend**: React + TypeScript with real-time WebSocket
-- **LLM Support**: Any provider via LiteLLM
-- **Data Persistence**: Enterprise S3 mounting with security validation
-  - 🔒 **goofys FUSE mounting** for zero-latency file access
-  - 🛡️ **Path injection protection** with comprehensive validation
-  - 🔐 **AWS credentials verification** before operations
-  - 📁 **Dynamic Docker Compose** with secure volume mounting
-- **Code Execution**: E2B sandboxes with unified S3 integration
-- **Security**: Production-grade validation and error handling
-- **Features**: Multi-modal, tools, MCP, hooks, caching
-
-## 📦 Installation Options
-
-### Quick Start (Recommended)
-```bash
-# Main setup (choose Docker or Native)
-./setup.sh
-
-# Optional: Setup E2B sandbox integration
-./setup.sh --e2b
-
-# Test E2B integration  
-./setup.sh --test-e2b
-```
-
-### Command Line Options
-```bash
-./setup.sh --docker     # Run Docker setup directly
-./setup.sh --docker-from-scratch  # Rebuild Docker images/containers from scratch (down -v, no cache)
-./setup.sh --native     # Run native setup directly (macOS/Ubuntu/Debian)
-./setup.sh --e2b        # Setup E2B template (requires E2B_API_KEY + AWS creds)
-./setup.sh --test-e2b   # Test E2B template integration
-./setup.sh --help       # Show all available options
-```
-
-### Manual Installation
-See [docs/SETUP.md](docs/SETUP.md) for detailed instructions.
-
-### Configuration
-1. Copy `.env.example` to `.env`
-2. Add your LLM API keys
-3. **Optional**: Configure comprehensive S3 mounting:
-   ```bash
-   # ===== S3 Mounting Configuration =====
-   # Enable S3 mounting (accepts: true/yes/1/on/enabled)
-   S3_MOUNT_ENABLED=true
-   
-   # Universal mount directory (identical across all platforms)
-   S3_MOUNT_DIR=/opt/sentient
-   
-   # AWS S3 Configuration
-   S3_BUCKET_NAME=your-s3-bucket
-   AWS_ACCESS_KEY_ID=your_aws_key
-   AWS_SECRET_ACCESS_KEY=your_aws_secret
-   AWS_REGION=us-east-1
-   
-   # ===== E2B Integration (Optional) =====
-   E2B_API_KEY=your_e2b_api_key_here
-   ```
-4. Customize `sentient.yaml` as needed
-
-**🔒 Security Features in Configuration:**
-- **Path validation**: Mount directories are validated against injection attacks
-- **AWS verification**: Credentials are tested before mounting attempts
-- **FUSE checking**: System dependencies verified automatically
-- **Mount verification**: Comprehensive functionality testing before proceeding
-- **Flexible booleans**: `S3_MOUNT_ENABLED` accepts multiple true/false formats
-
-## 🤝 Contributing
-
-We welcome contributions! Whether it's:
-- New agent templates
-- Use case examples
-- Documentation improvements
-- Core framework enhancements
-
-See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for guidelines.
 @software{sentientresearchagent2024,
   title = {SentientResearchAgent: A Hierarchical AI Agent Framework},
   author = {Al-Zubi, Salah},
@@ -414,99 +392,4 @@ See [CONTRIBUTING.md](docs/CONTRIBUTING.md) for guidelines.
 
 ## 📄 License
 
-MIT License - see [LICENSE](LICENSE) file
-
-## 👥 Contributors
-
-### 🏆 Lead Contributor
-
-<table>
-  <tr>
-    <td align="center">
-      <a href="https://github.com/salzubi401">
-        <img src="https://github.com/salzubi401.png" width="100px;" alt="Salah Al-Zubi"/>
-        <br />
-        <sub><b>Salah Al-Zubi</b></sub>
-      </a>
-      <br />
-      <sub>Creator & Lead Developer</sub>
-    </td>
-  </tr>
-</table>
-
-### ✨ Contributors
-
-<!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
-<!-- prettier-ignore-start -->
-<!-- markdownlint-disable -->
-<table>
-  <tr>
-    <td align="center">
-      <a href="https://github.com/contributor1">
-        <img src="https://github.com/contributor1.png?size=50" width="50px;" alt=""/>
-        <br />
-        <sub><b>Contributor 1</b></sub>
-      </a>
-    </td>
-    <td align="center">
-      <a href="https://github.com/contributor2">
-        <img src="https://github.com/contributor2.png?size=50" width="50px;" alt=""/>
-        <br />
-        <sub><b>Contributor 2</b></sub>
-      </a>
-    </td>
-    <td align="center">
-      <a href="https://github.com/contributor3">
-        <img src="https://github.com/contributor3.png?size=50" width="50px;" alt=""/>
-        <br />
-        <sub><b>Contributor 3</b></sub>
-      </a>
-    </td>
-    <td align="center">
-      <a href="https://github.com/contributor4">
-        <img src="https://github.com/contributor4.png?size=50" width="50px;" alt=""/>
-        <br />
-        <sub><b>Contributor 4</b></sub>
-      </a>
-    </td>
-    <td align="center">
-      <a href="https://github.com/contributor5">
-        <img src="https://github.com/contributor5.png?size=50" width="50px;" alt=""/>
-        <br />
-        <sub><b>Contributor 5</b></sub>
-      </a>
-    </td>
-  </tr>
-</table>
-<!-- markdownlint-restore -->
-<!-- prettier-ignore-end -->
-<!-- ALL-CONTRIBUTORS-LIST:END -->
-
-<sub>This project follows the [all-contributors](https://github.com/all-contributors/all-contributors) specification. Contributions of any kind welcome!</sub>
-
-## 🚀 Start Building Today!
-
-```bash
-# Install
-git clone https://github.com/yourusername/SentientResearchAgent.git
-cd SentientResearchAgent
-./setup.sh
-
-# Optional: Enable secure code execution
-./setup.sh --e2b
-
-# Create your first agent
-python -m sentientresearchagent
-
-# Or dive into examples
-jupyter notebook notebooks/quickstart.ipynb
-```
-
-**Remember**: If you can think it, you can build it with Think, Write, and Search! 🚀
-
----
-
-<p align="center">
-  <strong>Join the revolution in hierarchical AI agents. Build something amazing today!</strong>
-</p>
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
