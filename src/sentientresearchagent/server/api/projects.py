@@ -305,6 +305,34 @@ def create_project_routes(app, project_service, execution_service):
             logger.error(f"Get executions error: {e}")
             return jsonify({"error": str(e)}), 500
 
+    @app.route('/api/project/details', methods=['GET'])
+    def get_project_details():
+        """Get current project environment details including paths and S3 configuration."""
+        try:
+            # Get current project ID from environment
+            current_project_id = os.getenv("CURRENT_PROJECT_ID")
+            
+            # Get S3 configuration from environment
+            s3_bucket_name = os.getenv("S3_BUCKET_NAME")
+            s3_mount_enabled = os.getenv("S3_MOUNT_ENABLED", "false").lower() in ("true", "yes", "1", "on", "enabled")
+            
+            # Get project directory paths
+            project_toolkits_dir = os.getenv("PROJECT_TOOLKITS_DIR")
+            project_results_dir = os.getenv("PROJECT_RESULTS_DIR")
+            
+            return jsonify({
+                "project_id": current_project_id,
+                "s3_bucket_name": s3_bucket_name,
+                "s3_mount_enabled": s3_mount_enabled,
+                "project_toolkits_dir": project_toolkits_dir,
+                "project_results_dir": project_results_dir,
+                "timestamp": datetime.now().isoformat()
+            })
+            
+        except Exception as e:
+            logger.error(f"Get project details error: {e}")
+            return jsonify({"error": str(e)}), 500
+
 
 def _create_project_config(config_data):
     """Create project configuration from request data."""

@@ -790,11 +790,16 @@ class AgentFactory:
                     registration_info["named_keys"] = list(reg_config.named_keys)
             
             # Collect metadata about the agent
+            # Get actual runtime tools from AgnoAgent if available
+            runtime_tools = []
+            if agno_agent and hasattr(agno_agent, 'tools') and agno_agent.tools:
+                runtime_tools = [{"name": getattr(tool, '__name__', str(type(tool).__name__)), "params": {}} for tool in agno_agent.tools]
+            
             metadata = {
                 "has_structured_output": "response_model" in agent_config,
                 "response_model": agent_config.get("response_model"),
-                "has_tools": "tools" in agent_config and bool(agent_config.tools),
-                "tools": list(agent_config.get("tools", [])),
+                "has_tools": bool(runtime_tools) or ("tools" in agent_config and bool(agent_config.tools)),
+                "tools": runtime_tools if runtime_tools else list(agent_config.get("tools", [])),
                 "model_info": dict(agent_config.model) if agent_config.get("model") else None,
                 "prompt_source": agent_config.get("prompt_source"),
             }

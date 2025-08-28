@@ -88,11 +88,41 @@ class ProjectManager:
             logger.error(f"Failed to save projects: {e}")
     
     def create_project(self, goal: str, max_steps: int = 250) -> ProjectMetadata:
-        """Create a new project"""
+        """Create a new project with universal folder structure"""
         with self._lock:
             project_id = str(uuid.uuid4())
-            # Export project_id as environment variable for toolkits
+            
+            # Determine base directory using same logic as BaseDataToolkit
+            s3_mount_env = os.getenv("S3_MOUNT_ENABLED", "false").lower().strip()
+            s3_mount_enabled = s3_mount_env in ("true", "yes", "1", "on", "enabled")
+            s3_mount_dir = os.getenv("S3_MOUNT_DIR")
+            
+            if s3_mount_enabled and s3_mount_dir and os.path.exists(s3_mount_dir):
+                # Use S3 mounted directory (same as BaseDataToolkit)
+                base_dir = Path(s3_mount_dir)
+                logger.info(f"Creating project structure in S3 mounted directory: {base_dir}")
+            else:
+                # Use local projects directory
+                base_dir = self.projects_dir
+            
+            # Create universal project folder structure
+            project_root = base_dir / project_id
+            toolkits_dir = project_root / "toolkits"
+            results_dir = project_root / "results"
+            
+            # Create all directories
+            toolkits_dir.mkdir(parents=True, exist_ok=True)
+            results_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Create results subdirectories
+            (results_dir / "plots").mkdir(exist_ok=True)
+            (results_dir / "artifacts").mkdir(exist_ok=True)
+            (results_dir / "reports").mkdir(exist_ok=True)
+            
+            # Set universal environment variables that work across all platforms
             os.environ['CURRENT_PROJECT_ID'] = project_id
+            os.environ['PROJECT_TOOLKITS_DIR'] = str(toolkits_dir)
+            os.environ['PROJECT_RESULTS_DIR'] = str(results_dir)
             
             # Generate a smart title from the goal
             title = self._generate_title(goal)
@@ -112,11 +142,8 @@ class ProjectManager:
             self.current_project_id = project_id
             self._save_projects()
             
-            # Create project directory for storing graph state
-            project_dir = self.projects_dir / project_id
-            project_dir.mkdir(exist_ok=True)
-            
             logger.info(f"Created new project: {project_id} - {title}")
+            logger.info(f"Project structure: toolkits={toolkits_dir}, results={results_dir}")
             return project
     
     def _generate_title(self, goal: str) -> str:

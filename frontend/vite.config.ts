@@ -2,6 +2,10 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 
+// Check if running in Docker environment
+const isDocker = process.env.DOCKER_ENV === 'true'
+const backendTarget = isDocker ? 'http://backend:5000' : 'http://localhost:5000'
+
 export default defineConfig({
   plugins: [react()],
   resolve: {
@@ -20,12 +24,12 @@ export default defineConfig({
     ],
     proxy: {
       '/api': {
-        target: 'http://localhost:5000',
+        target: backendTarget,
         changeOrigin: true,
         secure: false,
       },
       '/socket.io': {
-        target: 'http://localhost:5000',
+        target: backendTarget,
         changeOrigin: true,
         ws: true,
       }

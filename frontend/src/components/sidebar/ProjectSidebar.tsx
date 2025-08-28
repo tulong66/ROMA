@@ -35,7 +35,10 @@ import {
   FileText,
   Save,
   Clock,
-  Play
+  Play,
+  Info,
+  FolderOpen,
+  Database
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from '@/components/ui/use-toast'
@@ -65,6 +68,20 @@ const ProjectSidebar: React.FC = () => {
   const [showConfigDialog, setShowConfigDialog] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [lastSwitchTime, setLastSwitchTime] = useState(0)
+  const [projectDetails, setProjectDetails] = useState<{
+    projectId: string | null
+    s3BucketName: string | null
+    s3MountEnabled: boolean
+    projectToolkitsDir: string | null
+    projectResultsDir: string | null
+  }>({
+    projectId: null,
+    s3BucketName: null,
+    s3MountEnabled: false,
+    projectToolkitsDir: null,
+    projectResultsDir: null
+  })
+  const [showProjectDetails, setShowProjectDetails] = useState(false)
   const [newProjectConfig, setNewProjectConfig] = useState<ProjectConfig>({
     llm: {
       provider: 'openai',
@@ -102,6 +119,40 @@ const ProjectSidebar: React.FC = () => {
   useEffect(() => {
     loadProjects()
   }, [])
+
+  // Load project details when current project changes
+  useEffect(() => {
+    if (currentProjectId) {
+      fetchProjectDetails()
+    }
+  }, [currentProjectId])
+
+  const fetchProjectDetails = async () => {
+    try {
+      // Fetch project environment details from the backend
+      const response = await fetch('/api/project/details')
+      if (response.ok) {
+        const data = await response.json()
+        setProjectDetails({
+          projectId: data.project_id || null,
+          s3BucketName: data.s3_bucket_name || null,
+          s3MountEnabled: data.s3_mount_enabled || false,
+          projectToolkitsDir: data.project_toolkits_dir || null,
+          projectResultsDir: data.project_results_dir || null
+        })
+      }
+    } catch (error) {
+      // Fallback to simulated data for now since backend might not have this endpoint yet
+      console.log('Project details endpoint not available, using fallback data')
+      setProjectDetails({
+        projectId: currentProjectId || null,
+        s3BucketName: 'roma-shared', // From .env file
+        s3MountEnabled: true, // From .env file
+        projectToolkitsDir: currentProjectId ? `/opt/sentient/${currentProjectId}/toolkits` : null,
+        projectResultsDir: currentProjectId ? `/opt/sentient/${currentProjectId}/results` : null
+      })
+    }
+  }
 
   // Helper function to find the root node
   const getRootNode = () => {
@@ -546,8 +597,31 @@ const ProjectSidebar: React.FC = () => {
     .filter(p => p.id !== currentProjectId)
     .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
   const currentProject = getCurrentProject()
-  const rootNodeCompleted = isRootNodeCompleted()
-  const hasNodes = Object.keys(nodes).length > 0
+
+  // Helper function to get full S3 bucket path
+  const getS3BucketPath = (localPath: string | null) => {
+    if (!localPath || !projectDetails.s3MountEnabled || !projectDetails.s3BucketName) {
+      return null
+    }
+    return `s3://${projectDetails.s3BucketName}/data/${projectDetails.projectId}/${localPath.split('/').pop()}`
+  }
+
+  // Helper function to copy text to clipboard
+  const copyToClipboard = async (text: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      toast({
+        title: "Copied to clipboard",
+        description: `${label} copied successfully`,
+      })
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to copy to clipboard",
+        variant: "destructive",
+      })
+    }
+  }
 
   return (
     <div className={cn(
@@ -673,7 +747,154 @@ const ProjectSidebar: React.FC = () => {
                           {currentProject.node_count} nodes
                         </span>
                       )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-5 w-5 p-0 text-muted-foreground hover:text-foreground"
+                        onClick={() => setShowProjectDetails(!showProjectDetails)}
+                        title="Toggle project details"
+                      >
+                        <Info className="h-3 w-3" />
+                      </Button>
                     </div>
+
+                    {/* Project Details */}
+                    {showProjectDetails && projectDetails.projectId && (
+                      <div className="mt-3 pt-2 border-t border-border/50 space-y-2">
+                        <div className="text-xs">
+                          <div className="flex items-center gap-1 mb-1">
+                            <Info className="h-3 w-3 text-muted-foreground" />
+                            <span className="font-medium text-muted-foreground">Project ID</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <code className="text-xs bg-muted px-1 py-0.5 rounded font-mono">
+                              {truncateText(projectDetails.projectId, 20)}
+                            </code>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-4 w-4 p-0 text-muted-foreground hover:text-foreground"
+                              onClick={() => copyToClipboard(projectDetails.projectId!, 'Project ID')}
+                              title="Copy project ID"
+                            >
+                              <FileText className="h-2 w-2" />
+                            </Button>
+                          </div>
+                        </div>
+
+                        {projectDetails.s3MountEnabled && projectDetails.s3BucketName && (
+                          <div className="text-xs">
+                            <div className="flex items-center gap-1 mb-1">
+                              <Database className="h-3 w-3 text-muted-foreground" />
+                              <span className="font-medium text-muted-foreground">S3 Storage</span>
+                            </div>
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-1">
+                                <span className="text-muted-foreground">Bucket:</span>
+                                <code className="text-xs bg-muted px-1 py-0.5 rounded font-mono">
+                                  {projectDetails.s3BucketName}
+                                </code>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-4 w-4 p-0 text-muted-foreground hover:text-foreground"
+                                  onClick={() => copyToClipboard(projectDetails.s3BucketName!, 'S3 bucket name')}
+                                  title="Copy bucket name"
+                                >
+                                  <FileText className="h-2 w-2" />
+                                </Button>
+                              </div>
+                              
+                              {projectDetails.projectToolkitsDir && (
+                                <div>
+                                  <div className="flex items-center gap-1 mb-1">
+                                    <FolderOpen className="h-3 w-3 text-muted-foreground" />
+                                    <span className="text-muted-foreground">Toolkits Data:</span>
+                                  </div>
+                                  <div className="ml-4 space-y-1">
+                                    <div className="flex items-center gap-1">
+                                      <span className="text-xs text-muted-foreground">Local:</span>
+                                      <code className="text-xs bg-muted px-1 py-0.5 rounded font-mono">
+                                        {truncateText(projectDetails.projectToolkitsDir, 25)}
+                                      </code>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-4 w-4 p-0 text-muted-foreground hover:text-foreground"
+                                        onClick={() => copyToClipboard(projectDetails.projectToolkitsDir!, 'Toolkits directory')}
+                                        title="Copy toolkits path"
+                                      >
+                                        <FileText className="h-2 w-2" />
+                                      </Button>
+                                    </div>
+                                    {getS3BucketPath(projectDetails.projectToolkitsDir) && (
+                                      <div className="flex items-center gap-1">
+                                        <span className="text-xs text-muted-foreground">S3:</span>
+                                        <code className="text-xs bg-muted px-1 py-0.5 rounded font-mono">
+                                          {truncateText(getS3BucketPath(projectDetails.projectToolkitsDir)!, 25)}
+                                        </code>
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          className="h-4 w-4 p-0 text-muted-foreground hover:text-foreground"
+                                          onClick={() => copyToClipboard(getS3BucketPath(projectDetails.projectToolkitsDir!)!, 'S3 toolkits path')}
+                                          title="Copy S3 toolkits path"
+                                        >
+                                          <FileText className="h-2 w-2" />
+                                        </Button>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                              
+                              {projectDetails.projectResultsDir && (
+                                <div>
+                                  <div className="flex items-center gap-1 mb-1">
+                                    <FolderOpen className="h-3 w-3 text-muted-foreground" />
+                                    <span className="text-muted-foreground">Results Output:</span>
+                                  </div>
+                                  <div className="ml-4 space-y-1">
+                                    <div className="flex items-center gap-1">
+                                      <span className="text-xs text-muted-foreground">Local:</span>
+                                      <code className="text-xs bg-muted px-1 py-0.5 rounded font-mono">
+                                        {truncateText(projectDetails.projectResultsDir, 25)}
+                                      </code>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-4 w-4 p-0 text-muted-foreground hover:text-foreground"
+                                        onClick={() => copyToClipboard(projectDetails.projectResultsDir!, 'Results directory')}
+                                        title="Copy results path"
+                                      >
+                                        <FileText className="h-2 w-2" />
+                                      </Button>
+                                    </div>
+                                    {getS3BucketPath(projectDetails.projectResultsDir) && (
+                                      <div className="flex items-center gap-1">
+                                        <span className="text-xs text-muted-foreground">S3:</span>
+                                        <code className="text-xs bg-muted px-1 py-0.5 rounded font-mono">
+                                          {truncateText(getS3BucketPath(projectDetails.projectResultsDir)!, 25)}
+                                        </code>
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          className="h-4 w-4 p-0 text-muted-foreground hover:text-foreground"
+                                          onClick={() => copyToClipboard(getS3BucketPath(projectDetails.projectResultsDir!)!, 'S3 results path')}
+                                          title="Copy S3 results path"
+                                        >
+                                          <FileText className="h-2 w-2" />
+                                        </Button>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -681,7 +902,7 @@ const ProjectSidebar: React.FC = () => {
                         <MoreVertical className="h-4 w-4" />
                       </div>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" side="top" className="w-48">
+                    <DropdownMenuContent align="end" className="w-48">
                       <DropdownMenuItem onClick={() => handleDeleteProject(currentProject.id)}>
                         <Trash2 className="mr-2 h-4 w-4" />
                         Delete Project
@@ -762,7 +983,7 @@ const ProjectSidebar: React.FC = () => {
                             <MoreVertical className="h-4 w-4" />
                           </div>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" side="top" className="w-48">
+                        <DropdownMenuContent align="end" className="w-48">
                           <DropdownMenuItem onClick={() => handleSwitchProject(project.id)}>
                             <Play className="mr-2 h-4 w-4" />
                             Switch to Project

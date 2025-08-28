@@ -1,6 +1,8 @@
 # Basic prompt templates for the adapters.
 # The detailed instructions for the agent should be in the agno.Agent's system_message.
 
+import os
+
 INPUT_PROMPT = """Current Task Goal: {input_goal}
 
 Context:
@@ -9,6 +11,39 @@ Context:
 AGGREGATOR_PROMPT = """Parent Goal: {input_goal}
 Sub-task Results:
 {context_str}"""
+
+
+def get_project_folder_context() -> str:
+    """Generate universal folder context information for system prompts.
+    
+    This function creates folder context that works across all platforms
+    (local, E2B, Docker, etc.) using universal environment variables that
+    are set by ProjectManager.create_project().
+    
+    Returns:
+        str: Formatted folder context for system prompts, or empty string if no project is active
+    """
+    project_id = os.getenv("CURRENT_PROJECT_ID")
+    toolkits_dir = os.getenv("PROJECT_TOOLKITS_DIR") 
+    results_dir = os.getenv("PROJECT_RESULTS_DIR")
+    
+    # Only return context if all required environment variables are properly set
+    if not project_id or not toolkits_dir or not results_dir:
+        return ""
+    
+    return f"""
+## Project Execution Environment
+Project ID: {project_id}
+
+### Available Directories:
+- **Toolkit Data**: `{toolkits_dir}/` - Access data stored by toolkits
+- **Results Output**: `{results_dir}/` - Save your execution results
+  - Plots: `{results_dir}/plots/`
+  - Artifacts: `{results_dir}/artifacts/`
+  - Reports: `{results_dir}/reports/`
+
+Use these universal paths for reading toolkit data and saving results to maintain project isolation.
+"""
 
 # You can add more specialized prompt templates here as needed,
 # like the COMBINED_SEARCHER_REASONER_SYNTHESIZER_PROMPT from your old prompts.py

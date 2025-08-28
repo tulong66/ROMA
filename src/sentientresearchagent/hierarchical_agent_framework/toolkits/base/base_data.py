@@ -105,12 +105,24 @@ class BaseDataToolkit:
             if s3_mount_enabled:
                 logger.warning(f"S3 mounting enabled but directory {s3_mount_dir} not found, using fallback: {base_dir}")
         
-        # Create project-specific folder structure: project_id/toolkit_name/
-        if toolkit_name:
-            self.data_dir = base_dir / project_id / toolkit_name
+        # Use universal environment variables if available (set by ProjectManager)
+        project_toolkits_dir = os.getenv("PROJECT_TOOLKITS_DIR")
+        if project_toolkits_dir:
+            # Use universal project structure
+            if toolkit_name:
+                self.data_dir = Path(project_toolkits_dir) / toolkit_name
+            else:
+                self.data_dir = Path(project_toolkits_dir)
+            self._using_universal_structure = True
+            logger.debug(f"Using universal project structure: {self.data_dir}")
         else:
-            # Fallback: just use project_id folder if no toolkit name
-            self.data_dir = base_dir / project_id
+            # Fallback to original structure for backward compatibility
+            if toolkit_name:
+                self.data_dir = base_dir / project_id / toolkit_name
+            else:
+                self.data_dir = base_dir / project_id
+            self._using_universal_structure = False
+            logger.debug(f"Using fallback structure: {self.data_dir}")
         
         # Create directory structure
         self.data_dir.mkdir(parents=True, exist_ok=True)
@@ -138,10 +150,15 @@ class BaseDataToolkit:
         """
         try:
             current_env_project_id = os.getenv("CURRENT_PROJECT_ID", "default")
-            # If uninitialized or project changed, re-init helpers with the same settings
-            if getattr(self, "_project_id", None) != current_env_project_id:
+            current_toolkits_dir = os.getenv("PROJECT_TOOLKITS_DIR")
+            
+            # Check if project changed or if we now have universal directories available
+            project_changed = getattr(self, "_project_id", None) != current_env_project_id
+            universal_available = current_toolkits_dir and not hasattr(self, "_using_universal_structure")
+            
+            if project_changed or universal_available:
                 prev = getattr(self, "_project_id", None)
-                logger.debug(f"Refreshing data context for project change: {prev} -> {current_env_project_id}")
+                logger.debug(f"Refreshing data context - project: {prev} -> {current_env_project_id}, universal: {bool(current_toolkits_dir)}")
                 self._init_data_helpers(
                     self._base_data_dir_fallback,
                     getattr(self, "_parquet_threshold", 1000),

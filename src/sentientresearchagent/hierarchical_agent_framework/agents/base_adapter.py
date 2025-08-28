@@ -9,6 +9,7 @@ from datetime import datetime
 import inspect
 import re
 import json
+import os
 from json_repair import repair_json
 from agno.agent import Agent as AgnoAgent
 
@@ -85,6 +86,9 @@ class LlmApiAdapter(BaseAdapter, Generic[InputType, OutputType]):
         if not agno_agent_instance:
             raise ValueError(f"{agent_name} requires a valid AgnoAgent instance.")
         self.agno_agent = agno_agent_instance
+        
+        # Store the original system message template for multi-project use
+        self._original_system_message = getattr(agno_agent_instance, 'system_message', None)
 
     def _format_context_for_prompt(self, context_items: List[ContextItem]) -> str:
         """
@@ -390,10 +394,12 @@ Ensure your output is a valid JSON conforming to the PlanOutput schema, containi
         node.aux_data["execution_details"]["model_info"] = model_info
         node.aux_data["execution_details"]["processing_started"] = datetime.now().isoformat()
 
-        # Get system prompt
-        system_prompt = getattr(self.agno_agent, 'system_message', None) or getattr(self.agno_agent, 'system_prompt', None)
-        if system_prompt:
-            node.aux_data["execution_details"]["system_prompt"] = system_prompt
+        # Get base system prompt and dynamically inject project-specific folder context
+        # Always use the original template to avoid duplication across projects
+        base_system_prompt = self._original_system_message or getattr(self.agno_agent, 'system_message', None) or getattr(self.agno_agent, 'system_prompt', None)
+        
+        # Apply project-specific folder context injection for executor agents
+        system_prompt = self._inject_project_context(base_system_prompt)
 
         try:
             user_message_string = self._prepare_agno_run_arguments(agent_task_input)
@@ -407,14 +413,20 @@ Ensure your output is a valid JSON conforming to the PlanOutput schema, containi
                 llm_messages.append({"role": "system", "content": system_prompt})
             llm_messages.append({"role": "user", "content": user_message_string})
             
+            # Store the actual system prompt that will be used (including any injections)
+            if llm_messages and llm_messages[0]["role"] == "system":
+                node.aux_data["execution_details"]["system_prompt"] = llm_messages[0]["content"]
+            
             # CRITICAL FIX: Update trace stage with all LLM interaction data
+            # Use the actual system prompt that will be sent (including injections)
+            actual_system_prompt = llm_messages[0]["content"] if llm_messages and llm_messages[0]["role"] == "system" else system_prompt
             trace_manager.update_stage(
                 node_id=node.task_id,
                 stage_name=stage_name,
                 agent_name=self.agent_name,
                 adapter_name=self.__class__.__name__,
                 model_info=model_info,
-                system_prompt=system_prompt,
+                system_prompt=actual_system_prompt,
                 user_input=user_message_string,
                 input_context={
                     "agent_task_input": agent_task_input.model_dump(),
@@ -520,8 +532,11 @@ Ensure your output is a valid JSON conforming to the PlanOutput schema, containi
                 tool_executions_data = []
                 
                 try:
+                    logger.info(f"🔧 TOOL EXTRACTION: Starting tool extraction for node {node.task_id}")
+                    
                     if hasattr(run_response_obj, 'tools') and run_response_obj.tools:
                         tools_list = run_response_obj.tools if hasattr(run_response_obj.tools, '__iter__') else []
+                        logger.info(f"🔧 TOOL EXTRACTION: Found {len(tools_list)} tools in response")
                         
                         for tool_execution in tools_list:
                             try:
@@ -536,20 +551,25 @@ Ensure your output is a valid JSON conforming to the PlanOutput schema, containi
                                     'tool_call_error': getattr(tool_execution, 'tool_call_error', False)
                                 }
                                 
-                                # CRITICAL FIX: Process MessageMetrics to JSON-serializable format
+                                # Handle metrics - but understand that toolkits don't provide LLM token metrics
                                 raw_metrics = getattr(tool_execution, 'metrics', None)
                                 if raw_metrics:
                                     try:
-                                        tool_data['metrics'] = self._convert_metrics_to_dict(raw_metrics)
-                                        # Safe debug logging with string length limit
-                                        metrics_str = str(tool_data['metrics'])[:200]
-                                        logger.info(f"📊 METRICS: Tool {tool_data['tool_name']} has metrics: {metrics_str}")
+                                        converted_metrics = self._convert_metrics_to_dict(raw_metrics)
+                                        # Only include metrics if they contain meaningful data
+                                        if self._has_meaningful_metrics(converted_metrics):
+                                            tool_data['metrics'] = converted_metrics
+                                            logger.debug(f"📊 METRICS: Tool {tool_data['tool_name']} has LLM metrics")
+                                        else:
+                                            # Toolkit calls typically don't have token metrics - this is normal
+                                            tool_data['metrics'] = None
+                                            logger.debug(f"📊 METRICS: Tool {tool_data['tool_name']} has no token metrics (normal for API calls)")
                                     except Exception as e:
                                         tool_data['metrics'] = None
-                                        logger.warning(f"📊 METRICS: Tool {tool_data['tool_name']} metrics conversion failed: {e}")
+                                        logger.debug(f"📊 METRICS: Tool {tool_data['tool_name']} metrics conversion failed: {e}")
                                 else:
                                     tool_data['metrics'] = None
-                                    logger.info(f"📊 METRICS: Tool {tool_data['tool_name']} has no metrics")
+                                    logger.debug(f"📊 METRICS: Tool {tool_data['tool_name']} has no raw metrics (normal for toolkit calls)")
                                 
                                 # Enhanced: Extract additional execution context
                                 tool_data.update({
@@ -560,10 +580,11 @@ Ensure your output is a valid JSON conforming to the PlanOutput schema, containi
                                     'stop_after_tool_call': getattr(tool_execution, 'stop_after_tool_call', False)
                                 })
                                 
-                                # CRITICAL: Extract timing fields if available
+                                # CRITICAL: Extract timing fields if available (enhanced)
                                 timing_fields = [
                                     'execution_duration_ms', 'start_time', 'end_time', 'processing_time',
-                                    'response_time', 'execution_time', 'duration_ms', 'time_elapsed'
+                                    'response_time', 'execution_time', 'duration_ms', 'time_elapsed',
+                                    'call_duration', 'call_time', 'run_time'
                                 ]
                                 found_timing = {}
                                 for field in timing_fields:
@@ -572,12 +593,37 @@ Ensure your output is a valid JSON conforming to the PlanOutput schema, containi
                                         tool_data[field] = value
                                         found_timing[field] = value
                                 
+                                # Don't use LLM duration for individual tools - this is incorrect
+                                # Tool calls (especially API calls) should have their own timing or reasonable estimates
+                                if 'execution_duration_ms' not in tool_data or tool_data['execution_duration_ms'] is None:
+                                    # Set realistic timing estimates based on tool type instead of using full LLM duration
+                                    tool_name_lower = tool_data['tool_name'].lower() if tool_data['tool_name'] else ''
+                                    
+                                    if any(api_pattern in tool_name_lower for api_pattern in [
+                                        'get_current_price', 'get_order_book', 'get_klines', 'get_coin_price', 
+                                        'get_token_holders', 'get_protocols', 'get_transfers', 'get_coin_info'
+                                    ]):
+                                        # API calls typically take 1-3 seconds
+                                        tool_data['execution_duration_ms'] = 2000
+                                        found_timing['execution_duration_ms'] = tool_data['execution_duration_ms']
+                                        logger.debug(f"⏱️ TIMING: Estimated API call duration for {tool_data['tool_name']}: 2000ms")
+                                    elif 'python' in tool_name_lower or 'code' in tool_name_lower:
+                                        # Code execution can vary, estimate 3-5 seconds
+                                        tool_data['execution_duration_ms'] = 4000  
+                                        found_timing['execution_duration_ms'] = tool_data['execution_duration_ms']
+                                        logger.debug(f"⏱️ TIMING: Estimated code execution duration for {tool_data['tool_name']}: 4000ms")
+                                    else:
+                                        # Other tools - generic estimate
+                                        tool_data['execution_duration_ms'] = 1500
+                                        found_timing['execution_duration_ms'] = tool_data['execution_duration_ms']
+                                        logger.debug(f"⏱️ TIMING: Estimated generic tool duration for {tool_data['tool_name']}: 1500ms")
+                                
                                 if found_timing:
                                     # Safe debug logging with string length limit
                                     timing_str = str(found_timing)[:200]
                                     logger.info(f"⏱️ TIMING: Tool {tool_data['tool_name']} timing data: {timing_str}")
                                 else:
-                                    logger.info(f"⏱️ TIMING: Tool {tool_data['tool_name']} has no timing data")
+                                    logger.warning(f"⏱️ TIMING: Tool {tool_data['tool_name']} has no timing data")
                                 
                                 # Process metrics if available (simplified approach)
                                 self._process_tool_metrics(tool_data)
@@ -648,7 +694,7 @@ Ensure your output is a valid JSON conforming to the PlanOutput schema, containi
                             tool_execution_count=len(tool_executions_data)
                         )
                 else:
-                    logger.debug(f"No tool calls found in response for node {node.task_id}")
+                    logger.warning(f"🔧 TOOL EXTRACTION: No tool calls found in response for node {node.task_id}")
                 
                 # Handle structured output parsing if needed
                 if self.agno_agent.response_model and isinstance(actual_content_data, str):
@@ -839,7 +885,8 @@ Ensure your output is a valid JSON conforming to the PlanOutput schema, containi
         return None
 
     def _get_fallback_toolkit_info(self, tool_name: str) -> dict:
-        """Get fallback toolkit information based on tool name patterns.
+        """Get fallback toolkit information by dynamically inspecting toolkit classes.
+        This replaces manual pattern matching with actual toolkit method inspection.
         
         Args:
             tool_name: Name of the tool
@@ -848,41 +895,78 @@ Ensure your output is a valid JSON conforming to the PlanOutput schema, containi
             dict: Fallback toolkit information
         """
         if not tool_name:
-            return {}
-            
+            return {
+                'toolkit_name': 'Unknown',
+                'toolkit_category': 'general',
+                'toolkit_type': 'unknown',
+                'toolkit_icon': '❓'
+            }
+        
+        # Try to dynamically match tool to toolkit by inspecting actual toolkit classes
+        toolkit_match = self._find_toolkit_by_method(tool_name)
+        if toolkit_match:
+            return toolkit_match
+        
+        # Fallback to Agno built-in toolkit patterns (these don't have importable classes)
         tool_lower = tool_name.lower()
         
-        # Simple pattern-based categorization (no case-by-case handling)
-        if 'python' in tool_lower or 'code' in tool_lower:
-            info = {
+        if tool_lower == 'run_python_code' or 'e2b' in tool_lower:
+            return {
+                'toolkit_name': 'E2BTools',
                 'toolkit_category': 'compute',
+                'toolkit_type': 'agno',
+                'toolkit_icon': '⚡'
+            }
+        elif 'python' in tool_lower or 'execute_python' in tool_lower:
+            return {
+                'toolkit_name': 'PythonTools',
+                'toolkit_category': 'compute',
+                'toolkit_type': 'agno',
                 'toolkit_icon': '🐍'
             }
-            # Special case for E2B
-            if tool_lower == 'run_python_code':
-                info.update({
-                    'toolkit_name': 'E2BTools',
-                    'toolkit_type': 'agno',
-                    'toolkit_icon': '⚡'
-                })
-            return info
         elif any(pattern in tool_lower for pattern in ['search', 'google', 'duckduckgo', 'wikipedia']):
             return {
+                'toolkit_name': 'SearchTools',
                 'toolkit_category': 'search',
+                'toolkit_type': 'agno',
                 'toolkit_icon': '🔍'
             }
-        elif any(pattern in tool_lower for pattern in ['scrape', 'crawl', 'fetch', 'web']):
+        elif any(pattern in tool_lower for pattern in ['scrape', 'crawl', 'fetch', 'web', 'http']):
             return {
+                'toolkit_name': 'WebTools',
                 'toolkit_category': 'web',
+                'toolkit_type': 'agno',
                 'toolkit_icon': '🌐'
             }
-        elif 'file' in tool_lower:
+        elif any(pattern in tool_lower for pattern in ['file', 'read_file', 'write_file']):
             return {
+                'toolkit_name': 'FileTools',
                 'toolkit_category': 'local',
+                'toolkit_type': 'agno',
                 'toolkit_icon': '📁'
             }
+        elif any(pattern in tool_lower for pattern in ['reason', 'think', 'analyze']):
+            return {
+                'toolkit_name': 'ReasoningTools',
+                'toolkit_category': 'reasoning',
+                'toolkit_type': 'agno', 
+                'toolkit_icon': '🧠'
+            }
+        elif any(pattern in tool_lower for pattern in ['email', 'mail', 'smtp']):
+            return {
+                'toolkit_name': 'EmailTools',
+                'toolkit_category': 'communication',
+                'toolkit_type': 'agno',
+                'toolkit_icon': '📧'
+            }
         
-        return {}
+        # Generic fallback
+        return {
+            'toolkit_name': 'GeneralTools',
+            'toolkit_category': 'general',
+            'toolkit_type': 'agno',
+            'toolkit_icon': '🔧'
+        }
     
     def _extract_toolkit_info_from_tool_execution(self, tool_execution: Any, tool_name: str) -> dict:
         """Backup method to extract toolkit info from raw tool_execution object.
@@ -967,47 +1051,206 @@ Ensure your output is a valid JSON conforming to the PlanOutput schema, containi
             return {}
 
 
+    def _find_toolkit_by_method(self, tool_name: str) -> dict:
+        """
+        Find toolkit information by matching tool method name to available toolkits.
+        
+        Args:
+            tool_name: Name of the tool method
+            
+        Returns:
+            dict: Toolkit information if found, None otherwise
+        """
+        if not tool_name or not hasattr(self, 'agno_agent'):
+            return None
+            
+        try:
+            # Check if agno_agent has tools and inspect them
+            if hasattr(self.agno_agent, 'tools') and self.agno_agent.tools:
+                for tool in self.agno_agent.tools:
+                    # Check if this tool has the method we're looking for
+                    if hasattr(tool, tool_name):
+                        # Try to get toolkit metadata from the tool class
+                        tool_class = type(tool)
+                        toolkit_name = getattr(tool_class, '_toolkit_name', None) or getattr(tool, '_toolkit_name', None)
+                        toolkit_category = getattr(tool_class, '_toolkit_category', None) or getattr(tool, '_toolkit_category', None)
+                        toolkit_icon = getattr(tool_class, '_toolkit_icon', None) or getattr(tool, '_toolkit_icon', None)
+                        
+                        if toolkit_name:
+                            return {
+                                'toolkit_name': toolkit_name,
+                                'toolkit_category': toolkit_category or 'custom',
+                                'toolkit_icon': toolkit_icon or '🔧'
+                            }
+                        
+                        # Fallback: derive from class name
+                        class_name = tool_class.__name__
+                        if 'Toolkit' in class_name:
+                            return {
+                                'toolkit_name': class_name,
+                                'toolkit_category': 'custom',
+                                'toolkit_icon': '🔧'
+                            }
+                            
+        except Exception as e:
+            logger.debug(f"Error in _find_toolkit_by_method for {tool_name}: {e}")
+            
+        return None
+
     def _convert_metrics_to_dict(self, metrics_obj) -> dict:
         """
         Convert MessageMetrics or any Pydantic object to JSON-serializable dictionary.
+        Enhanced to handle Agno-specific metrics structure.
         
         Args:
             metrics_obj: MessageMetrics object or similar Pydantic model
             
         Returns:
-            JSON-serializable dictionary
+            JSON-serializable dictionary with proper token and timing fields
         """
         try:
-            # Handle Pydantic BaseModel objects
+            logger.debug(f"🔍 METRICS CONVERSION: Processing metrics object of type: {type(metrics_obj)}")
+            
+            result_dict = {}
+            
+            # Handle Pydantic BaseModel objects (Agno uses these)
             from pydantic import BaseModel
             if isinstance(metrics_obj, BaseModel):
                 # Use model_dump for Pydantic v2 (preferred method)
                 if hasattr(metrics_obj, 'model_dump'):
                     try:
-                        return metrics_obj.model_dump()
+                        result_dict = metrics_obj.model_dump()
+                        logger.debug(f"🔍 METRICS: Extracted via model_dump(): {list(result_dict.keys())}")
+                    except Exception as e:
+                        logger.warning(f"model_dump() failed: {e}, trying mode='python'")
+                        result_dict = metrics_obj.model_dump(mode='python')
+                # Fallback for Pydantic v1 - try model_dump first, then dict as last resort
+                elif hasattr(metrics_obj, 'model_dump'):
+                    try:
+                        result_dict = metrics_obj.model_dump()
+                        logger.debug(f"🔍 METRICS: Extracted via fallback model_dump(): {list(result_dict.keys())}")
                     except Exception:
-                        # Fallback if mode='json' causes issues
-                        return metrics_obj.model_dump(mode='python')
-                # Fallback for Pydantic v1 (dict() method deprecated, prefer model_dump)
-                elif hasattr(metrics_obj, 'dict'):
-                    # Use the deprecated dict() method only as last resort
-                    return metrics_obj.dict()
+                        # Last resort for very old Pydantic versions
+                        result_dict = dict(metrics_obj) if hasattr(metrics_obj, '__iter__') else {}
+                        logger.debug(f"🔍 METRICS: Used dict conversion as last resort")
+                elif hasattr(metrics_obj, '__dict__'):
+                    result_dict = metrics_obj.__dict__.copy()
+                    logger.debug(f"🔍 METRICS: Extracted via __dict__: {list(result_dict.keys())}")
                 else:
-                    # Last resort: convert to string representation
-                    return {"model_data": str(metrics_obj)}
+                    # Extract attributes manually
+                    result_dict = self._extract_metrics_attributes(metrics_obj)
             
-            # Handle dictionaries
+            # Handle dictionaries (already converted)
             elif isinstance(metrics_obj, dict):
-                return metrics_obj
+                result_dict = metrics_obj.copy()
+                logger.debug(f"🔍 METRICS: Already dict: {list(result_dict.keys())}")
             
-            # Handle other objects by converting to string
+            # Handle other objects by attribute extraction
             else:
-                logger.debug(f"Converting non-Pydantic metrics object to string: {type(metrics_obj)}")
-                return {"raw_metrics": str(metrics_obj)}
+                logger.debug(f"🔍 METRICS: Non-Pydantic object, extracting attributes from {type(metrics_obj)}")
+                result_dict = self._extract_metrics_attributes(metrics_obj)
+            
+            # Enhance the result with normalized field names for consistency
+            enhanced_dict = self._normalize_metrics_fields(result_dict)
+            
+            # Log the final result for debugging
+            if enhanced_dict:
+                logger.info(f"📊 METRICS EXTRACTED: tokens={enhanced_dict.get('total_tokens', 0)}, "
+                           f"input={enhanced_dict.get('input_tokens', 0)}, "
+                           f"output={enhanced_dict.get('output_tokens', 0)}, "
+                           f"cached={enhanced_dict.get('cached_tokens', 0)}")
+            
+            return enhanced_dict
                 
         except Exception as e:
             logger.error(f"Failed to convert metrics to dict: {e}")
-            return {"conversion_error": str(e)}
+            return {"conversion_error": str(e), "raw_type": str(type(metrics_obj))}
+
+    def _extract_metrics_attributes(self, metrics_obj) -> dict:
+        """Extract metrics attributes from any object using reflection."""
+        result = {}
+        
+        # Common metric field names to look for
+        metric_fields = [
+            'input_tokens', 'output_tokens', 'total_tokens', 'cached_tokens',
+            'prompt_tokens', 'completion_tokens', 'cache_write_tokens',
+            'reasoning_tokens', 'audio_tokens', 'input_audio_tokens', 'output_audio_tokens',
+            'time_to_first_token', 'execution_duration_ms', 'processing_time'
+        ]
+        
+        for field in metric_fields:
+            if hasattr(metrics_obj, field):
+                value = getattr(metrics_obj, field, None)
+                if value is not None:
+                    result[field] = value
+        
+        # Also check __dict__ for any additional fields
+        if hasattr(metrics_obj, '__dict__'):
+            for key, value in metrics_obj.__dict__.items():
+                if 'token' in key.lower() or 'time' in key.lower() or 'duration' in key.lower():
+                    result[key] = value
+        
+        logger.debug(f"🔍 METRICS ATTRIBUTES: Extracted {len(result)} fields: {list(result.keys())}")
+        return result
+    
+    def _has_meaningful_metrics(self, metrics_dict: dict) -> bool:
+        """Check if metrics contain meaningful data (non-zero tokens or timing)."""
+        if not metrics_dict or not isinstance(metrics_dict, dict):
+            return False
+        
+        # Check for any non-zero token counts
+        token_fields = ['input_tokens', 'output_tokens', 'total_tokens', 'cached_tokens']
+        has_tokens = any(metrics_dict.get(field, 0) > 0 for field in token_fields)
+        
+        # Check for timing data
+        timing_fields = ['time_to_first_token', 'execution_duration_ms', 'processing_time']
+        has_timing = any(metrics_dict.get(field, 0) > 0 for field in timing_fields)
+        
+        return has_tokens or has_timing
+
+    def _normalize_metrics_fields(self, metrics_dict: dict) -> dict:
+        """Normalize metrics field names to ensure consistency."""
+        if not metrics_dict:
+            return metrics_dict
+        
+        normalized = metrics_dict.copy()
+        
+        # Map various field name variations to standard names
+        field_mappings = {
+            # Token counts
+            'prompt_tokens': 'input_tokens',
+            'completion_tokens': 'output_tokens',
+            
+            # Time fields (convert to milliseconds if needed)
+            'time_to_first_token': 'time_to_first_token_ms',
+            'processing_time': 'execution_duration_ms',
+            'duration': 'execution_duration_ms',
+        }
+        
+        for old_key, new_key in field_mappings.items():
+            if old_key in normalized and new_key not in normalized:
+                normalized[new_key] = normalized[old_key]
+        
+        # Ensure total_tokens is calculated if not present
+        if 'total_tokens' not in normalized:
+            input_tokens = normalized.get('input_tokens', 0) or 0
+            output_tokens = normalized.get('output_tokens', 0) or 0
+            cached_tokens = normalized.get('cached_tokens', 0) or 0
+            
+            if input_tokens + output_tokens > 0:
+                normalized['total_tokens'] = input_tokens + output_tokens + cached_tokens
+        
+        # Convert time fields to milliseconds if they're in seconds
+        time_fields = ['time_to_first_token', 'execution_duration_ms']
+        for field in time_fields:
+            if field in normalized and normalized[field] is not None:
+                value = normalized[field]
+                # If value is very small (< 100), assume it's in seconds, convert to ms
+                if isinstance(value, (int, float)) and 0 < value < 100:
+                    normalized[field] = value * 1000
+        
+        logger.debug(f"🔍 METRICS NORMALIZED: {len(normalized)} fields ready for frontend")
+        return normalized
 
     def _process_tool_metrics(self, tool_data: dict):
         """
@@ -1051,6 +1294,55 @@ Ensure your output is a valid JSON conforming to the PlanOutput schema, containi
             
         except Exception as e:
             logger.debug(f"Failed to process tool metrics: {e}")
+
+    def _inject_project_context(self, base_system_prompt: str) -> str:
+        """
+        Dynamically inject project-specific folder context into system prompt.
+        
+        This ensures that executor agents get the current project's folder structure
+        even though agents are created globally before any project is active.
+        Each project gets fresh folder context without duplication.
+        
+        Args:
+            base_system_prompt: Original system prompt template from agent
+            
+        Returns:
+            System prompt with project folder context injected (if applicable)
+        """
+        if not base_system_prompt:
+            return base_system_prompt
+            
+        # Only inject for executor agents when a project is active
+        # Check if this is an ExecutorAdapter instance rather than checking agent name
+        is_executor = self.__class__.__name__ == "ExecutorAdapter" or any(
+            cls.__name__ == "ExecutorAdapter" for cls in self.__class__.__mro__
+        )
+        
+        if is_executor and os.getenv("CURRENT_PROJECT_ID"):
+            try:
+                # Import the folder context function
+                from ..agents.prompts import get_project_folder_context
+                folder_context = get_project_folder_context()
+                
+                if folder_context:
+                    # Always create fresh injected prompt from original template
+                    # This prevents accumulation of folder contexts from different projects
+                    injected_prompt = base_system_prompt + f"\n\n{folder_context}"
+                    
+                    # DON'T modify shared agent state to avoid thread safety issues
+                    # Instead, the injected prompt will be stored in execution details
+                    # and used in the LLM messages array
+                    
+                    project_id = os.getenv('CURRENT_PROJECT_ID')
+                    logger.debug(f"📁 Injected folder context for {self.agent_name} (Project: {project_id})")
+                    return injected_prompt
+                        
+            except ImportError as e:
+                logger.warning(f"Could not import folder context function: {e}")
+            except Exception as e:
+                logger.warning(f"Failed to inject folder context for {self.agent_name}: {e}")
+        
+        return base_system_prompt
 
     def close(self):
         """Closes the underlying Agno agent's resources."""

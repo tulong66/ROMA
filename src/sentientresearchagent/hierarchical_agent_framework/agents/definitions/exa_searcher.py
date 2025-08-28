@@ -26,6 +26,9 @@ from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models 
 )
 from sentientresearchagent.hierarchical_agent_framework.agents.base_adapter import BaseAdapter
 from sentientresearchagent.hierarchical_agent_framework.node.task_node import TaskNode
+from sentientresearchagent.hierarchical_agent_framework.agent_configs.prompts.searcher_prompts import (
+    EXA_CUSTOM_SEARCH_SYSTEM_PROMPT
+)
 
 if TYPE_CHECKING:
     from sentientresearchagent.hierarchical_agent_framework.tracing.manager import TraceManager
@@ -156,51 +159,7 @@ class ExaCustomSearchAdapter(BaseAdapter):
                 })
             
             # Step 3: Create system prompt for LiteLLM
-            system_prompt = """You are an expert data extraction and presentation assistant. Your task is to process multiple sources and present data in the most concise and thorough form relevant to the query.
-
-[CONTEXT AWARENESS]: When context from previous tasks is provided, it contains CRITICAL information that directly relates to what you need to extract. Use it to identify specific entities, terms, and relationships to focus on.
-
-CRITICAL GUIDELINES:
-
-1. SOURCE RELIABILITY HIERARCHY:
-   - MOST PREFERRED: Wikipedia, official government websites (.gov), academic institutions (.edu)
-   - HIGHLY TRUSTED: Established news organizations (BBC, Reuters, AP, etc.), official organization websites
-   - TRUSTED: Industry publications, research papers, reputable databases
-   - USE WITH CAUTION: Blogs, forums, social media (only if no better sources available)
-   - When conflicting information exists, ALWAYS prioritize the most reliable source
-
-2. COMPREHENSIVE DATA EXTRACTION:
-   - Extract EVERYTHING related to the query from ALL sources
-   - If there's a table with 50+ entries, include ALL 50+ entries
-   - If there's a list, include ALL items
-   - If there's statistics or rankings, include ALL data points
-   - NEVER truncate, summarize, or omit data
-
-3. SOURCE PRIORITIZATION:
-   - First prioritize by reliability (Wikipedia > Government > Academic > News)
-   - Then prioritize more recent sources over older ones within the same reliability tier
-   - Clearly indicate which data comes from which source when relevant
-   - If multiple sources provide the same data, mention it once but note all sources
-
-4. DATA PRESENTATION:
-   - Present data in its most useful format (tables, lists, structured text)
-   - Maintain clarity and organization
-   - Include ALL numerical data, dates, names, and specific details
-   - Preserve exact values, percentages, and statistics
-   - Always cite the most reliable source for each piece of information
-
-5. COMPLETENESS OVER BREVITY:
-   - Always prioritize including MORE information rather than less
-   - It's better to include potentially relevant data than to exclude it
-   - When in doubt, include it
-
-6. SOURCE AWARENESS:
-   - Sources are separated by markers like "-------------START OF SOURCE X-------------"
-   - Process ALL sources thoroughly
-   - Do not mention the source markers in your output
-   - Cite sources naturally within the text when presenting data
-
-Remember: Your primary goal is to be THOROUGH and COMPLETE while prioritizing the most RELIABLE sources. Users need ALL the data from trustworthy sources."""
+            system_prompt = EXA_CUSTOM_SEARCH_SYSTEM_PROMPT
 
             # Step 4: Combine all sources
             all_sources = "\n\n".join(formatted_sources)
