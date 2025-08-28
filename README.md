@@ -5,7 +5,7 @@
 <h1>ROMA: Recursive Open Meta-Agents</h1>
 
 <p align="center">
-  <strong>Building hierarchical high-performance multi-agent systems made easy! </strong>
+  <strong>Building hierarchical high-performance multi-agent systems made easy! (Beta) </strong>
 </p>
 
 
