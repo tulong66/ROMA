@@ -8,6 +8,8 @@ from pathlib import Path
 import threading
 from loguru import logger
 
+from .project_context import set_project_context
+
 if TYPE_CHECKING:
     from sentientresearchagent.config import SentientConfig
     from sentientresearchagent.hierarchical_agent_framework.agents.registry import AgentRegistry
@@ -92,37 +94,15 @@ class ProjectManager:
         with self._lock:
             project_id = str(uuid.uuid4())
             
-            # Determine base directory using same logic as BaseDataToolkit
-            s3_mount_env = os.getenv("S3_MOUNT_ENABLED", "false").lower().strip()
-            s3_mount_enabled = s3_mount_env in ("true", "yes", "1", "on", "enabled")
-            s3_mount_dir = os.getenv("S3_MOUNT_DIR")
+            # Create project structure using centralized manager
+            from .project_structure import ProjectStructure
+            project_dirs = ProjectStructure.create_project_structure(project_id)
             
-            if s3_mount_enabled and s3_mount_dir and os.path.exists(s3_mount_dir):
-                # Use S3 mounted directory (same as BaseDataToolkit)
-                base_dir = Path(s3_mount_dir)
-                logger.info(f"Creating project structure in S3 mounted directory: {base_dir}")
-            else:
-                # Use local projects directory
-                base_dir = self.projects_dir
+            toolkits_dir = project_dirs['toolkits_dir']
+            results_dir = project_dirs['results_dir']
             
-            # Create universal project folder structure
-            project_root = base_dir / project_id
-            toolkits_dir = project_root / "toolkits"
-            results_dir = project_root / "results"
-            
-            # Create all directories
-            toolkits_dir.mkdir(parents=True, exist_ok=True)
-            results_dir.mkdir(parents=True, exist_ok=True)
-            
-            # Create results subdirectories
-            (results_dir / "plots").mkdir(exist_ok=True)
-            (results_dir / "artifacts").mkdir(exist_ok=True)
-            (results_dir / "reports").mkdir(exist_ok=True)
-            
-            # Set universal environment variables that work across all platforms
-            os.environ['CURRENT_PROJECT_ID'] = project_id
-            os.environ['PROJECT_TOOLKITS_DIR'] = str(toolkits_dir)
-            os.environ['PROJECT_RESULTS_DIR'] = str(results_dir)
+            # Set thread-local project context
+            set_project_context(project_id)
             
             # Generate a smart title from the goal
             title = self._generate_title(goal)
@@ -143,7 +123,7 @@ class ProjectManager:
             self._save_projects()
             
             logger.info(f"Created new project: {project_id} - {title}")
-            logger.info(f"Project structure: toolkits={toolkits_dir}, results={results_dir}")
+            logger.info(f"Project structure: {project_dirs['project_root']}")
             return project
     
     def _generate_title(self, goal: str) -> str:

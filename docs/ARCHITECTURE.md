@@ -322,6 +322,7 @@ sequenceDiagram
 
 **Storage Components:**
 - File-based project persistence
+- Optional S3 mounting integration via goofys
 - In-memory knowledge store
 - Cache management
 - Trace logging
@@ -484,6 +485,8 @@ execution:
 - Enhanced caching strategies
 - Plugin architecture
 - Metrics and monitoring
+- Better context management
+- Task-focused, independet sub-agents
 
 ### Long Term
 - Multi-agent collaboration protocols

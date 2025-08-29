@@ -306,26 +306,48 @@ def create_project_routes(app, project_service, execution_service):
             return jsonify({"error": str(e)}), 500
 
     @app.route('/api/project/details', methods=['GET'])
-    def get_project_details():
-        """Get current project environment details including paths and S3 configuration."""
+    @app.route('/api/project/<project_id>/details', methods=['GET'])
+    def get_project_details(project_id=None):
+        """Get project environment details including paths and S3 configuration."""
         try:
-            # Get current project ID from environment
-            current_project_id = os.getenv("CURRENT_PROJECT_ID")
+            # If no project_id provided, try to get from query parameter or use current
+            if not project_id:
+                project_id = request.args.get('project_id')
+                if not project_id:
+                    project_id = project_service.project_manager.current_project_id
+            
+            if not project_id:
+                return jsonify({
+                    "project_id": None,
+                    "message": "No project ID specified and no active project",
+                    "timestamp": datetime.now().isoformat()
+                })
+            
+            # Get project details from project manager
+            project = project_service.project_manager.projects.get(project_id)
+            if not project:
+                return jsonify({
+                    "project_id": project_id,
+                    "error": "Project not found",
+                    "timestamp": datetime.now().isoformat()
+                })
             
             # Get S3 configuration from environment
             s3_bucket_name = os.getenv("S3_BUCKET_NAME")
             s3_mount_enabled = os.getenv("S3_MOUNT_ENABLED", "false").lower() in ("true", "yes", "1", "on", "enabled")
             
-            # Get project directory paths
-            project_toolkits_dir = os.getenv("PROJECT_TOOLKITS_DIR")
-            project_results_dir = os.getenv("PROJECT_RESULTS_DIR")
+            # Get project directories using centralized structure
+            from sentientresearchagent.core.project_structure import ProjectStructure
+            project_dirs = ProjectStructure.get_project_directories(project_id)
             
             return jsonify({
-                "project_id": current_project_id,
+                "project_id": project_id,
+                "title": project.title,
+                "goal": project.goal,
                 "s3_bucket_name": s3_bucket_name,
                 "s3_mount_enabled": s3_mount_enabled,
-                "project_toolkits_dir": project_toolkits_dir,
-                "project_results_dir": project_results_dir,
+                "project_toolkits_dir": project_dirs['toolkits_dir'],
+                "project_results_dir": project_dirs['results_dir'],
                 "timestamp": datetime.now().isoformat()
             })
             

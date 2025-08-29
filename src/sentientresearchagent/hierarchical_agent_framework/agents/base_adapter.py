@@ -1318,7 +1318,8 @@ Ensure your output is a valid JSON conforming to the PlanOutput schema, containi
             cls.__name__ == "ExecutorAdapter" for cls in self.__class__.__mro__
         )
         
-        if is_executor and os.getenv("CURRENT_PROJECT_ID"):
+        from sentientresearchagent.core.project_context import is_project_context_set
+        if is_executor and is_project_context_set():
             try:
                 # Import the folder context function
                 from ..agents.prompts import get_project_folder_context
@@ -1333,7 +1334,8 @@ Ensure your output is a valid JSON conforming to the PlanOutput schema, containi
                     # Instead, the injected prompt will be stored in execution details
                     # and used in the LLM messages array
                     
-                    project_id = os.getenv('CURRENT_PROJECT_ID')
+                    from sentientresearchagent.core.project_context import get_project_context
+                    project_id = get_project_context()
                     logger.debug(f"📁 Injected folder context for {self.agent_name} (Project: {project_id})")
                     return injected_prompt
                         

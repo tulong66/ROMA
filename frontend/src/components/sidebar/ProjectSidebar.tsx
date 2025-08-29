@@ -130,7 +130,11 @@ const ProjectSidebar: React.FC = () => {
   const fetchProjectDetails = async () => {
     try {
       // Fetch project environment details from the backend
-      const response = await fetch('/api/project/details')
+      // Pass the current project ID as a query parameter
+      const url = currentProjectId 
+        ? `/api/project/details?project_id=${currentProjectId}`
+        : '/api/project/details'
+      const response = await fetch(url)
       if (response.ok) {
         const data = await response.json()
         setProjectDetails({
@@ -534,8 +538,10 @@ const ProjectSidebar: React.FC = () => {
       console.error('Failed to switch project:', error)
       
       // Revert the optimistic update on error
-      setCurrentProject(currentProjectId)
-      useTaskGraphStore.getState().setCurrentProject(currentProjectId)
+      if (currentProjectId) {
+        setCurrentProject(currentProjectId)
+        useTaskGraphStore.getState().setCurrentProject(currentProjectId)
+      }
       
       toast({
         title: "Error",

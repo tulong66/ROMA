@@ -23,11 +23,14 @@ def get_project_folder_context() -> str:
     Returns:
         str: Formatted folder context for system prompts, or empty string if no project is active
     """
-    project_id = os.getenv("CURRENT_PROJECT_ID")
-    toolkits_dir = os.getenv("PROJECT_TOOLKITS_DIR") 
-    results_dir = os.getenv("PROJECT_RESULTS_DIR")
+    from sentientresearchagent.core.project_context import get_project_context, get_project_directories
     
-    # Only return context if all required environment variables are properly set
+    project_data = get_project_directories()
+    project_id = project_data.get('project_id')
+    toolkits_dir = project_data.get('toolkits_dir')
+    results_dir = project_data.get('results_dir')
+    
+    # Only return context if all required data is available
     if not project_id or not toolkits_dir or not results_dir:
         return ""
     
