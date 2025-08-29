@@ -1289,9 +1289,91 @@ docker_from_scratch() {
     # Start fresh containers, force recreate
     $COMPOSE_CMD $compose_files up -d --force-recreate
     
+    # Wait for services
+    print_info "Waiting for services to start..."
+    sleep 10
+    
+    # Check backend health
+    if curl -sf http://localhost:5000/api/health > /dev/null; then
+        print_success "Backend is healthy"
+    else
+        print_warning "Backend health check failed - it may still be starting"
+        echo "Check logs with: cd docker && $COMPOSE_CMD logs backend"
+    fi
+    
+    # Check frontend
+    if curl -sf http://localhost:3000 > /dev/null 2>&1; then
+        print_success "Frontend is running on http://localhost:3000"
+    else
+        print_info "Frontend may still be starting..."
+    fi
+    
     cd ..
     
     print_success "Docker services rebuilt from scratch"
+    
+    # Auto-open browser for Docker frontend
+    open_url "http://localhost:3000"
+}
+
+docker_compose_run() {
+    print_info "Running Docker Compose with S3 configuration check..."
+    
+    if ! docker_check_requirements; then
+        return 1
+    fi
+    
+    cd docker
+    
+    # Check if S3 mounting is enabled and validated
+    local compose_files="-f docker-compose.yml"
+    if [ -f "../.env" ]; then
+        S3_MOUNT_ENABLED=$(safe_env_extract "../.env" "S3_MOUNT_ENABLED" "false")
+        S3_MOUNT_DIR=$(safe_env_extract "../.env" "S3_MOUNT_DIR" "/opt/sentient")
+        # Expand $HOME variable if present
+        S3_MOUNT_DIR=$(eval echo "$S3_MOUNT_DIR")
+        
+        # Use flexible boolean parsing for S3_MOUNT_ENABLED
+        s3_mount_env=$(echo "$S3_MOUNT_ENABLED" | tr '[:upper:]' '[:lower:]' | xargs)
+        if [[ "$s3_mount_env" =~ ^(true|yes|1|on|enabled)$ ]] && [ -n "$S3_MOUNT_DIR" ]; then
+            # Validate the mount path before using it
+            if validate_mount_path "$S3_MOUNT_DIR" "S3 mount directory" && [ -d "$S3_MOUNT_DIR" ]; then
+                compose_files="$compose_files -f docker-compose.s3.yml"
+                print_info "Including S3 mount configuration for directory: $S3_MOUNT_DIR"
+            else
+                print_warning "S3 mount directory invalid or not mounted, skipping S3 compose override"
+            fi
+        fi
+    fi
+    
+    print_info "Running: $COMPOSE_CMD $compose_files up"
+    $COMPOSE_CMD $compose_files up -d
+    
+    # Wait for services
+    print_info "Waiting for services to start..."
+    sleep 10
+    
+    # Check backend health
+    if curl -sf http://localhost:5000/api/health > /dev/null; then
+        print_success "Backend is healthy at http://localhost:5000"
+    else
+        print_warning "Backend health check failed - it may still be starting"
+        echo "Check logs with: cd docker && $COMPOSE_CMD logs backend"
+    fi
+    
+    # Check frontend
+    if curl -sf http://localhost:3000 > /dev/null 2>&1; then
+        print_success "Frontend is running at http://localhost:3000"
+    else
+        print_info "Frontend may still be starting..."
+    fi
+    
+    cd ..
+    
+    print_success "Docker Compose started successfully!"
+    echo "Services available at:"
+    echo "  - Backend API: http://localhost:5000"
+    echo "  - Frontend: http://localhost:3000"
 }
 
 docker_setup() {
@@ -2000,6 +2082,9 @@ main() {
         --docker-from-scratch)
             docker_from_scratch
             ;;
+        --compose)
+            docker_compose_run
+            ;;
         --native)
             native_setup
             ;;
@@ -2015,6 +2100,7 @@ main() {
             echo "Options:"
             echo "  --docker    Run Docker setup directly"
             echo "  --docker-from-scratch  Rebuild Docker images and containers from scratch (down -v, no cache)"
+            echo "  --compose   Run docker-compose up -d with S3 configuration (assumes images already built)"
             echo "  --native    Run native setup (macOS or Ubuntu/Debian) directly"
             echo "  --e2b       Setup E2B template with AWS credentials (requires E2B_API_KEY and AWS creds in .env)"
             echo "  --test-e2b  Test E2B template integration (run after --e2b)"

@@ -87,30 +87,36 @@ class BaseDataToolkit:
         except Exception:
             self._base_data_dir_fallback = Path(str(data_dir))
 
-        # Get project ID from environment variable, default to "default" if not set
-        project_id = os.getenv("CURRENT_PROJECT_ID", "default")
+        # Get project ID from thread-local context
+        from sentientresearchagent.core.project_context import get_project_context
+        project_id = get_project_context()
         
-        # Check if S3 mounting is enabled and use configured directory (flexible boolean parsing)
-        s3_mount_env = os.getenv("S3_MOUNT_ENABLED", "false").lower().strip()
-        s3_mount_enabled = s3_mount_env in ("true", "yes", "1", "on", "enabled")
-        s3_mount_dir = os.getenv("S3_MOUNT_DIR")
-        
-        if s3_mount_enabled and s3_mount_dir and os.path.exists(s3_mount_dir):
-            # Use S3 mounted directory as base
-            base_dir = Path(s3_mount_dir)
-            logger.info(f"Using S3 mounted directory for {toolkit_name}: {base_dir}")
+        if not project_id:
+            # Allow initialization without project context for validation/testing
+            # Use a default fallback directory, but mark that we need context later
+            project_id = "validation_mode"
+            self._needs_project_context = True
+            logger.debug(f"BaseDataToolkit initialized without project context - using validation mode")
         else:
-            # Use fallback local directory
-            base_dir = Path(data_dir)
-            if s3_mount_enabled:
-                logger.warning(f"S3 mounting enabled but directory {s3_mount_dir} not found, using fallback: {base_dir}")
+            self._needs_project_context = False
         
-        # Create project-specific folder structure: project_id/toolkit_name/
-        if toolkit_name:
-            self.data_dir = base_dir / project_id / toolkit_name
+        # Use centralized project structure
+        from sentientresearchagent.core.project_structure import ProjectStructure
+        
+        if project_id == "validation_mode":
+            # Use temporary directory for validation
+            if toolkit_name:
+                self.data_dir = Path(data_dir) / "validation" / toolkit_name
+            else:
+                self.data_dir = Path(data_dir) / "validation"
+            logger.debug(f"Using validation directory for {toolkit_name}: {self.data_dir}")
         else:
-            # Fallback: just use project_id folder if no toolkit name
-            self.data_dir = base_dir / project_id
+            project_toolkits_dir = ProjectStructure.get_toolkits_dir(project_id)
+            if toolkit_name:
+                self.data_dir = Path(project_toolkits_dir) / toolkit_name
+            else:
+                self.data_dir = Path(project_toolkits_dir)
+            logger.debug(f"Using project structure for {toolkit_name}: {self.data_dir}")
         
         # Create directory structure
         self.data_dir.mkdir(parents=True, exist_ok=True)
@@ -131,17 +137,29 @@ class BaseDataToolkit:
         logger.info(f"Data helpers initialized - Project: {project_id}, Toolkit: {toolkit_name or 'unknown'}, Dir: {self.data_dir}, S3: {self._s3_available}")
 
     def _maybe_refresh_project_context(self) -> None:
-        """Refresh data directories if CURRENT_PROJECT_ID changed after initialization.
+        """Refresh data directories if project context changed after initialization.
 
         This ensures that toolkits created before a project starts will switch to the
         correct project-scoped directory as soon as they are used.
         """
         try:
-            current_env_project_id = os.getenv("CURRENT_PROJECT_ID", "default")
-            # If uninitialized or project changed, re-init helpers with the same settings
-            if getattr(self, "_project_id", None) != current_env_project_id:
+            from sentientresearchagent.core.project_context import get_project_context
+            current_project_id = get_project_context()
+            
+            if not current_project_id:
+                if hasattr(self, '_needs_project_context') and self._needs_project_context:
+                    logger.warning(f"Toolkit refresh skipped - no project context available")
+                    return
+                else:
+                    logger.debug(f"Toolkit refresh skipped - no project context in thread {threading.get_ident()}")
+                    return
+            
+            # Check if project changed
+            project_changed = getattr(self, "_project_id", None) != current_project_id
+            
+            if project_changed:
                 prev = getattr(self, "_project_id", None)
-                logger.debug(f"Refreshing data context for project change: {prev} -> {current_env_project_id}")
+                logger.debug(f"Refreshing data context - project: {prev} -> {current_project_id}")
                 self._init_data_helpers(
                     self._base_data_dir_fallback,
                     getattr(self, "_parquet_threshold", 1000),
@@ -150,6 +168,32 @@ class BaseDataToolkit:
                 )
         except Exception as e:
             logger.warning(f"Failed to refresh project context: {e}")
+
+    def _ensure_project_context(self) -> None:
+        """Ensure project context is available for data operations.
+        
+        This method should be called before any actual data operations
+        to ensure the toolkit has proper project context.
+        """
+        if hasattr(self, '_needs_project_context') and self._needs_project_context:
+            from sentientresearchagent.core.project_context import get_project_context
+            project_id = get_project_context()
+            
+            if not project_id:
+                raise RuntimeError(
+                    "No project context available for data operations. "
+                    "This toolkit was initialized in validation mode but is now being used for actual data operations. "
+                    "Ensure the toolkit is used within a proper project execution context."
+                )
+            
+            # Re-initialize with proper project context
+            logger.info(f"Switching from validation mode to project context: {project_id}")
+            self._init_data_helpers(
+                getattr(self, '_base_data_dir_fallback', './data'),
+                getattr(self, '_parquet_threshold', 1000),
+                getattr(self, '_file_prefix', ''),
+                getattr(self, '_toolkit_name', '')
+            )
 
     def _detect_e2b_context(self) -> None:
         """Detect if we're running in an E2B execution context and configure S3 paths."""
@@ -174,7 +218,8 @@ class BaseDataToolkit:
         Returns:
             Path: Local storage path for file operations
         """
-        # Ensure project context is up to date before returning paths
+        # Ensure project context is available and up to date
+        self._ensure_project_context()
         self._maybe_refresh_project_context()
 
         # Always use local data_dir for actual file storage
@@ -192,7 +237,8 @@ class BaseDataToolkit:
         Returns:
             str: E2B-compatible path if in E2B context, original path otherwise
         """
-        # Ensure project context is current for translation
+        # Ensure project context is available and current for translation
+        self._ensure_project_context()
         self._maybe_refresh_project_context()
 
         if not self._s3_available:

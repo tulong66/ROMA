@@ -1,7 +1,6 @@
 import React from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Separator } from '@/components/ui/separator'
 import { 
   Clock,
   Zap, 
@@ -23,6 +22,7 @@ export const ToolCallStatistics: React.FC<ToolCallStatisticsProps> = ({ toolCall
   if (!toolCalls || toolCalls.length === 0) {
     return null
   }
+
 
   // Calculate aggregate statistics
   const stats = {

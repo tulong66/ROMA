@@ -117,6 +117,11 @@ class AgentConfigLoader:
             if not isinstance(prompt, str):
                 raise TypeError(f"Prompt {prompt_source} is not a string, got {type(prompt)}")
             
+            # Note: Folder context injection is now handled dynamically during execution
+            # in base_adapter.py to support multi-project scenarios properly.
+            # The injection at this level was causing issues because agents are created
+            # globally before any specific project is active.
+            
             return prompt
             
         except Exception as e:

@@ -47,6 +47,11 @@ from sentientresearchagent.hierarchical_agent_framework.context.agent_io_models 
     AgentTaskInput
 )
 from sentientresearchagent.hierarchical_agent_framework.agents.base_adapter import BaseAdapter
+from sentientresearchagent.hierarchical_agent_framework.agent_configs.prompts.searcher_prompts import (
+    OPENAI_CUSTOM_SEARCH_PROMPT,
+    GEMINI_CUSTOM_SEARCH_PROMPT,
+    CONTEXT_EMPHASIS_SECTION
+)
 
 # Use TYPE_CHECKING to avoid circular imports
 if TYPE_CHECKING:
@@ -227,42 +232,10 @@ class OpenAICustomSearchAdapter(BaseAdapter):
                     context_section += f"\n[{ctx_item.content_type_description}]:\n{ctx_item.content}\n"
                 
                 # Add emphasis in guidelines
-                context_emphasis = """
-
-CONTEXT USAGE PRIORITY:
-   - The provided context above contains CRITICAL information for your search
-   - Use specific names, terms, and data from the context in your searches
-   - The context shows what has already been discovered - build upon it
-   - If the context mentions specific entities, search for those exact terms"""
+                context_emphasis = CONTEXT_EMPHASIS_SECTION
             
             # Expert searcher prompt for comprehensive data retrieval
-            enhanced_query = f"""You are an expert data searcher with 20+ years of experience in searching and retrieving information from reliable sources with a keen eye for relevant data.
-
-Your task is to RETRIEVE and FETCH all necessary data to answer the following query. Focus on data retrieval, not reasoning or analysis.
-
-Guidelines:
-1. COMPREHENSIVE DATA RETRIEVAL:
-   - If it's a table, retrieve the ENTIRE table (even if it has 50, 100, or more rows)
-   - If it's a list, include ALL items in the list
-   - If it's statistics or rankings, include ALL available data points
-   - For articles/paragraphs, include ALL relevant sections and mentions
-   - Present data in its complete form - do not truncate or summarize
-
-2. SOURCE RELIABILITY PRIORITY:
-   - Wikipedia is the MOST PREFERRED source when available
-   - Other reputable sources in order of preference:
-     • Official government databases and statistics
-     • Academic institutions and research papers
-     • Established news organizations (BBC, Reuters, AP, etc.)
-     • Industry-standard databases and professional organizations
-   - Always cite your sources
-
-3. DATA PRESENTATION:
-   - Present data EXACTLY as found in the source
-   - Maintain original formatting (tables, lists, etc.)
-   - Include all columns, rows, and data points
-   - Do NOT analyze, interpret, or reason about the data
-   - Do NOT summarize or condense - present everything{context_emphasis}{context_section}
+            enhanced_query = f"""{OPENAI_CUSTOM_SEARCH_PROMPT}{context_emphasis}{context_section}
 
 QUERY: {query}
 
@@ -548,42 +521,10 @@ class GeminiCustomSearchAdapter(BaseAdapter):
                     context_section += f"\n[{ctx_item.content_type_description}]:\n{ctx_item.content}\n"
                 
                 # Add emphasis in guidelines
-                context_emphasis = """
-
-CONTEXT USAGE PRIORITY:
-   - The provided context above contains CRITICAL information for your search
-   - Use specific names, terms, and data from the context in your searches
-   - The context shows what has already been discovered - build upon it
-   - If the context mentions specific entities, search for those exact terms"""
+                context_emphasis = CONTEXT_EMPHASIS_SECTION
             
             # Expert searcher prompt for comprehensive data retrieval
-            enhanced_query = f"""You are an expert data searcher with 20+ years of experience in searching and retrieving information from reliable sources with a keen eye for relevant data.
-
-Your task is to RETRIEVE and FETCH all necessary data to answer the following query. Focus on data retrieval, not reasoning or analysis.
-
-Guidelines:
-1. COMPREHENSIVE DATA RETRIEVAL:
-   - If it's a table, retrieve the ENTIRE table (even if it has 50, 100, or more rows)
-   - If it's a list, include ALL items in the list
-   - If it's statistics or rankings, include ALL available data points
-   - For articles/paragraphs, include ALL relevant sections and mentions
-   - Present data in its complete form - do not truncate or summarize
-
-2. SOURCE RELIABILITY PRIORITY:
-   - Wikipedia is the MOST PREFERRED source when available
-   - Other reputable sources in order of preference:
-     • Official government databases and statistics
-     • Academic institutions and research papers
-     • Established news organizations (BBC, Reuters, AP, etc.)
-     • Industry-standard databases and professional organizations
-   - Always cite your sources
-
-3. DATA PRESENTATION:
-   - Present data EXACTLY as found in the source
-   - Maintain original formatting (tables, lists, etc.)
-   - Include all columns, rows, and data points
-   - Do NOT analyze, interpret, or reason about the data
-   - Do NOT summarize or condense - present everything{context_emphasis}{context_section}
+            enhanced_query = f"""{OPENAI_CUSTOM_SEARCH_PROMPT}{context_emphasis}{context_section}
 
 QUERY: {query}
 

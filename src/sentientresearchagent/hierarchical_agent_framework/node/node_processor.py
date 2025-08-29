@@ -186,6 +186,10 @@ class NodeProcessor:
             knowledge_store: The knowledge store
             update_manager: Optional NodeUpdateManager for optimized updates
         """
+        # Set project context for this thread before processing
+        from sentientresearchagent.core.project_context import set_project_context
+        set_project_context(self.trace_manager.project_id)
+        
         self.processor_context.task_graph = task_graph
         self.processor_context.knowledge_store = knowledge_store
         self.processor_context.update_manager = update_manager
