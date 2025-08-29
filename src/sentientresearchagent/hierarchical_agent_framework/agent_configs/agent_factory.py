@@ -126,21 +126,26 @@ class AgentFactory:
             # Import common tools from agno.tools
             from agno.tools.python import PythonTools
             from agno.tools.e2b import E2BTools
-            from agno.tools.duckduckgo import DuckDuckGoTools
             from agno.tools.reasoning import ReasoningTools
             
             self._tools.update({
                 "PythonTools": PythonTools,
                 "E2BTools": E2BTools,
-                "DuckDuckGoTools": DuckDuckGoTools,  
                 "ReasoningTools": ReasoningTools,
             })
+            
+            # Optional tools with graceful degradation
+            try:
+                from agno.tools.duckduckgo import DuckDuckGoTools
+                self._tools["DuckDuckGoTools"] = DuckDuckGoTools
+            except ImportError as e:
+                logger.warning(f"DuckDuckGoTools not available: {e}")
             
             # Add WikipediaTools if available
             if WIKIPEDIA_AVAILABLE and WikipediaTools:
                 self._tools["WikipediaTools"] = WikipediaTools
                 
-            logger.debug(f"Initialized {len(self._tools)} common tools: {list(self._tools.keys())}")
+            logger.info(f"Initialized {len(self._tools)} common tools: {list(self._tools.keys())}")
             
         except ImportError as e:
             logger.warning(f"Could not initialize some common tools: {e}")
@@ -404,14 +409,42 @@ class AgentFactory:
                     toolkit_class = self._toolkits[toolkit_name]
                     params = validated_toolkit.params
                     
+                    # Enable credential validation only for data toolkits that have API key fields
+                    param_class = ToolkitConfig.get_toolkit_params_class(toolkit_name)
+                    if param_class and 'validate_credentials' in param_class.model_fields:
+                        # Check if this toolkit actually has API key fields that need validation
+                        has_api_key_fields = any(
+                            field_name in ['api_key', 'api_secret'] 
+                            for field_name in param_class.model_fields
+                        )
+                        
+                        if has_api_key_fields:
+                            params["validate_credentials"] = True
+                            logger.debug(f"Enabled credential validation for {toolkit_name} (has API key fields)")
+                            
+                            # Re-validate parameters with credential validation enabled
+                            # This will trigger API key validation and raise exception if keys are missing
+                            try:
+                                param_class(**params)  # Validate parameters
+                                logger.debug(f"✅ API credentials validated for {toolkit_name}")
+                            except Exception as validation_error:
+                                # Let this exception propagate up to be caught and logged as warning
+                                raise validation_error
+                        else:
+                            logger.debug(f"Skipping credential validation for {toolkit_name} (no API key fields)")
+                    
                     # Apply any parameter transformations
                     params = self._transform_toolkit_params(toolkit_name, params)
                     
+                    # Remove validate_credentials from params before passing to toolkit constructor
+                    # since the actual toolkit classes don't expect this parameter
+                    toolkit_params = {k: v for k, v in params.items() if k != 'validate_credentials'}
+                    
                     available_tools = validated_toolkit.available_tools
                     if available_tools:
-                        params["include_tools"] = available_tools
+                        toolkit_params["include_tools"] = available_tools
                     
-                    toolkit_instance = toolkit_class(**params)
+                    toolkit_instance = toolkit_class(**toolkit_params)
                     logger.info(f"Created custom toolkit '{toolkit_name}' with params: {params}")
                     selected_toolkits.append(toolkit_instance)
                             
