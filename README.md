@@ -201,6 +201,42 @@ For secure code execution capabilities, optionally set up E2B sandboxes:
 - 🔧 **AWS Credentials** - Passed securely via Docker build arguments
 
 
+## 🤖 Pre-built Agents
+
+> **Note:** These agents are demonstrations built using ROMA's framework through simple vibe-prompting and minimal manual tuning. They showcase how easily you can create high-performance agents with ROMA, rather than being production-final solutions. Our mission is to empower the community to build, share, and get rewarded for creating innovative agent recipes and use-cases.
+
+ROMA comes with example agents that demonstrate the framework's capabilities:
+
+### 🔍 General Task Solver
+A versatile agent powered by ChatGPT Search Preview for handling diverse tasks:
+- **Intelligent Search**: Leverages OpenAI's latest search capabilities for real-time information
+- **Flexible Planning**: Adapts task decomposition based on query complexity
+- **Multi-Domain**: Handles everything from technical questions to creative projects
+- **Quick Prototyping**: Perfect for testing ROMA's capabilities without domain-specific setup
+
+Perfect for: General research, fact-checking, exploratory analysis, quick information gathering
+
+### 🔬 Deep Research Agent
+A comprehensive research system that breaks down complex research questions into manageable sub-tasks:
+- **Smart Task Decomposition**: Automatically splits research topics into search, analysis, and synthesis phases
+- **Parallel Information Gathering**: Executes multiple searches simultaneously for faster results
+- **Multi-Source Integration**: Combines results from web search, Wikipedia, and specialized APIs
+- **Intelligent Synthesis**: Aggregates findings into coherent, well-structured reports
+
+Perfect for: Academic research, market analysis, competitive intelligence, technical documentation
+
+### 💹 Crypto Analytics Agent
+Specialized financial analysis agent with deep blockchain and DeFi expertise:
+- **Real-Time Market Data**: Integrates with Binance, CoinGecko, and DefiLlama APIs
+- **On-Chain Analytics**: Access to Arkham Intelligence for wallet tracking and token flows
+- **Technical Analysis**: Advanced charting with OHLC data and market indicators
+- **DeFi Metrics**: TVL tracking, yield analysis, protocol comparisons
+- **Secure Execution**: Runs analysis in E2B sandboxes with data persistence
+
+Perfect for: Token research, portfolio analysis, DeFi protocol evaluation, market trend analysis
+
+All three agents demonstrate ROMA's recursive architecture in action, showing how complex queries that would overwhelm single-pass systems can be elegantly decomposed and solved. They serve as templates and inspiration for building your own specialized agents.
+
 ### Your First Agent in 5 Minutes
 
 ```python
