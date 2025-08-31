@@ -32,7 +32,7 @@
 <p align="center">
   <a href="#-examples">Technical Blog (Coming soon)</a> •
   <a href="docs/">Paper (Coming soon)</a> •
-  <a href="#-community">Roadmap</a> •
+  <a href="docs/ROADMAP.md">Roadmap</a> •
   <a href="CONTRIBUTING.md">Build Agents for $$$</a>
 </p>
 
