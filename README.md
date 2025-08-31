@@ -32,7 +32,6 @@
 <p align="center">
   <a href="#-examples">Technical Blog (Coming soon)</a> •
   <a href="docs/">Paper (Coming soon)</a> •
-  <a href="docs/ROADMAP.md">Roadmap</a> •
   <a href="CONTRIBUTING.md">Build Agents for $$$</a>
 </p>
 
@@ -52,6 +51,8 @@
 - **[🤖 Agents Guide](docs/AGENTS_GUIDE.md)** - Learn how to create and customize your own agents
 
 - **[⚙️ Configuration](docs/CONFIGURATION.md)** - Detailed configuration options and environment setup
+
+- **[🗺️ Roadmap](docs/ROADMAP.md)** - See what's coming next for ROMA
 
 ## 🎯 What is ROMA?
 
