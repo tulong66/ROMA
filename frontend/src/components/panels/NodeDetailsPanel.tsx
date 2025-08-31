@@ -2,8 +2,8 @@ import React, { useState } from 'react'
 import { useTaskGraphStore } from '@/stores/taskGraphStore'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import ToolCallsDisplay from './ToolCallsDisplay'
 import ToolCallsModal from './ToolCallsModal'
+import { getNodeExecutionTime } from '@/utils/toolCallUtils'
 import { 
   Brain, 
   Play, 
@@ -26,7 +26,6 @@ import {
   Layers,
   Database,
   Navigation,
-  Cpu,
   MessageSquare,
   ExternalLink,
   Settings,
@@ -248,9 +247,7 @@ const NodeDetailsPanel: React.FC = () => {
   const { 
     selectedNodeId, 
     nodes, 
-    selectNode,
     isToolCallsModalOpen,
-    openToolCallsModal,
     closeToolCallsModal
   } = useTaskGraphStore()
   const [isFullResultModalOpen, setIsFullResultModalOpen] = useState(false)
@@ -444,7 +441,7 @@ const NodeDetailsPanel: React.FC = () => {
           {(selectedNode.model_info || selectedNode.model_display || selectedNode.agent_name) && (
             <div className="space-y-3">
               <div className="flex items-center space-x-2 pb-2 border-b border-border/50">
-                <Cpu className="w-4 h-4 text-amber-600" />
+                <Settings className="w-4 h-4 text-amber-600" />
                 <h3 className="text-sm font-semibold text-foreground">Execution Details</h3>
               </div>
               <div className="space-y-3 text-xs">
@@ -516,36 +513,6 @@ const NodeDetailsPanel: React.FC = () => {
             </div>
           )}
 
-          {/* Tool Calls Section */}
-          {executionDetails?.tool_calls && executionDetails.tool_calls.length > 0 && (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between pb-2 border-b border-border/50">
-                <div className="flex items-center space-x-2">
-                  <Cpu className="w-4 h-4 text-orange-600" />
-                  <h3 className="text-sm font-semibold text-foreground">
-                    Tool Calls ({executionDetails.tool_calls.length})
-                  </h3>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={openToolCallsModal}
-                  className="h-6 px-2 text-xs"
-                >
-                  <ExternalLink className="w-3 h-3 mr-1" />
-                  View All
-                </Button>
-              </div>
-              <div className="max-h-40 overflow-y-auto">
-                <ToolCallsDisplay toolCalls={executionDetails.tool_calls.slice(0, 3)} />
-                {executionDetails.tool_calls.length > 3 && (
-                  <div className="text-xs text-muted-foreground text-center mt-2 py-2 border-t">
-                    ... and {executionDetails.tool_calls.length - 3} more. Click "View All" to see everything.
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
 
           {/* Timeline Section */}
           <div className="space-y-3">
@@ -566,6 +533,12 @@ const NodeDetailsPanel: React.FC = () => {
                 <span className="text-muted-foreground">Completed</span>
                 <span className="font-medium">{formatTimestamp(selectedNode.timestamp_completed)}</span>
               </div>
+              {getNodeExecutionTime(selectedNode) && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Execution Time</span>
+                  <span className="font-medium text-blue-600">{getNodeExecutionTime(selectedNode)}</span>
+                </div>
+              )}
             </div>
           </div>
 

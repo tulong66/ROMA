@@ -8,6 +8,8 @@ from pathlib import Path
 import threading
 from loguru import logger
 
+from .project_context import set_project_context
+
 if TYPE_CHECKING:
     from sentientresearchagent.config import SentientConfig
     from sentientresearchagent.hierarchical_agent_framework.agents.registry import AgentRegistry
@@ -88,11 +90,19 @@ class ProjectManager:
             logger.error(f"Failed to save projects: {e}")
     
     def create_project(self, goal: str, max_steps: int = 250) -> ProjectMetadata:
-        """Create a new project"""
+        """Create a new project with universal folder structure"""
         with self._lock:
             project_id = str(uuid.uuid4())
-            # Export project_id as environment variable for toolkits
-            os.environ['CURRENT_PROJECT_ID'] = project_id
+            
+            # Create project structure using centralized manager
+            from .project_structure import ProjectStructure
+            project_dirs = ProjectStructure.create_project_structure(project_id)
+            
+            toolkits_dir = project_dirs['toolkits_dir']
+            results_dir = project_dirs['results_dir']
+            
+            # Set thread-local project context
+            set_project_context(project_id)
             
             # Generate a smart title from the goal
             title = self._generate_title(goal)
@@ -112,11 +122,8 @@ class ProjectManager:
             self.current_project_id = project_id
             self._save_projects()
             
-            # Create project directory for storing graph state
-            project_dir = self.projects_dir / project_id
-            project_dir.mkdir(exist_ok=True)
-            
             logger.info(f"Created new project: {project_id} - {title}")
+            logger.info(f"Project structure: {project_dirs['project_root']}")
             return project
     
     def _generate_title(self, goal: str) -> str:

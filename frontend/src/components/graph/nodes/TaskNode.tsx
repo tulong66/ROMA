@@ -131,14 +131,13 @@ const TaskNodeComponent: React.FC<NodeProps<TaskNodeData>> = ({ data, selected }
   const toolCalls = executionDetails?.tool_calls || []
   const hasToolCalls = toolCalls.length > 0
   
+  
   const handleToolCallsClick = (e: React.MouseEvent) => {
     e.stopPropagation() // Prevent node selection
     selectNode(node.task_id) // Select the node first
     openToolCallsModal() // Then open the modal
   }
 
-  // Determine if node has been processed (and likely has tracing data)
-  const hasBeenProcessed = ['RUNNING', 'DONE', 'FAILED', 'PLAN_DONE', 'AGGREGATING'].includes(node.status)
 
   const nodeClassName = `
     min-w-[280px] max-w-[320px] p-4 rounded-xl border-2 shadow-lg transition-all duration-300 relative overflow-hidden

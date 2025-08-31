@@ -202,30 +202,38 @@ class BinanceToolkitParams(BaseDataToolkitParams):
     )
     api_key: str = Field(
         default_factory=lambda: os.getenv("BINANCE_API_KEY") or "",
-        min_length=60,
-        max_length=68,
         description="Binance API key (typically 64 characters)"
     )
     api_secret: str = Field(
         default_factory=lambda: os.getenv("BINANCE_API_SECRET") or "",
-        min_length=60,
-        max_length=68,
         description="Binance API secret (typically 64 characters)"
+    )
+    validate_credentials: bool = Field(
+        False,
+        description="Whether to validate API credentials (automatically set to True when toolkit is used)"
     )
     
     @model_validator(mode='after')
     def validate_required_credentials(self):
         """Validate that required API credentials are provided and meet format requirements."""
+        # Skip validation if explicitly disabled (default behavior)
+        if not self.validate_credentials:
+            return self
+            
         if not self.api_key:
             raise ValueError("Binance API key is required. Set BINANCE_API_KEY environment variable.")
         if not self.api_secret:
             raise ValueError("Binance API secret is required. Set BINANCE_API_SECRET environment variable.")
         
-        # Validate API key format (alphanumeric characters)
+        # Validate API key format and length
+        if len(self.api_key) < 60 or len(self.api_key) > 68:
+            raise ValueError("Binance API key must be 60-68 characters long.")
         if not self.api_key.replace("-", "").replace("_", "").isalnum():
             raise ValueError("Binance API key must contain only alphanumeric characters, hyphens, and underscores.")
         
-        # Validate API secret format (alphanumeric characters)
+        # Validate API secret format and length
+        if len(self.api_secret) < 60 or len(self.api_secret) > 68:
+            raise ValueError("Binance API secret must be 60-68 characters long.")
         if not self.api_secret.replace("-", "").replace("_", "").isalnum():
             raise ValueError("Binance API secret must contain only alphanumeric characters, hyphens, and underscores.")
         
@@ -269,16 +277,26 @@ class CoingeckoToolkitParams(BaseDataToolkitParams):
     
     api_key: str = Field(
         default_factory=lambda: os.getenv("COINGECKO_API_KEY") or "",
-        min_length=25,
-        max_length=29,
         description="CoinGecko API key (format: CG-xxxxxxxxxxxxxxxxxxxxxx)"
+    )
+    validate_credentials: bool = Field(
+        False,
+        description="Whether to validate API credentials (automatically set to True when toolkit is used)"
     )
     
     @model_validator(mode='after')
     def validate_required_credentials(self):
         """Validate that required API credentials are provided and meet format requirements."""
+        # Skip validation if explicitly disabled (default behavior)
+        if not self.validate_credentials:
+            return self
+            
         if not self.api_key:
             raise ValueError("CoinGecko API key is required. Set COINGECKO_API_KEY environment variable.")
+        
+        # Validate API key length
+        if len(self.api_key) < 25 or len(self.api_key) > 29:
+            raise ValueError("CoinGecko API key must be 25-29 characters long.")
         
         # Validate API key format (must start with "CG-" followed by alphanumeric characters)
         if not self.api_key.startswith("CG-"):
@@ -314,8 +332,11 @@ class ArkhamToolkitParams(BaseDataToolkitParams):
     # Arkham-specific fields
     api_key: str = Field(
         default_factory=lambda: os.getenv("ARKHAM_API_KEY") or "",
-        min_length=10,
         description="Arkham Intelligence API key"
+    )
+    validate_credentials: bool = Field(
+        False,
+        description="Whether to validate API credentials (automatically set to True when toolkit is used)"
     )
     default_chain: str = Field(
         "ethereum",
@@ -342,8 +363,17 @@ class ArkhamToolkitParams(BaseDataToolkitParams):
     @model_validator(mode='after')
     def validate_required_credentials(self):
         """Validate that required API credentials are provided."""
+        # Skip validation if explicitly disabled (default behavior)
+        if not self.validate_credentials:
+            return self
+            
         if not self.api_key:
             raise ValueError("Arkham API key is required. Set ARKHAM_API_KEY environment variable.")
+        
+        # Validate API key length
+        if len(self.api_key) < 10:
+            raise ValueError("Arkham API key must be at least 10 characters long.")
+        
         return self
     
     @field_validator("default_chain")
