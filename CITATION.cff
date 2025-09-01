@@ -22,7 +22,7 @@ type: software
 repository-code: "https://github.com/sentient-agi/ROMA"
 license: MIT
 version: 0.1.0
-date-released: 2025-04-09
+date-released: 2025-09-01
 keywords:
   - artificial intelligence
   - multi-agent systems
