@@ -129,8 +129,8 @@ flowchart TB
 ### 🚀 30-Second Quick Start
 
 ```bash
-git clone https://github.com/salzubi401/SentientResearchAgent.git
-cd SentientResearchAgent
+git clone git clone https://github.com/sentient-agi/ROMA
+cd ROMA
 
 # Run the automated setup
 ./setup.sh
@@ -241,6 +241,7 @@ All three agents demonstrate ROMA's recursive architecture in action, showing ho
 ### Your First Agent in 5 Minutes
 
 ```python
+git clone https://github.com/sentient-agi/ROMA
 ./setup.sh  # Automated setup with Docker or native installation
 ```
 
@@ -309,7 +310,15 @@ This framework would not have been possible if it wasn't for these amazing open-
 If you use ROMA in your research, please cite:
 
 ```bibtex
-coming soon
+@software{Al-Zubi_SentientResearchAgent_A_Hierarchical_2025,
+author = {Al-Zubi, Salah and Nama, Baran and Kaz, Arda and Oh, Sewoong},
+license = {MIT},
+month = sep,
+title = {{SentientResearchAgent: A Hierarchical AI Agent Framework for Research and Analysis}},
+url = {https://github.com/sentient-agi/ROMA},
+version = {0.1.0},
+year = {2025}
+}
 ```
 
 ## 📄 License
