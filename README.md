@@ -8,7 +8,6 @@
   <strong>Building hierarchical high-performance multi-agent systems made easy! (Beta) </strong>
 </p>
 
-![sentient gif](/assets/roma_run.gif)
 
 <p align="center">
   <a href="https://sentient.xyz/" target="_blank" style="margin: 2px;">
@@ -31,7 +30,7 @@
   </a>
 </p>
 <p align="center">
-  <a href="#-examples">Technical Blog (Coming soon)</a> •
+  <a href="#-examples">Technical Blog</a> •
   <a href="docs/">Paper (Coming soon)</a> •
   <a href="CONTRIBUTING.md">Build Agents for $$$</a>
 </p>
@@ -58,7 +57,7 @@
 ## 🎯 What is ROMA?
 
 <div align="center">
-    <img src="./assets/project_overview.png" alt="alt text" width="60%"/>
+    <img src="./assets/roma_run.gif" alt="alt text" width="60%"/>
 </div>
 
 **ROMA** is a **meta-agent framework** that uses recursive hierarchical structures to solve complex problems. By breaking down tasks into parallelizable components, ROMA enables agents to tackle sophisticated reasoning challenges while maintaining transparency that makes context-engineering and iteration straightforward. The framework offers **parallel problem solving** where agents work simultaneously on different parts of complex tasks, **transparent development** with a clear structure for easy debugging, and **proven performance** demonstrated through our search agent's strong benchmark results. We've shown the framework's effectiveness, but this is just the beginning. As an **open-source and extensible** platform, ROMA is designed for community-driven development, allowing you to build and customize agents for your specific needs while benefiting from the collective improvements of the community.
@@ -130,8 +129,8 @@ flowchart TB
 ### 🚀 30-Second Quick Start
 
 ```bash
-git clone git clone https://github.com/sentient-agi/ROMA
-cd ROMA
+git clone https://github.com/salzubi401/SentientResearchAgent.git
+cd SentientResearchAgent
 
 # Run the automated setup
 ./setup.sh
@@ -242,7 +241,6 @@ All three agents demonstrate ROMA's recursive architecture in action, showing ho
 ### Your First Agent in 5 Minutes
 
 ```python
-git clone https://github.com/sentient-agi/ROMA
 ./setup.sh  # Automated setup with Docker or native installation
 ```
 
@@ -311,15 +309,7 @@ This framework would not have been possible if it wasn't for these amazing open-
 If you use ROMA in your research, please cite:
 
 ```bibtex
-@software{Al-Zubi_SentientResearchAgent_A_Hierarchical_2025,
-author = {Al-Zubi, Salah and Nama, Baran and Kaz, Arda and Oh, Sewoong},
-license = {MIT},
-month = sep,
-title = {{SentientResearchAgent: A Hierarchical AI Agent Framework for Research and Analysis}},
-url = {https://github.com/sentient-agi/ROMA},
-version = {0.1.0},
-year = {2025}
-}
+coming soon
 ```
 
 ## 📄 License
