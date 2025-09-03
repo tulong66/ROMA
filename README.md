@@ -8,6 +8,7 @@
   <strong>Building hierarchical high-performance multi-agent systems made easy! (Beta) </strong>
 </p>
 
+![sentient gif](/assets/roma_run.gif)
 
 <p align="center">
   <a href="https://sentient.xyz/" target="_blank" style="margin: 2px;">
