@@ -4,7 +4,7 @@ from openai import OpenAI
 client = OpenAI()
 client_router = OpenAI(
   base_url="https://openrouter.ai/api/v1",
-  api_key="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"
+  api_key=...
 )
 
 '''response = client.responses.create(
