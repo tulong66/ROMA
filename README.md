@@ -130,8 +130,8 @@ flowchart TB
 ### 🚀 30-Second Quick Start
 
 ```bash
-git clone https://github.com/salzubi401/SentientResearchAgent.git
-cd SentientResearchAgent
+git clone https://github.com/sentient-agi/ROMA.git
+cd ROMA
 
 # Run the automated setup
 ./setup.sh
