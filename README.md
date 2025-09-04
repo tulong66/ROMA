@@ -275,7 +275,7 @@ SealQA is a new challenging benchmark for evaluating Search-Augmented Language m
 
 
 ### [SimpleQA](https://openai.com/index/introducing-simpleqa/)
-<detailsFactuality benchmark that measures the ability for language models to answer short, fact-seeking questions.
+<details>Factuality benchmark that measures the ability for language models to answer short, fact-seeking questions.
 ![SimpleQA Results](assets/simpleQAFull.001.jpeg)</details>
 
 ## ✨ Features
