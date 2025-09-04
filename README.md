@@ -266,22 +266,32 @@ We evaluate our simple implementation of a search system using ROMA, called ROMA
 Below are the performance graphs for each benchmark.
 
 ### [SEAL-0](https://huggingface.co/datasets/vtllms/sealqa)
-SealQA is a new challenging benchmark for evaluating Search-Augmented Language models on fact-seeking questions where web search yields conflicting, noisy, or unhelpful results.
+SealQA is a new challenging benchmark for evaluating Search-Augmented Language models on fact-seeking questions where web search yields conflicting, noisy, or unhelpful results.  
+
 ![SEAL-0 Results](assets/seal-0-full.001.jpeg)
+
+---
 
 ### [FRAMES](https://huggingface.co/datasets/google/frames-benchmark)
 <details>
 <summary>View full results</summary>
-    A comprehensive evaluation dataset designed to test the capabilities of Retrieval-Augmented Generation (RAG) systems across factuality, retrieval accuracy, and reasoning.
-![FRAMEs Results](assets/FRAMES-full.001.jpeg)
+
+A comprehensive evaluation dataset designed to test the capabilities of Retrieval-Augmented Generation (RAG) systems across factuality, retrieval accuracy, and reasoning.  
+
+![FRAMES Results](assets/FRAMES-full.001.jpeg)
+
 </details>
 
+---
 
 ### [SimpleQA](https://openai.com/index/introducing-simpleqa/)
 <details>
-   <summary>View full results</summary> 
-Factuality benchmark that measures the ability for language models to answer short, fact-seeking questions.
+<summary>View full results</summary>
+
+Factuality benchmark that measures the ability for language models to answer short, fact-seeking questions.  
+
 ![SimpleQA Results](assets/simpleQAFull.001.jpeg)
+
 </details>
 
 ## ✨ Features
