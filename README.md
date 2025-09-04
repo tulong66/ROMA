@@ -30,7 +30,7 @@
   </a>
 </p>
 <p align="center">
-  <a href="https://www.sentient.xyz/blog/recursive-open-meta-agent">Technical Blog</a> •
+  <a href="[Technical Blog](https://www.sentient.xyz/blog/recursive-open-meta-agent)"></a> •
   <a href="docs/">Paper (Coming soon)</a> •
   <a href="https://www.sentient.xyz/">Build Agents for $$$</a>
 </p>
