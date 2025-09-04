@@ -260,6 +260,23 @@ agent = SentientAgent.create()
 result = await agent.run("Create a podcast about AI safety")
 ```
 
+## 📊 Benchmarks
+
+We evaluate our system across three benchmarks: **SEAL-0**, **FRAMES**, and **SimpleQA**.  
+Below are the performance graphs for each benchmark.
+
+### [SEAL-0](https://huggingface.co/datasets/vtllms/sealqa)
+SealQA is a new challenging benchmark for evaluating Search-Augmented Language models on fact-seeking questions where web search yields conflicting, noisy, or unhelpful results.
+![SEAL-0 Results](assets/seal-0-full.001.jpeg)
+
+### [FRAMES](https://huggingface.co/datasets/google/frames-benchmark)
+A comprehensive evaluation dataset designed to test the capabilities of Retrieval-Augmented Generation (RAG) systems across factuality, retrieval accuracy, and reasoning.
+![FRAMES Results](assets/FRAMES-full.001.jpeg)
+
+### [SimpleQA](https://openai.com/index/introducing-simpleqa/)
+Factuality benchmark that measures the ability for language models to answer short, fact-seeking questions.
+![SimpleQA Results](assets/benchmarks/simpleqa.png)
+
 ## ✨ Features
 
 <table>
