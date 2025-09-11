@@ -35,6 +35,8 @@
   <a href="https://www.sentient.xyz/">Build Agents for $$$</a>
 </p>
 
+<a href="https://trendshift.io/repositories/14848" target="_blank"><img src="https://trendshift.io/api/badge/repositories/14848" alt="sentient-agi%2FROMA | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
+
 </div>
 
 ---
