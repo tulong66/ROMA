@@ -1,6 +1,6 @@
 <div align="center">
 <div align="center">
-    <img src="./assets/sentient-logo.png" alt="alt text" width="60%"/>
+    <img src="./assets/sentient-logo-new.png" alt="alt text" width="60%"/>
 </div>
 <h1>ROMA: Recursive Open Meta-Agents</h1>
 
