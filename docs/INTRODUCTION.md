@@ -6,6 +6,16 @@
 
 This isn't just another AI tool—it's a **universal scaffold for building high-performance agents** that can handle ANY task that can be broken down using the MECE (Mutually Exclusive, Collectively Exhaustive) principle. From podcast generation to market analysis, from story writing to code generation—if you can imagine it, you can build it.
 
+## 🧩 Foundations & Lineage
+
+While ROMA introduces a practical, open-source framework for hierarchical task execution, it is directly built upon two foundational research contributions introduced in [WriteHERE](https://arxiv.org/abs/2503.08275):
+
+- **Heterogeneous Recursive Planning** — The overall architecture of ROMA follows the framework first introduced in prior work on *heterogeneous recursive planning*, where complex tasks are recursively decomposed into a graph of subtasks, each assigned a distinct cognitive type.  
+
+- **Type Specification in Decomposition** — ROMA’s “Three Universal Operations” (THINK 🤔, WRITE ✍️, SEARCH 🔍) generalize the *type specification in decomposition* hypothesis, which identified reasoning, composition, and retrieval as the three fundamental cognitive types.  
+
+These contributions are described in detail in the WriteHERE repository and paper. By explicitly adopting and extending this foundation, ROMA provides a **generalizable scaffold, agent system, versatility, and extensibility** that builds upon these insights and makes them usable for builders across domains. 
+
 ## 🎯 The MECE Framework
 
 At the heart of SentientResearchAgent lies the **MECE principle** (Mutually Exclusive, Collectively Exhaustive), which provides a universal framework for decomposing ANY task into three fundamental operations.
