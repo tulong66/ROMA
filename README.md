@@ -370,6 +370,13 @@ If you use the ROMA repo in your research, please cite:
 }
 ```
 
+## 🌟 Star History
+
+<div align="center">
+
+[![Star History Chart](https://api.star-history.com/svg?repos=sentient-agi/roma&type=Date)](https://www.star-history.com/#sentient-agi/roma&Date)
+
+</div>
 
 ## 📄 License
 
