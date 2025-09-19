@@ -370,8 +370,8 @@ If you use the ROMA repo in your research, please cite:
 }
 ```
 
-<iframe style="width:100%;height:auto;min-width:600px;min-height:400px;" src="https://www.star-history.com/embed?secret=#sentient-agi/roma&Date" frameBorder="0"></iframe>
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the Apache 2.0 License - see the [LICENSE](LICENSE) file for details.
+
