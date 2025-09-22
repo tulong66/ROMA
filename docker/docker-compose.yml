@@ -37,7 +37,7 @@ services:
       dockerfile: docker/Dockerfile.frontend
     container_name: sentient-frontend
     ports:
-      - "3000:3000"
+      - "3001:3000"
     environment:
       - VITE_API_URL=http://localhost:5000
       - DOCKER_ENV=true

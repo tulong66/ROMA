@@ -3,8 +3,9 @@
 
 # LLM Infrastructure (used by your AgnoAgents)
 llm:
-  provider: "openrouter"  # Since you're using OpenRouter
-  api_key: "your-openrouter-key"  # Or OPENROUTER_API_KEY env var
+  provider: "anthropic"  # Using Anthropic via anyrouter.top
+  api_key: "${ANTHROPIC_API_KEY}"  # Use environment variable
+  base_url: "${ANTHROPIC_BASE_URL}"  # Use custom base URL
   timeout: 300.0  # Increased to 5 minutes for complex code execution and reasoning
   max_retries: 3
 
